@@ -1,5 +1,5 @@
 export const VERSION = '2.0.0-beta.1';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.0.0-beta.1/LIBO-2.0.0-beta.1.apk';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.0.0-beta.1/downloads/LIBO-2.0.0-beta.1.apk';
 export const REPO_URL = 'https://github.com/vladskod31-alt/my-first-apk/tree/arena/01a0708b-my-first-apk';
 export const MAX_TEXT = 4000;
 export const MAX_IMAGE_DATA = 1_400_000;

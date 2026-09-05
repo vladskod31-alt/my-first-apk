@@ -15,3 +15,6 @@ playwright-report/
 test-results/
 artifacts/
 .DS_Store
+
+# Requested tiny beta APK: fallback when binary uploads to Releases are unavailable.
+!downloads/LIBO-2.0.0-beta.1.apk

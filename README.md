@@ -97,7 +97,7 @@ node scripts/bootstrap-toolchain.mjs
 # artifacts/LIBO-2.0.0-beta.1.apk и artifacts/SHA256SUMS.txt
 ```
 
-Нужны Linux x64, Node 22, `gh` и `tar`. Скрипт загружает инструменты **вне репозитория**: Android SDK stubs/D8/apksigner/zipalign из закреплённой ревизии MIT App Inventor, AAPT2 из закреплённой ревизии Apktool, ECJ 4.5.1 и пакет Temurin JRE 17.0.17. Источники и контрольные суммы находятся в `scripts/toolchain-sources.json`; проверяются SHA-256 инструментов и SHA-512 архива JRE. Бинарные инструменты, ключи и промежуточные файлы не коммитятся.
+Нужны Linux x64, Node 22, `gh` и `tar`. Скрипт загружает инструменты **вне репозитория**: Android SDK stubs/D8/apksigner/zipalign из закреплённой ревизии MIT App Inventor, AAPT2 из закреплённой ревизии Apktool, ECJ 4.5.1 и пакет Temurin JRE 17.0.17. Источники и контрольные суммы находятся в `scripts/toolchain-sources.json`; проверяются SHA-256 инструментов и SHA-512 архива JRE. Бинарные инструменты, ключи и промежуточные файлы не коммитятся. Исключение: запрошенный маленький APK первой беты сохранён в `downloads/`, поскольку загрузка assets через `uploads.github.com` завершилась сетевой ошибкой. Ссылка привязана к тегу релиза, а не к изменяемому содержимому ветки.
 
 Выполняются компиляция ресурсов, Java → D8 → APK, zipalign и проверка цифровой подписи. **Это не означает запуск APK на физическом телефоне.** Подробности и непроверенные сценарии — в [TESTING.md](TESTING.md).
 
@@ -109,13 +109,13 @@ node scripts/bootstrap-toolchain.mjs
 
 Для новой публикации:
 
-1. Обновите версии в `package.json`, `package-lock.json`, `web/lib/core.mjs`, `app/build.gradle`, ссылку `APK_URL` и release notes. Увеличьте `versionCode`.
+1. Обновите версии в `package.json`, `package-lock.json`, `web/lib/core.mjs`, `app/build.gradle`, ссылку `APK_URL` и release notes. Увеличьте `versionCode`. При публикации бинарных assets через Actions указывайте `APK_URL` вида `https://github.com/<owner>/<repo>/releases/download/v<version>/LIBO-<version>.apk`.
 2. При активном workflow запустите **Android APK**, выбрав рабочую ветку и `publish=true`, либо используйте commit message с маркером **`[publish-apk]`**.
 3. Workflow создаст **GitHub prerelease** `v<version>` с APK и SHA-256. Существующий release не перезаписывается. Без Actions можно собрать локально и опубликовать через `gh release create --target <commit>`.
 
 Ссылка на первую бету:
 
-[**Скачать LIBO-2.0.0-beta.1.apk**](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.0.0-beta.1/LIBO-2.0.0-beta.1.apk)
+[**Скачать LIBO-2.0.0-beta.1.apk**](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.0.0-beta.1/downloads/LIBO-2.0.0-beta.1.apk)
 
 ## Структура
 
@@ -128,4 +128,4 @@ tests/               unit- и браузерные проверки
 ci/                  шаблон GitHub Actions (пока не активирован)
 ```
 
-Зависимости перечислены в `package-lock.json`; лицензионные уведомления — в `THIRD_PARTY_NOTICES.md`. Производственные signing keys, APK, node_modules и build artifacts не хранятся в Git.
+Зависимости перечислены в `package-lock.json`; лицензионные уведомления — в `THIRD_PARTY_NOTICES.md`. Производственные signing keys, node_modules и build artifacts не хранятся в Git. Единственное намеренное бинарное исключение — запрошенный APK первой беты в `downloads/`; последующие APK рекомендуется хранить в Releases.
