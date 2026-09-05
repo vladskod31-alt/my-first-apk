@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+.gradle/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
+.env
+.env.*
+!.env.example
+playwright-report/
+test-results/
+artifacts/
+.DS_Store
