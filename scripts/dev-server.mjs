@@ -5,16 +5,18 @@ import { ExpressPeerServer } from 'peer';
 
 const app = express();
 const httpServer = http.createServer(app);
-// Development signaling only. Production APKs use the public PeerJS broker by default.
-app.use('/peerjs', ExpressPeerServer(httpServer, {
+// A non-listening HTTP emitter isolates PeerJS's websocket handler. PeerJS would
+// otherwise reject Vite's HMR upgrades with HTTP 400 on the shared preview port.
+const signalingTransport = http.createServer();
+app.use('/peerjs', ExpressPeerServer(signalingTransport, {
   path: '/', proxied: true, allow_discovery: false, concurrent_limit: 100,
 }));
-const vite = await createViteServer({
-  // PeerJS owns websocket upgrades on this server. Avoid an HMR websocket competing for them.
-  server: { middlewareMode: true, hmr: false },
+httpServer.on('upgrade', (request, socket, head) => {
+  if (request.url?.startsWith('/peerjs/')) signalingTransport.emit('upgrade', request, socket, head);
 });
-// Vite still allocates an unused websocket port with hmr:false; close it so only the app is exposed.
-await vite.ws.close();
+const vite = await createViteServer({
+  server: { middlewareMode: true, hmr: { server: httpServer, path: '/__vite_hmr' } },
+});
 app.use(vite.middlewares);
 httpServer.listen(Number(process.env.PORT || 5173), '0.0.0.0', () => {
   console.log('LIBO preview ready on 0.0.0.0:' + (process.env.PORT || 5173));

@@ -13,6 +13,7 @@
   - **Два изолированных браузерных профиля** обмениваются текстом, подтверждением сохранения, ответом и декодируемой фотографией по **настоящему WebRTC DataChannel**, через локальный тестовый signaling.
   - Сообщение остаётся в очереди, когда получатель закрыт; переживает перезагрузку отправителя и приходит один раз после возвращения получателя.
 - `npm run build`: production bundle со всеми JS/CSS/шрифтами локально.
+- Извлечённые из готового APK assets проверены в Chromium на origin `https://appassets.androidplatform.net` с отключённой внешней сетью: запуск, локальное сохранение после перезагрузки и JS-обработчик Android Back работают. Native bridge в этой проверке имитируется; это не запуск на Android.
 - `scripts/build-apk-local.sh`: AAPT2 → ECJ → D8 → ZIP alignment → подпись APK.
 - `apksigner verify`: RSA 2048, APK Signature Scheme v2 и v3; `zipalign -c 4` и ZIP integrity проходят.
 - `aapt2 dump badging`: пакет `app.libo.messenger.beta`, launch activity `app.libo.messenger.MainActivity`, minSdk 26, targetSdk 35, разрешение только `INTERNET`, версия 2.0.0-beta.1.
