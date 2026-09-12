@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizePeerCode, makePeerId, normalizeName, validatePacket, parseSignalingUrl,
-  makeIceServers, textExport, MAX_TEXT, MAX_IMAGE_DATA, safeFilename, initials, toPacket, verificationCode,
+  makeIceServers, textExport, MAX_TEXT, MAX_IMAGE_DATA, MAX_ATT_DATA, safeFilename, initials, toPacket, verificationCode,
+  makeEditPacket, makeDeletePacket, makePinPacket, makeReactPacket, REACTIONS,
 } from '../web/lib/core.mjs';
 
 const peerId = 'libo-0123456789abcdef0123456789abcdef';
@@ -119,4 +120,33 @@ test('verification code depends on both identities', async () => {
     seen.add(await verificationCode(peerId, other));
   }
   assert.equal(seen.size, 40);
+});
+
+test('2.5.0 control packets validate and reject malformed input', () => {
+  const id = '01234567-89ab-cdef-0123-456789abcdef';
+  assert.deepEqual(validatePacket(makeEditPacket(id, 'новый текст', 123)), { v: 1, type: 'edit', id, text: 'новый текст', editedAt: 123 });
+  assert.equal(validatePacket(makeEditPacket(id, '   ', 123)), null);
+  assert.deepEqual(validatePacket(makeDeletePacket([id, id])), { v: 1, type: 'delete', ids: [id, id] });
+  assert.equal(validatePacket(makeDeletePacket([])), null);
+  assert.equal(validatePacket({ v: 1, type: 'delete', ids: ['x'] }), null);
+  assert.deepEqual(validatePacket(makePinPacket(id, true)), { v: 1, type: 'pin', id, pinned: true });
+  assert.equal(validatePacket({ v: 1, type: 'pin', id, pinned: 'yes' }), null);
+  assert.deepEqual(validatePacket(makeReactPacket(id, 'heart', true)), { v: 1, type: 'react', id, key: 'heart', on: true });
+  assert.equal(validatePacket(makeReactPacket(id, 'not-a-reaction', true)), null);
+  assert.equal(REACTIONS.length, 6);
+});
+
+test('attachments are bounded and mime-checked', () => {
+  const id = '01234567-89ab-cdef-0123-456789abcdef';
+  const base = { v: 1, type: 'message', id, text: '', at: 99 };
+  const voice = validatePacket({ ...base, att: { kind: 'voice', data: 'data:audio/webm;base64,AAAA', dur: 5000 } });
+  assert.equal(voice.att.kind, 'voice');
+  assert.equal(voice.att.dur, 5000);
+  assert.equal(validatePacket({ ...base, att: { kind: 'voice', data: 'data:video/mp4;base64,AAAA' } }), null);
+  assert.equal(validatePacket({ ...base, att: { kind: 'file', data: 'x'.repeat(MAX_ATT_DATA + 10) } }), null);
+  const file = validatePacket({ ...base, att: { kind: 'file', data: 'data:application/pdf;base64,AAAA', name: 'док.pdf' } });
+  assert.equal(file.att.mime, 'application/pdf');
+  const packet = toPacket({ id, text: 'привет', at: 1, att: { kind: 'voice', data: 'data:audio/webm;base64,AAAA', name: 'v.webm', mime: 'audio/webm' }, editedAt: 2 });
+  assert.equal(validatePacket(packet).att.kind, 'voice');
+  assert.equal(validatePacket(packet).editedAt, 2);
 });

@@ -1,9 +1,15 @@
-export const VERSION = '2.3.0';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.3.0/downloads/LIBO-2.3.0.apk';
-export const APK_URL_MIRROR = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.3.0/LIBO-2.3.0.apk';
+export const VERSION = '2.5.0';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.5.0/downloads/LIBO-2.5.0.apk';
+export const APK_URL_MIRROR = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.5.0/LIBO-2.5.0.apk';
 export const REPO_URL = 'https://github.com/vladskod31-alt/my-first-apk';
 export const MAX_TEXT = 4000;
 export const MAX_IMAGE_DATA = 1_400_000;
+export const MAX_ATT_DATA = 2_000_000;
+export const MAX_ATTACH_BYTES = 1_500_000;
+export const MAX_VOICE_SECONDS = 60;
+export const MAX_PINS = 10;
+// LIBO SVG-emoji: reaction keys, rendered from the inline symbol library (no fonts).
+export const REACTIONS = ['heart', 'smile', 'spark', 'thumb', 'wow', 'hug'];
 export const MAX_MESSAGES = 500;
 export const MAX_CHATS = 100;
 const PEER_ID = /^libo-[a-f0-9]{32}$/;
@@ -79,6 +85,30 @@ export function makeIceServers(settings) {
   return servers;
 }
 
+const ATT_MIME = {
+  voice: /^audio\/(?:webm|mp4|mpeg|ogg|x-m4a|aac)$/,
+  video: /^video\/(?:mp4|webm|quicktime|x-matroska)$/,
+  file: /^(?:application|text)\/[a-z0-9.+-]{1,40}$|^image\/(?:jpeg|png|webp|gif)$/,
+};
+
+function validateAttachment(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const kind = ['voice', 'video', 'file'].includes(value.kind) ? value.kind : null;
+  if (!kind) return null;
+  if (typeof value.data !== 'string' || value.data.length > MAX_ATT_DATA) return null;
+  const prefix = { voice: 'data:audio/', video: 'data:video/', file: 'data:' }[kind];
+  if (!value.data.startsWith(prefix)) return null;
+  const mime = value.data.slice(5, value.data.indexOf(';base64,'));
+  if (kind !== 'file' && !ATT_MIME[kind].test(mime)) return null;
+  if (kind === 'file' && !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(mime)) return null;
+  const att = { kind, data: value.data, name: safeFilename(value.name || ({ voice: 'voice.webm', video: 'video.mp4', file: 'file.bin' }[kind])), mime };
+  if (value.dur != null) {
+    if (!Number.isFinite(value.dur) || value.dur < 0 || value.dur > 3_600_000) return null;
+    att.dur = Math.round(value.dur);
+  }
+  return att;
+}
+
 // Never spread untrusted data into application state. Each packet is copied and bounded.
 export function validatePacket(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || value.v !== 1) return null;
@@ -93,23 +123,51 @@ export function validatePacket(value) {
   if (value.type === 'typing') {
     return typeof value.active === 'boolean' ? { v: 1, type: 'typing', active: value.active } : null;
   }
+  if (value.type === 'edit') {
+    if (typeof value.id !== 'string' || !MESSAGE_ID.test(value.id)) return null;
+    if (typeof value.text !== 'string' || value.text.length > MAX_TEXT || !value.text.trim()) return null;
+    if (!Number.isSafeInteger(value.editedAt) || value.editedAt < 1 || value.editedAt > 8_640_000_000_000_000) return null;
+    return { v: 1, type: 'edit', id: value.id, text: value.text, editedAt: value.editedAt };
+  }
+  if (value.type === 'delete') {
+    if (!Array.isArray(value.ids) || !value.ids.length || value.ids.length > 20) return null;
+    const ids = value.ids.filter(id => typeof id === 'string' && MESSAGE_ID.test(id));
+    if (!ids.length) return null;
+    return { v: 1, type: 'delete', ids };
+  }
+  if (value.type === 'pin') {
+    return typeof value.id === 'string' && MESSAGE_ID.test(value.id) && typeof value.pinned === 'boolean'
+      ? { v: 1, type: 'pin', id: value.id, pinned: value.pinned } : null;
+  }
+  if (value.type === 'react') {
+    return typeof value.id === 'string' && MESSAGE_ID.test(value.id)
+      && REACTIONS.includes(value.key) && typeof value.on === 'boolean'
+      ? { v: 1, type: 'react', id: value.id, key: value.key, on: value.on } : null;
+  }
   if (value.type !== 'message' || typeof value.id !== 'string' || !MESSAGE_ID.test(value.id)) return null;
   if (typeof value.text !== 'string' || value.text.length > MAX_TEXT) return null;
   if (!Number.isSafeInteger(value.at) || value.at < 1 || value.at > 8_640_000_000_000_000) return null;
+  const att = validateAttachment(value.att);
+  if (value.att != null && !att) return null;
   let image = null;
   if (value.image != null) {
     if (typeof value.image !== 'object' || typeof value.image.data !== 'string' || value.image.data.length > MAX_IMAGE_DATA) return null;
     if (!/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/.test(value.image.data)) return null;
     image = { data: value.image.data, name: safeFilename(value.image.name || 'photo.jpg') };
   }
-  if (!value.text.trim() && !image) return null;
+  if (!value.text.trim() && !image && !att) return null;
   let reply = null;
   if (value.reply != null) {
     if (typeof value.reply !== 'object' || typeof value.reply.text !== 'string' || value.reply.text.length > 160) return null;
     if (typeof value.reply.name !== 'string' || value.reply.name.length > 40) return null;
     reply = { text: value.reply.text, name: normalizeName(value.reply.name) };
   }
-  return { v: 1, type: 'message', id: value.id, text: value.text, at: value.at, image, reply };
+  const packet = { v: 1, type: 'message', id: value.id, text: value.text, at: value.at, image, reply };
+  if (att) packet.att = att;
+  if (Number.isSafeInteger(value.editedAt) && value.editedAt >= value.at && value.editedAt <= 8_640_000_000_000_000) {
+    packet.editedAt = value.editedAt;
+  }
+  return packet;
 }
 
 // Short authentication string (SAS) for a chat pair. Both devices derive the same
@@ -135,10 +193,31 @@ export async function verificationCode(idA, idB) {
 }
 
 export function toPacket(message) {
-  return {
+  const packet = {
     v: 1, type: 'message', id: message.id, text: message.text,
     at: message.at, image: message.image || null, reply: message.reply || null,
   };
+  if (message.att) packet.att = message.att;
+  if (message.editedAt) packet.editedAt = message.editedAt;
+  return packet;
+}
+
+// 2.5.0 control packets. Older versions ignore unknown types after validation,
+// so mixed-version chats keep exchanging plain messages.
+export function makeEditPacket(id, text, editedAt) {
+  return { v: 1, type: 'edit', id, text: String(text).slice(0, MAX_TEXT), editedAt };
+}
+
+export function makeDeletePacket(ids) {
+  return { v: 1, type: 'delete', ids: ids.slice(0, 20) };
+}
+
+export function makePinPacket(id, pinned) {
+  return { v: 1, type: 'pin', id, pinned: Boolean(pinned) };
+}
+
+export function makeReactPacket(id, key, on) {
+  return { v: 1, type: 'react', id, key, on: Boolean(on) };
 }
 
 export function textExport(chats, profile) {

@@ -1,4 +1,4 @@
-# Проверка LIBO 2.3.0
+# Проверка LIBO 2.5.0
 
 Дата прогона: 12 сентября 2026. Среда: Linux x64; Node.js 22.22.3; Chromium 143
 (пакет `@sparticuz/chromium@143.0.4` из npm, без внешних загрузок браузеров);
@@ -8,7 +8,7 @@ OpenJDK Temurin JRE 17.0.17+10 (из npm-пакета `@node-plantuml-2/jre-linu
 Android в этой среде недоступны (домены загрузок заблокированы), поэтому Gradle-сборка и
 lint выполняются в GitHub Actions, а не локально.
 
-## Модульные тесты: 19 из 19 (`npm test`)
+## Модульные тесты: 21 из 21 (`npm test`)
 
 Фреймворк `node:test`, файлы `tests/core.test.mjs`. Названия проверок:
 
@@ -30,9 +30,11 @@ lint выполняются в GitHub Actions, а не локально.
 16. TURN needs a valid URL and credentials
 17. text exports never leak identity, TURN credentials or photo bytes
 18. verification code is stable, symmetric and unambiguous (новое в 2.3.0)
-19. verification code depends on both identities (новое в 2.3.0)
+19. verification code depends on both identities
+20. 2.5.0 control packets validate and reject malformed input (edit/delete/pin/react)
+21. attachments are bounded and mime-checked (voice/video/file, лимиты base64) (новое в 2.3.0)
 
-## Браузерные сценарии: 6 из 6 (`npm run test:e2e`)
+## Браузерные сценарии: 7 из 7 (`npm run test:e2e`)
 
 Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signaling `peer` на том же
 порту разработки. Сценарии:
@@ -57,6 +59,10 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
 6. **offline queue survives sender reload and is delivered exactly once after reconnect** —
    сообщение, написанное при закрытом получателе, переживает перезагрузку отправителя и
    доставляется ровно один раз после возвращения получателя.
+7. **backup import becomes read-only archive and close contacts stay on top** — импорт
+   JSON-копии создаёт архив только для чтения с плашкой, звезда поднимает контакт выше
+   обычных чатов. Сценарий 5 дополнительно проверяет реакции, закреп с панелью с обеих
+   сторон, правку с отметкой «изменено», удаление для обоих и доставку файла с именем.
 
 ## Проверки APK
 
@@ -68,13 +74,15 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
   Полный вывод сохраняется в `artifacts/SIGNING.txt`.
 - `zipalign -c 4` проходит; целостность ZIP и состав APK проверены разбором архива.
 - `aapt2 dump badging` (вывод в `artifacts/APK-INFO.txt`): пакет `app.libo.messenger`,
-  versionCode 20300, versionName 2.3.0, minSdk 26, targetSdk 35, единственное разрешение
+  versionCode 20500, versionName 2.5.0, minSdk 26, targetSdk 35, единственное разрешение
   `android.permission.INTERNET`, запускаемая активность
   `app.libo.messenger.MainActivity`, иконка `mipmap-anydpi-v26/ic_launcher.xml` во всех
   плотностях, в assets входят `index.html`, JS/CSS-бандл, шрифты WOFF2, `icon.svg`,
   `icon-192.png`, `icon-512.png` и `third-party-notices.txt`.
 - Контрольная сумма APK: `artifacts/SHA256SUMS.txt` и `downloads/SHA256SUMS.txt`
-  (значения совпадают).
+  (значения совпадают): `78c05f191d5625e37ffe3c63132441affc7b005c31d408395b6c20d8adc82bcf`.
+- Иконки: legacy PNG во всех плотностях, адаптивные слои и монохромный слой присутствуют
+  в APK; веб-фавикон и `icon-512.png` входят в assets.
 
 ## Что не подтверждено
 

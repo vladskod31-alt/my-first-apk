@@ -30,18 +30,28 @@ KEYSTORE_MAGICS = {
 }
 
 
+SELF_PATHS = ("scripts/scan-secrets.py",)  # the scanner contains detection patterns
+
+
 def blobs(root: Path):
-    out = subprocess.run(
-        ["git", "rev-list", "--all", "--objects", "--no-object-names"],
+    listed = subprocess.run(
+        ["git", "rev-list", "--all", "--objects"],
         cwd=root, capture_output=True, text=True, check=True,
-    ).stdout.split()
+    ).stdout.splitlines()
+    names = {}
+    shas = []
+    for line in listed:
+        parts = line.split(" ", 1)
+        shas.append(parts[0])
+        if len(parts) > 1:
+            names.setdefault(parts[0], parts[1])
     described = subprocess.run(
         ["git", "cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
-        cwd=root, input="\n".join(out), capture_output=True, text=True, check=True,
+        cwd=root, input="\n".join(shas), capture_output=True, text=True, check=True,
     ).stdout.splitlines()
     for line in described:
         sha, kind, size = line.split()
-        if kind == "blob":
+        if kind == "blob" and names.get(sha, "") not in SELF_PATHS:
             yield sha, int(size)
 
 

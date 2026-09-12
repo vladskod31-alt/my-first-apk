@@ -146,6 +146,7 @@ test('two independent clients exchange text, delivery ACK, reply and real photo'
   await expect(alice.locator('.message-status')).toHaveAttribute('data-status', 'delivered');
   await bob.locator('.message-row').hover();
   await bob.locator('.reply-message').click();
+  await bob.locator('#message-actions [data-act="reply"]').click();
   await send(bob, 'Привет, Аня! Сообщение пришло.');
   await expect(alice.locator('.incoming .message-text')).toHaveText('Привет, Аня! Сообщение пришло.');
   await expect(alice.locator('.incoming .message-quote')).toContainText('Привет с первого устройства!');
@@ -158,6 +159,37 @@ test('two independent clients exchange text, delivery ACK, reply and real photo'
   await alice.locator('#send-button').click();
   await expect(bob.locator('.message-photo img')).toHaveCount(1);
   await expect.poll(() => bob.locator('.message-photo img').evaluate(img => img.naturalWidth)).toBeGreaterThan(0);
+  // 2.5.0: reactions, edit, pin and delete-for-all travel over the same channel.
+  await alice.locator('.message-row').last().hover();
+  await alice.locator('.message-row').last().locator('.message-actions-button').click();
+  await alice.locator('#message-actions [data-react-pick="heart"]').click();
+  await expect(bob.locator('.reaction-chip')).toBeVisible();
+  await expect(bob.locator('.reaction-chip')).toHaveClass(/\breaction-chip\b/);
+  await bob.locator('.message-row').last().hover();
+  await bob.locator('.message-row').last().locator('.message-actions-button').click();
+  await bob.locator('#message-actions [data-act="pin"]').click();
+  await expect(alice.locator('#pinned-bar')).toBeVisible();
+  await expect(bob.locator('#pinned-bar')).toBeVisible();
+  await alice.locator('.outgoing .message-row, .message-row').first().hover();
+  await alice.locator('.message-row').first().locator('.message-actions-button').click();
+  await alice.locator('#message-actions [data-act="edit"]').click();
+  await alice.locator('#edit-text').fill('Привет с первого устройства! (изменено)');
+  await alice.locator('#edit-save').click();
+  await expect(bob.locator('.message-text').first()).toContainText('(изменено)');
+  await expect(bob.locator('.edited-mark').first()).toBeVisible();
+  await alice.locator('.message-row').first().hover();
+  await alice.locator('.message-row').first().locator('.message-actions-button').click();
+  await alice.locator('#message-actions [data-act="delete"]').click();
+  await alice.locator('#confirm-action').click();
+  await expect(bob.locator('.message-deleted').first()).toBeVisible();
+  // File attachment (generic kind) reaches the peer and downloads by name.
+  await alice.locator('#file-input').setInputFiles({
+    name: 'note.txt', mimeType: 'text/plain',
+    buffer: Buffer.from('резервная заметка для проверки файла'),
+  });
+  await expect(alice.locator('#attachment-preview')).toBeVisible();
+  await alice.locator('#send-button').click();
+  await expect(bob.locator('.att-file span')).toHaveText('note.txt');
   await expect(alice.locator('.outgoing .message-status').last()).toHaveAttribute('data-status', 'delivered');
   expect(errors).toEqual([]);
   await context.close();
@@ -191,4 +223,28 @@ test('offline queue survives sender reload and is delivered exactly once after r
   await expect(alice.locator('#chat-presence')).toContainText('В сети', { timeout: 30_000 });
   await expect(bob.locator('.message-text')).toHaveCount(1);
   await bobContext.close();
+});
+
+test('backup import becomes read-only archive and close contacts stay on top', async ({ page }) => {
+  await ready(page);
+  await add(page, 'LIBO:libo-abcdef0123456789abcdef0123456789');
+  await page.locator('#profile-button').click();
+  await page.locator('#import-input').setInputFiles({
+    name: 'libo-backup.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      app: 'LIBO', version: '2.3.0', exportedAt: new Date().toISOString(),
+      profile: { name: 'Архив' },
+      chats: [{ name: 'Старый телефон', messages: [{ text: 'Сохранённая мысль', at: Date.now() - 60_000, direction: 'out', status: 'local' }] }],
+    })),
+  });
+  await expect(page.locator('.chat-row').filter({ hasText: 'архив' })).toBeVisible();
+  await page.locator('.chat-row').filter({ hasText: 'архив' }).click();
+  await expect(page.locator('#archive-bar')).toBeVisible();
+  await expect(page.locator('#composer-zone')).toBeHidden();
+  await expect(page.locator('.message-text')).toHaveText('Сохранённая мысль');
+  await page.locator('#chat-more').click();
+  await page.locator('#star-contact').click();
+  await expect(page.locator('.chat-row').filter({ hasText: 'архив' }).locator('.star-mark')).toBeVisible();
+  const order = await page.locator('.chat-row').evaluateAll(rows => rows.map(row => row.dataset.chatId));
+  expect(order.indexOf('archive-' === order.find(id => id.startsWith('archive-')) ? order.find(id => id.startsWith('archive-')) : '')).toBeLessThan(order.indexOf('libo-abcdef0123456789abcdef0123456789'));
 });

@@ -1,8 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="LIBO">
-  <rect width="96" height="96" rx="21.5" fill="#7850DF"/>
-  <g transform="translate(48 48) scale(1.1363) translate(-54 -54.5)">
-    <path d="M43.0,32.0 L43.0,32.0 A7.5,7.5 0 0 1 43.0,47.0 L43.0,64.0 A7.5,7.5 0 0 1 43.0,79.0 L43.0,79.0 A7.5,7.5 0 0 1 35.5,64.0 L35.5,47.0 A7.5,7.5 0 0 1 43.0,32.0 Z" fill="#fff"/>
-    <path d="M65.0,50.0 L65.0,50.0 A7.5,7.5 0 0 1 65.0,65.0 L65.0,64.0 A7.5,7.5 0 0 1 65.0,79.0 L65.0,79.0 A7.5,7.5 0 0 1 57.5,64.0 L57.5,65.0 A7.5,7.5 0 0 1 65.0,50.0 Z" fill="#fff"/>
-    <path d="M57.0,38.0 a8.0,8.0 0 1 0 16.0,0 a8.0,8.0 0 1 0 -16.0,0 Z" fill="#D6EC9D"/>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b678fb"/><stop offset="1" stop-color="#9333ea"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="20" fill="url(#g)"/>
+  <g fill="none" stroke="#7e22ce" stroke-width="9">
+    <circle cx="-40" cy="136" r="118"/>
+    <circle cx="-40" cy="136" r="152"/>
+  </g>
+  <g fill="none" stroke="#d8b4fe" stroke-width="2.4">
+    <circle cx="-40" cy="136" r="124"/>
+    <circle cx="-40" cy="136" r="158"/>
+  </g>
+  <g transform="rotate(33 48 44)">
+    <path d="M22 44 L40 31 M22 44 L40 57" stroke="#84cc16" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <path d="M48 49 h10" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="60" cy="36" r="5.4" fill="#fff"/>
+    <path fill="#fff" fill-rule="evenodd" d="M66 30 h12 a7 7 0 0 1 7 7 v14 a7 7 0 0 1 -7 7 h-12 a7 7 0 0 1 -7 -7 v-14 a7 7 0 0 1 7 -7 Z M69 36 h7 v6 h-7 Z M69 46 h7 v6 h-7 Z"/>
+    <path fill="#fff" fill-rule="evenodd" d="M90 30 h6 a8 8 0 0 1 8 8 v12 a8 8 0 0 1 -8 8 h-6 a8 8 0 0 1 -8 -8 v-12 a8 8 0 0 1 8 -8 Z M90 38 h6 v8 h-6 Z"/>
   </g>
 </svg>

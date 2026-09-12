@@ -5,6 +5,8 @@ import {
   APK_URL, REPO_URL, VERSION, MAX_TEXT, MAX_IMAGE_DATA, MAX_MESSAGES, MAX_CHATS,
   makePeerId, normalizePeerCode, normalizeName, initials, avatarColor,
   previewText, safeFilename, parseSignalingUrl, makeIceServers, toPacket, textExport, verificationCode,
+  MAX_ATT_DATA, MAX_ATTACH_BYTES, MAX_VOICE_SECONDS, MAX_PINS, REACTIONS,
+  makeEditPacket, makeDeletePacket, makePinPacket, makeReactPacket,
 } from './lib/core.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -15,6 +17,7 @@ const state = {
   profile: null, settings: null, chats: [], blocked: [], current: null,
   filter: 'all', network: 'connecting', networkDetail: '', contactStates: new Map(),
   typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
+  lastSeen: new Map(), recording: null, archiveNotice: false,
 };
 const locks = new Map();
 const lastSent = new Map();
@@ -42,6 +45,8 @@ const transport = new Transport({
   },
   onContactState(id, status) {
     state.contactStates.set(id, status);
+    if (status === 'online') state.lastSeen.set(id, Date.now());
+    else if (state.contactStates.get(id) !== 'offline') { state.lastSeen.set(id, Date.now()); void store.setMeta('lastSeen', Object.fromEntries(state.lastSeen)).catch(() => {}); }
     if (status !== 'online') state.typing.delete(id);
     renderSidebar();
     if (state.current === id) renderHeader();
@@ -58,6 +63,7 @@ const transport = new Transport({
         fresh = true;
         chat.messages.push({
           id: packet.id, text: packet.text, image: packet.image, reply: packet.reply,
+          att: packet.att || null, editedAt: packet.editedAt || null,
           at: Math.min(packet.at, Date.now() + 60_000), direction: 'in', status: 'received',
         });
         if (state.current !== id || document.hidden) chat.unread = (chat.unread || 0) + 1;
@@ -91,6 +97,49 @@ const transport = new Transport({
     state.typing.set(id, active ? Date.now() + 3500 : 0);
     if (state.current === id) renderHeader();
     setTimeout(() => { if (state.current === id) renderHeader(); }, 3600);
+  },
+  async onEdit(id, packet) {
+    await changeChat(id, chat => {
+      const index = chat.messages.findIndex(m => m.id === packet.id);
+      if (index < 0 || chat.messages[index].deleted) return false;
+      chat.messages[index] = { ...chat.messages[index], text: packet.text, editedAt: packet.editedAt };
+    });
+    if (state.current === id) renderMessages(false);
+    renderSidebar();
+  },
+  async onDelete(id, ids) {
+    const gone = new Set(ids);
+    await changeChat(id, chat => {
+      let changed = false;
+      chat.messages = chat.messages.map(m => {
+        if (!gone.has(m.id) || m.deleted) return m;
+        changed = true;
+        return { id: m.id, at: m.at, direction: m.direction, status: m.status, deleted: true, text: '' };
+      });
+      chat.pins = (chat.pins || []).filter(pin => !gone.has(pin));
+      return changed ? undefined : false;
+    });
+    if (state.current === id) { renderMessages(false); renderPins(); }
+    renderSidebar();
+  },
+  async onPin(id, messageId, pinned) {
+    await changeChat(id, chat => {
+      chat.pins = (chat.pins || []).filter(pin => pin !== messageId);
+      if (pinned) chat.pins.push(messageId);
+      if (chat.pins.length > MAX_PINS) chat.pins = chat.pins.slice(-MAX_PINS);
+    });
+    if (state.current === id) renderPins();
+  },
+  async onReact(id, messageId, key, on) {
+    await changeChat(id, chat => {
+      const index = chat.messages.findIndex(m => m.id === messageId);
+      if (index < 0 || chat.messages[index].deleted) return false;
+      const previous = chat.messages[index].reactions || {};
+      const theirs = { ...(previous.theirs || {}) };
+      if (on) theirs[key] = true; else delete theirs[key];
+      chat.messages[index] = { ...chat.messages[index], reactions: { ...previous, theirs } };
+    });
+    if (state.current === id) renderMessages(false);
   },
   onStorageError() { notify('Не удалось сохранить контакт. Проверьте свободное место.', true); },
 });
@@ -149,7 +198,7 @@ function renderNetwork() {
 function renderSidebar() {
   if (!state.profile) return;
   const query = $('#chat-search').value.trim().toLocaleLowerCase('ru');
-  const chats = [...state.chats].sort((a, b) => a.id === 'saved' ? -1 : b.id === 'saved' ? 1 : b.updatedAt - a.updatedAt);
+  const chats = [...state.chats].sort((a, b) => a.id === 'saved' ? -1 : b.id === 'saved' ? 1 : (b.starred ? 1 : 0) - (a.starred ? 1 : 0) || b.updatedAt - a.updatedAt);
   const filtered = chats.filter(chat => {
     if (state.filter === 'unread' && !chat.unread) return false;
     return !query || chat.name.toLocaleLowerCase('ru').includes(query) || chat.messages.some(m => m.text.toLocaleLowerCase('ru').includes(query));
@@ -171,6 +220,8 @@ function renderSidebar() {
     body.className = 'chat-row-body';
     body.innerHTML = '<span class="chat-row-top"><strong></strong><time></time></span><span class="chat-row-bottom"><p></p></span>';
     body.querySelector('strong').textContent = chat.name;
+    if (chat.starred) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="star-mark" title="Близкий контакт">${svg('star')}</span>`);
+    if (chat.archive) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="star-mark" title="Архивная копия">${svg('download')}</span>`);
     const last = chat.messages.at(-1);
     body.querySelector('time').textContent = last ? briefDate(last.at) : '';
     const excerpt = query ? [...chat.messages].reverse().find(m => m.text.toLocaleLowerCase('ru').includes(query)) || last : last;
@@ -237,12 +288,17 @@ function renderHeader() {
   else if (chat.request) presence.textContent = 'Новый запрос на общение';
   else if (transport.isOpen(chat.id)) presence.textContent = 'В сети · прямое соединение';
   else if (state.contactStates.get(chat.id) === 'connecting') presence.textContent = 'Ищем собеседника…';
+  else if (state.lastSeen.get(chat.id)) presence.textContent = `Был(а) в сети в ${timeFormat.format(new Date(state.lastSeen.get(chat.id)))}`;
   else presence.textContent = 'Не подключён · откройте LIBO на обоих устройствах';
   presence.title = chat.id === 'saved' ? 'Заметки не передаются другим устройствам.' : `Код собеседника: LIBO:${chat.id}`;
   $('#request-bar').hidden = !chat.request;
-  $('#composer-zone').hidden = !!chat.request;
+  $('#composer-zone').hidden = !!chat.request || !!chat.archive;
+  $('#archive-bar').hidden = !chat.archive;
+  $('#security-button').hidden = chat.id === 'saved' || !!chat.archive;
   $('#block-contact').hidden = chat.id === 'saved';
-  $('#verify-code').hidden = chat.id === 'saved';
+  $('#verify-code').hidden = chat.id === 'saved' || !!chat.archive;
+  $('#star-contact').hidden = chat.id === 'saved';
+  $('#star-contact').querySelector('span').textContent = chat.starred ? 'Убрать из близких' : 'В близкие';
   $('#composer-hint').textContent = chat.id === 'saved'
     ? 'Сохранено на этом устройстве. Последние 500 сообщений в чате.'
     : 'Оба собеседника должны быть в приложении · ✓✓ доставлено, не прочитано';
@@ -251,7 +307,7 @@ function renderHeader() {
 async function showVerifyCode() {
   const chat = activeChat();
   if (!chat || chat.id === 'saved' || !state.profile) return;
-  $('#verify-value').textContent = await verificationCode(state.profile.id, chat.id);
+  $('#verify-value').textContent = await cachedVerify(state.profile.id, chat.id);
   $('#verify-peer-name').textContent = chat.name;
   openDialog('verify-dialog');
 }
@@ -283,9 +339,19 @@ function renderMessages(scroll = true) {
       separator.appendChild(label); box.appendChild(separator); previousDay = day;
     }
     const row = document.createElement('div');
-    row.className = `message-row ${message.direction === 'out' ? 'outgoing' : 'incoming'}`;
+    row.className = `message-row ${message.direction === 'out' ? 'outgoing' : 'incoming'}${message.deleted ? ' deleted-row' : ''}`;
     row.dataset.messageId = message.id;
     const bubble = document.createElement('div'); bubble.className = 'message-bubble';
+    if (message.deleted) {
+      const gone = document.createElement('p'); gone.className = 'message-deleted';
+      gone.textContent = 'Сообщение удалено';
+      bubble.appendChild(gone);
+      const meta = document.createElement('div'); meta.className = 'message-meta';
+      const time = document.createElement('time'); time.textContent = timeFormat.format(new Date(message.at));
+      meta.appendChild(time); bubble.appendChild(meta);
+      row.append(bubble); box.appendChild(row);
+      continue;
+    }
     if (message.reply) {
       const quote = document.createElement('div'); quote.className = 'message-quote';
       quote.innerHTML = '<strong></strong><p></p>';
@@ -300,13 +366,38 @@ function renderMessages(scroll = true) {
       img.onload = () => { if (scroll && nearBottom) box.scrollTop = box.scrollHeight; };
       photo.appendChild(img); bubble.appendChild(photo);
     }
+    if (message.att) bubble.appendChild(renderAttachment(message));
     if (message.text) {
       const text = document.createElement('p'); text.className = 'message-text'; text.textContent = message.text;
       bubble.appendChild(text);
     }
+    const reactions = message.reactions || {};
+    const mine = Object.keys(reactions.mine || {});
+    const theirs = Object.keys(reactions.theirs || {});
+    const keys = [...new Set([...mine, ...theirs])];
+    if (keys.length) {
+      const strip = document.createElement('div'); strip.className = 'reaction-strip';
+      for (const key of keys) {
+        const chip = document.createElement('button');
+        chip.className = `reaction-chip${mine.includes(key) ? ' mine' : ''}`;
+        chip.dataset.react = key; chip.dataset.messageId = message.id;
+        chip.innerHTML = `${svg(`r-${key}`)}<span></span>`;
+        chip.querySelector('span').textContent = String(mine.includes(key) && theirs.includes(key) ? 2 : 1);
+        chip.title = 'Нажмите, чтобы поставить или убрать свою реакцию';
+        chip.setAttribute('aria-label', `Реакция ${key}`);
+        strip.appendChild(chip);
+      }
+      bubble.appendChild(strip);
+    }
     const meta = document.createElement('div'); meta.className = 'message-meta';
     const time = document.createElement('time'); time.dateTime = new Date(message.at).toISOString(); time.textContent = timeFormat.format(new Date(message.at));
     meta.appendChild(time);
+    if (message.editedAt) {
+      const edited = document.createElement('span'); edited.className = 'edited-mark'; edited.textContent = 'изменено';
+      edited.title = new Date(message.editedAt).toLocaleString('ru');
+      meta.appendChild(edited);
+    }
+    if ((activeChat()?.pins || []).includes(message.id)) meta.insertAdjacentHTML('beforeend', `<span class="pin-mark" title="Закреплено">${svg('pin')}</span>`);
     if (message.direction === 'out') {
       const status = document.createElement('span'); status.className = 'message-status'; status.dataset.status = message.status;
       status.title = { queued: 'В очереди на этом устройстве', sent: 'Отправлено, ждём подтверждения', delivered: 'Сохранено на устройстве собеседника', local: 'Сохранено только на этом устройстве' }[message.status];
@@ -315,12 +406,209 @@ function renderMessages(scroll = true) {
       meta.appendChild(status);
     }
     bubble.appendChild(meta);
-    const reply = document.createElement('button'); reply.className = 'reply-message'; reply.dataset.reply = message.id;
-    reply.innerHTML = svg('reply'); reply.title = 'Ответить'; reply.setAttribute('aria-label', 'Ответить на сообщение');
-    row.append(bubble, reply); box.appendChild(row);
+    const actions = document.createElement('button'); actions.className = 'reply-message message-actions-button'; actions.dataset.actions = message.id;
+    actions.innerHTML = svg('more'); actions.title = 'Действия с сообщением'; actions.setAttribute('aria-label', 'Действия с сообщением');
+    row.append(bubble, actions); box.appendChild(row);
   }
   if (scroll && nearBottom) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
   else box.scrollTop = previousTop;
+}
+
+function renderAttachment(message) {
+  const att = message.att;
+  if (att.kind === 'voice') {
+    const wrap = document.createElement('div'); wrap.className = 'att-voice';
+    wrap.innerHTML = `${svg('mic')}<audio controls preload="metadata"></audio><span></span>`;
+    wrap.querySelector('audio').src = att.data;
+    wrap.querySelector('span').textContent = att.dur ? `${Math.round(att.dur / 1000)} с` : 'голосовое';
+    return wrap;
+  }
+  if (att.kind === 'video') {
+    const video = document.createElement('video');
+    video.className = 'message-video'; video.controls = true; video.preload = 'metadata';
+    video.src = att.data; video.setAttribute('playsinline', '');
+    return video;
+  }
+  const link = document.createElement('button'); link.className = 'att-file'; link.dataset.attach = message.id;
+  link.innerHTML = `${svg('file')}<span></span><small></small>`;
+  link.querySelector('span').textContent = att.name;
+  link.querySelector('small').textContent = 'Скачать файл';
+  link.title = att.name;
+  return link;
+}
+
+function renderPins() {
+  const chat = activeChat();
+  const bar = $('#pinned-bar');
+  const pins = chat?.pins || [];
+  if (!chat || chat.id === 'saved' || !pins.length) { bar.hidden = true; return; }
+  const message = [...chat.messages].reverse().find(m => m.id === pins.at(-1));
+  if (!message || message.deleted) { bar.hidden = true; return; }
+  bar.hidden = false;
+  $('#pinned-text').textContent = message.text || (message.att ? { voice: 'Голосовое сообщение', video: 'Видео', file: message.att.name }[message.att.kind] : 'Фотография');
+}
+
+function closeMessageActions() { $('#message-actions').hidden = true; }
+
+function openMessageActions(anchor, messageId) {
+  const chat = activeChat();
+  const message = chat?.messages.find(m => m.id === messageId);
+  if (!message || message.deleted) return;
+  const menu = $('#message-actions');
+  menu.dataset.messageId = messageId;
+  menu.querySelector('[data-act="pin"]').hidden = chat.id === 'saved';
+  menu.querySelector('[data-act="pin"]').lastChild.textContent = (chat.pins || []).includes(messageId) ? ' Открепить' : ' Закрепить';
+  menu.querySelector('[data-act="edit"]').hidden = message.direction !== 'out' || !!message.att || chat.id === 'saved';
+  menu.querySelector('[data-act="delete"]').hidden = message.direction !== 'out' || chat.id === 'saved';
+  const strip = menu.querySelector('.reaction-strip-picker');
+  strip.replaceChildren();
+  for (const key of REACTIONS) {
+    const button = document.createElement('button');
+    button.className = `reaction-pick${(message.reactions?.mine || {})[key] ? ' mine' : ''}`;
+    button.dataset.reactPick = key;
+    button.innerHTML = svg(`r-${key}`);
+    button.setAttribute('aria-label', `Реакция ${key}`);
+    strip.appendChild(button);
+  }
+  menu.hidden = false;
+  const rect = anchor.getBoundingClientRect();
+  const width = 210;
+  menu.style.top = `${Math.min(window.innerHeight - 260, Math.max(8, rect.bottom + 6))}px`;
+  menu.style.left = `${Math.min(window.innerWidth - width - 8, Math.max(8, rect.left - width + 34))}px`;
+}
+
+async function actOnMessage(action, messageId, extra) {
+  const chat = activeChat();
+  const message = chat?.messages.find(m => m.id === messageId);
+  if (!chat || !message) return;
+  if (action === 'reply') {
+    state.reply = { text: (message.text || (message.att ? { voice: 'Голосовое сообщение', video: 'Видео', file: message.att.name }[message.att.kind] : 'Фотография')).slice(0, 160), name: message.direction === 'out' ? state.profile.name : chat.name };
+    $('#reply-name').textContent = state.reply.name; $('#reply-text').textContent = state.reply.text;
+    $('#reply-bar').hidden = false; $('#message-input').focus();
+    return;
+  }
+  if (action === 'copy') {
+    if (message.text) await copyLikeCode(message.text);
+    return;
+  }
+  if (action === 'react') {
+    const on = !(message.reactions?.mine || {})[extra];
+    await changeChat(chat.id, next => {
+      const index = next.messages.findIndex(m => m.id === messageId);
+      if (index < 0) return false;
+      const previous = next.messages[index].reactions || {};
+      const mine = { ...(previous.mine || {}) };
+      if (on) mine[extra] = true; else delete mine[extra];
+      next.messages[index] = { ...next.messages[index], reactions: { ...previous, mine } };
+    });
+    if (chat.id !== 'saved') transport.send(chat.id, makeReactPacket(messageId, extra, on));
+    renderMessages(false);
+    return;
+  }
+  if (action === 'pin') {
+    const pinned = !(chat.pins || []).includes(messageId);
+    await changeChat(chat.id, next => {
+      next.pins = (next.pins || []).filter(pin => pin !== messageId);
+      if (pinned) next.pins.push(messageId);
+      if (next.pins.length > MAX_PINS) next.pins = next.pins.slice(-MAX_PINS);
+    });
+    if (chat.id !== 'saved') transport.send(chat.id, makePinPacket(messageId, pinned));
+    renderPins();
+    renderMessages(false);
+    return;
+  }
+  if (action === 'edit') {
+    $('#edit-text').value = message.text;
+    $('#edit-dialog').dataset.messageId = messageId;
+    openDialog('edit-dialog');
+    return;
+  }
+  if (action === 'delete') {
+    confirmDialog('Удалить сообщение для обоих?', 'Сообщение исчезнет на этом устройстве и у собеседника. Отменить удаление нельзя.', async () => {
+      await changeChat(chat.id, next => {
+        next.messages = next.messages.map(m => m.id === messageId ? { id: m.id, at: m.at, direction: m.direction, status: m.status, deleted: true, text: '' } : m);
+        next.pins = (next.pins || []).filter(pin => pin !== messageId);
+      });
+      transport.send(chat.id, makeDeletePacket([messageId]));
+      renderMessages(false); renderPins(); renderSidebar();
+    }, 'Удалить');
+  }
+}
+
+async function submitEdit() {
+  const chat = activeChat();
+  const messageId = $('#edit-dialog').dataset.messageId;
+  const text = $('#edit-text').value.trim().slice(0, MAX_TEXT);
+  const message = chat?.messages.find(m => m.id === messageId);
+  if (!chat || !message || !text || text === message.text) { closeDialogs(); return; }
+  const editedAt = Date.now();
+  await changeChat(chat.id, next => {
+    const index = next.messages.findIndex(m => m.id === messageId);
+    if (index < 0) return false;
+    next.messages[index] = { ...next.messages[index], text, editedAt };
+  });
+  transport.send(chat.id, makeEditPacket(messageId, text, editedAt));
+  closeDialogs();
+  renderMessages(false); renderSidebar();
+}
+
+async function toggleStar() {
+  const chat = activeChat();
+  if (!chat || chat.id === 'saved') return;
+  await changeChat(chat.id, next => { next.starred = !next.starred; });
+  closeChatMenu();
+  renderSidebar(); renderHeader();
+  notify(chat.starred ? 'Контакт убран из близких' : 'Контакт добавлен в близкие');
+}
+
+async function openSecurity() {
+  const chat = activeChat();
+  if (!chat || chat.id === 'saved') return;
+  $('#sec-conn').textContent = transport.isOpen(chat.id) ? 'Прямое соединение активно, трафик шифрован DTLS (WebRTC)' : 'Соединение не активно: сообщения ждут в очереди на этом устройстве';
+  $('#sec-code').textContent = await cachedVerify(state.profile.id, chat.id);
+  $('#sec-seen').textContent = state.lastSeen.get(chat.id) ? new Date(state.lastSeen.get(chat.id)).toLocaleString('ru') : 'нет данных на этом устройстве';
+  $('#sec-peer').textContent = `LIBO:${chat.id}`;
+  openDialog('security-dialog');
+}
+
+async function importBackup(file) {
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.app !== 'LIBO' || !Array.isArray(data.chats)) throw new Error('Это не резервная копия LIBO.');
+    let added = 0;
+    for (const source of data.chats.slice(0, MAX_CHATS)) {
+      if (!source || !Array.isArray(source.messages) || !source.messages.length) continue;
+      const stamp = Date.now();
+      const chat = {
+        id: `archive-${stamp.toString(36)}-${added}`,
+        name: `${normalizeName(source.name) || 'Архив'} · архив`,
+        archive: true, starred: false, unread: 0, request: false,
+        createdAt: stamp, updatedAt: stamp, pins: [],
+        messages: source.messages.slice(-MAX_MESSAGES).map(m => ({
+          id: crypto.randomUUID(), text: String(m.text || '').slice(0, MAX_TEXT),
+          image: null, att: null, reply: null, reactions: null,
+          at: Number.isSafeInteger(m.at) ? m.at : stamp,
+          direction: m.direction === 'out' ? 'out' : 'in', status: 'local',
+        })),
+      };
+      await store.putChat(chat);
+      state.chats.push(chat);
+      added++;
+    }
+    if (!added) throw new Error('В файле нет чатов для восстановления.');
+    renderSidebar();
+    closeDialogs();
+    notify(`Восстановлено чатов из копии: ${added}. Это архив только для чтения.`);
+  } catch (error) { notify(error.message || 'Не удалось прочитать резервную копию.', true); }
+  finally { $('#import-input').value = ''; }
+}
+
+const verifyCache = new Map();
+async function cachedVerify(a, b) {
+  const key = [a, b].sort().join('|');
+  if (!verifyCache.has(key)) verifyCache.set(key, await verificationCode(a, b));
+  return verifyCache.get(key);
 }
 
 function rememberDraft() {
@@ -348,6 +636,7 @@ async function openChat(id) {
   if (!state.chats.some(chat => chat.id === id)) return;
   rememberDraft();
   state.current = id;
+  closeMessageActions();
   $('#shell').classList.add('chat-open');
   $('#welcome').hidden = true;
   $('#conversation').hidden = false;
@@ -384,10 +673,14 @@ async function sendMessage(event) {
   event?.preventDefault();
   const chat = activeChat();
   const text = $('#message-input').value.trim().slice(0, MAX_TEXT);
-  if (!chat || chat.request || state.sending || (!text && !state.attachment)) return;
+  if (!chat || chat.request || chat.archive || state.sending || (!text && !state.attachment)) return;
   const id = chat.id;
+  const attachment = state.attachment;
   const message = {
-    id: crypto.randomUUID(), text, image: state.attachment, reply: state.reply,
+    id: crypto.randomUUID(), text,
+    image: attachment?.kind === 'photo' ? { data: attachment.data, name: attachment.name } : null,
+    att: attachment && attachment.kind !== 'photo' ? attachment : null,
+    reply: state.reply,
     at: Date.now(), direction: 'out', status: id === 'saved' ? 'local' : 'queued',
   };
   state.sending = true; updateComposer();
@@ -643,10 +936,72 @@ async function attachPhoto(file) {
     if (data.length > MAX_IMAGE_DATA) data = canvas.toDataURL('image/jpeg', .58);
     if (data.length > MAX_IMAGE_DATA) throw new Error('Фото слишком большое даже после сжатия. Попробуйте другое.');
     if (generation !== photoGeneration) return;
-    state.attachment = { data, name: safeFilename(file.name.replace(/\.[^.]+$/, '') + '.jpg') };
+    state.attachment = { kind: 'photo', data, name: safeFilename(file.name.replace(/\.[^.]+$/, '') + '.jpg') };
     $('#attachment-image').src = data; $('#attachment-preview').hidden = false; updateComposer();
   } catch (error) { notify(error.message?.includes('сжатия') ? error.message : 'Не удалось открыть фотографию.', true); }
   finally { URL.revokeObjectURL(url); $('#photo-input').value = ''; }
+}
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function attachFile(file) {
+  const chat = activeChat();
+  if (!file || !chat || chat.request || chat.archive) return;
+  const kind = file.type.startsWith('video/') ? 'video' : 'file';
+  if (file.size > MAX_ATTACH_BYTES) { notify(`Файлы и видео в этой версии — до ${Math.round(MAX_ATTACH_BYTES / 1000 / 100) / 10} МБ.`, true); return; }
+  try {
+    const data = await readAsDataUrl(file);
+    if (data.length > MAX_ATT_DATA) throw new Error('Файл слишком большой для прямого канала.');
+    state.attachment = { kind, data, name: safeFilename(file.name), mime: file.type || 'application/octet-stream' };
+    $('#attachment-image').hidden = kind === 'file';
+    if (kind === 'video') { $('#attachment-image').hidden = false; $('#attachment-image').src = data; }
+    $('#attachment-preview').hidden = false;
+    $('#attachment-label').textContent = state.attachment.name;
+    updateComposer();
+  } catch (error) { notify(error.message || 'Не удалось прикрепить файл.', true); }
+  finally { $('#file-input').value = ''; }
+}
+
+async function toggleRecording() {
+  const button = $('#voice-button');
+  if (state.recording) { state.recording.stop(); return; }
+  const chat = activeChat();
+  if (!chat || chat.request || chat.archive || !navigator.mediaDevices || !window.MediaRecorder) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream, MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : undefined);
+    const chunks = [];
+    const startedAt = Date.now();
+    recorder.ondataavailable = event => { if (event.data?.size) chunks.push(event.data); };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(track => track.stop());
+      state.recording = null;
+      button.classList.remove('recording');
+      button.setAttribute('aria-label', 'Записать голосовое сообщение');
+      const dur = Date.now() - startedAt;
+      if (dur < 700) { notify('Слишком короткая запись.', true); return; }
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+      if (blob.size > MAX_ATTACH_BYTES) { notify('Голосовое сообщение слишком длинное: лимит 60 секунд.', true); return; }
+      const data = await readAsDataUrl(blob);
+      state.attachment = { kind: 'voice', data, name: 'voice.webm', mime: recorder.mimeType || 'audio/webm', dur };
+      $('#attachment-image').hidden = true;
+      $('#attachment-preview').hidden = false;
+      $('#attachment-label').textContent = `Голосовое сообщение, ${Math.round(dur / 1000)} с`;
+      updateComposer();
+    };
+    recorder.start();
+    state.recording = recorder;
+    button.classList.add('recording');
+    button.setAttribute('aria-label', 'Остановить запись');
+    setTimeout(() => { if (state.recording === recorder) recorder.stop(); }, MAX_VOICE_SECONDS * 1000);
+  } catch { notify('Нет доступа к микрофону. Разрешите запись в настройках Android.', true); }
 }
 
 function playMessageSound() {
@@ -667,6 +1022,7 @@ function handleBack() {
   if (open) { open.close(); return true; }
   if (!$('#emoji-picker').hidden) { $('#emoji-picker').hidden = true; $('#emoji-button').setAttribute('aria-expanded', 'false'); return true; }
   if (!$('#chat-menu').hidden) { closeChatMenu(); return true; }
+  if (!$('#message-actions').hidden) { closeMessageActions(); return true; }
   if (!$('#message-search-bar').hidden) { closeMessageSearch(); renderMessages(); return true; }
   if (state.current) { closeChat(); return true; }
   return false;
@@ -754,6 +1110,20 @@ function bindEvents() {
   };
   $('#messages').onclick = event => {
     const chat = activeChat(); if (!chat) return;
+    const actionsButton = event.target.closest('[data-actions]');
+    if (actionsButton) { openMessageActions(actionsButton, actionsButton.dataset.actions); return; }
+    const reactionChip = event.target.closest('[data-react]');
+    if (reactionChip) { void actOnMessage('react', reactionChip.dataset.messageId, reactionChip.dataset.react); return; }
+    const attachButton = event.target.closest('[data-attach]');
+    if (attachButton) {
+      const owner = chat.messages.find(m => m.id === attachButton.dataset.attach);
+      if (owner?.att) {
+        const link = document.createElement('a');
+        link.href = owner.att.data; link.download = owner.att.name;
+        document.body.appendChild(link); link.click(); link.remove();
+      }
+      return;
+    }
     const replyButton = event.target.closest('[data-reply]');
     const photo = event.target.closest('[data-photo]');
     if (replyButton) {
@@ -769,20 +1139,46 @@ function bindEvents() {
     }
   };
   $('#cancel-reply').onclick = () => { state.reply = null; $('#reply-bar').hidden = true; };
+  $('#message-actions').addEventListener('click', event => {
+    const pick = event.target.closest('[data-react-pick]');
+    const messageId = $('#message-actions').dataset.messageId;
+    if (pick) { void actOnMessage('react', messageId, pick.dataset.reactPick); closeMessageActions(); return; }
+    const action = event.target.closest('[data-act]');
+    if (!action) return;
+    closeMessageActions();
+    void actOnMessage(action.dataset.act, messageId, undefined);
+  });
+  document.addEventListener('click', event => {
+    if (!event.target.closest('#message-actions, [data-actions]')) closeMessageActions();
+  });
+  $('#pinned-jump').onclick = () => {
+    const chat = activeChat();
+    const id = chat?.pins?.at(-1);
+    const row = id && document.querySelector(`[data-message-id="${id}"]`);
+    if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+  $('#pinned-unpin').onclick = () => {
+    const chat = activeChat();
+    const id = chat?.pins?.at(-1);
+    if (id) void actOnMessage('pin', id);
+  };
+  $('#security-button').onclick = () => void openSecurity();
+  $('#star-contact').onclick = () => void toggleStar();
+  $('#voice-button').onclick = () => void toggleRecording();
+  $('#file-button').onclick = () => $('#file-input').click();
+  $('#file-input').onchange = () => void attachFile($('#file-input').files[0]);
+  $('#import-backup').onclick = () => $('#import-input').click();
+  $('#import-input').onchange = () => void importBackup($('#import-input').files[0]);
+  $('#edit-save').onclick = () => void submitEdit();
   $('#attach-button').onclick = () => $('#photo-input').click();
   $('#photo-input').onchange = () => void attachPhoto($('#photo-input').files[0]);
   $('#remove-attachment').onclick = () => { photoGeneration++; state.attachment = null; $('#attachment-preview').hidden = true; $('#attachment-image').removeAttribute('src'); updateComposer(); };
-  for (const emoji of ['😊', '💜', '👋', '✨', '👍', '❤️', '😂', '🥰', '🎉', '🔥', '🤗', '☕']) {
-    const button = document.createElement('button'); button.type = 'button'; button.textContent = emoji; button.setAttribute('aria-label', emoji);
-    button.onclick = () => {
-      const input = $('#message-input');
-      if (input.value.length + emoji.length > MAX_TEXT) return;
-      input.setRangeText(emoji, input.selectionStart, input.selectionEnd, 'end');
-      input.focus(); updateComposer(); rememberDraft();
-    };
-    $('#emoji-picker').appendChild(button);
-  }
-  $('#emoji-button').onclick = () => { $('#emoji-picker').hidden = !$('#emoji-picker').hidden; $('#emoji-button').setAttribute('aria-expanded', String(!$('#emoji-picker').hidden)); };
+  buildEmojiPicker();
+  $('#emoji-button').onclick = () => {
+    buildEmojiPicker();
+    $('#emoji-picker').hidden = !$('#emoji-picker').hidden;
+    $('#emoji-button').setAttribute('aria-expanded', String(!$('#emoji-picker').hidden));
+  };
   window.addEventListener('online', () => { if (state.network !== 'ready') transport.start(state.profile, state.settings); });
   window.addEventListener('offline', () => { state.network = 'offline'; renderNetwork(); });
   document.addEventListener('visibilitychange', () => {
@@ -792,13 +1188,29 @@ function bindEvents() {
       retryConnections();
     }
   });
-  window.addEventListener('pagehide', () => { rememberDraft(); transport.stop(); });
+  window.addEventListener('pagehide', () => { rememberDraft(); void store.setMeta('lastSeen', Object.fromEntries(state.lastSeen)).catch(() => {}); transport.stop(); });
   window.addEventListener('pageshow', event => { if (event.persisted) transport.start(state.profile, state.settings); });
   document.addEventListener('keydown', event => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !$('dialog[open]')) { event.preventDefault(); closeChat(); $('#chat-search').focus(); }
     if (event.key === 'Escape' && !$('dialog[open]')) handleBack();
   });
   window.Libo = { handleBack, onExportSaved: () => notify('Экспорт сохранён') };
+}
+
+let emojiBuilt = false;
+function buildEmojiPicker() {
+  if (emojiBuilt) return;
+  emojiBuilt = true;
+  for (const emoji of ['😊', '💜', '', '✨', '👍', '❤️', '😂', '🥰', '', '', '🤗', '☕']) {
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = emoji; button.setAttribute('aria-label', emoji);
+    button.onclick = () => {
+      const input = $('#message-input');
+      if (input.value.length + emoji.length > MAX_TEXT) return;
+      input.setRangeText(emoji, input.selectionStart, input.selectionEnd, 'end');
+      input.focus(); updateComposer(); rememberDraft();
+    };
+    $('#emoji-picker').appendChild(button);
+  }
 }
 
 async function main() {
@@ -824,6 +1236,9 @@ async function main() {
   $('#app-version').textContent = VERSION;
   $$('.github-link').forEach(link => { link.href = REPO_URL; });
   $('#download-apk').href = APK_URL;
+  const savedSeen = await store.getMeta('lastSeen');
+  if (savedSeen && typeof savedSeen === 'object') for (const [id, at] of Object.entries(savedSeen)) state.lastSeen.set(id, at);
+  if (!window.MediaRecorder || !navigator.mediaDevices) $('#voice-button').hidden = true;
   bindEvents(); applyTheme(); renderSidebar(); renderNetwork();
   transport.start(state.profile, state.settings);
   setInterval(retryConnections, 6000);

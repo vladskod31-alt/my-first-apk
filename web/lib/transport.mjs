@@ -145,6 +145,10 @@ export class Transport {
       if (data.type === 'message') await this.events.onMessage(id, data);
       if (data.type === 'ack') await this.events.onAck(id, data.id);
       if (data.type === 'typing') this.events.onTyping(id, data.active);
+      if (data.type === 'edit') await this.events.onEdit(id, data);
+      if (data.type === 'delete') await this.events.onDelete(id, data.ids);
+      if (data.type === 'pin') await this.events.onPin(id, data.id, data.pinned);
+      if (data.type === 'react') await this.events.onReact(id, data.id, data.key, data.on);
     });
     const close = () => {
       clearTimeout(timeout);
