@@ -1,0 +1,837 @@
+import qrcode from 'qrcode-generator';
+import { Store } from './lib/storage.mjs';
+import { Transport } from './lib/transport.mjs';
+import {
+  APK_URL, REPO_URL, VERSION, MAX_TEXT, MAX_IMAGE_DATA, MAX_MESSAGES, MAX_CHATS,
+  makePeerId, normalizePeerCode, normalizeName, initials, avatarColor,
+  previewText, safeFilename, parseSignalingUrl, makeIceServers, toPacket, textExport, verificationCode,
+} from './lib/core.mjs';
+
+const $ = selector => document.querySelector(selector);
+const $$ = selector => [...document.querySelectorAll(selector)];
+const svg = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const store = new Store();
+const state = {
+  profile: null, settings: null, chats: [], blocked: [], current: null,
+  filter: 'all', network: 'connecting', networkDetail: '', contactStates: new Map(),
+  typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
+};
+const locks = new Map();
+const lastSent = new Map();
+const timeFormat = new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' });
+const dateFormat = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long' });
+let toastTimer;
+let typingSentAt = 0;
+let confirmAction = null;
+let audioContext;
+let photoGeneration = 0;
+
+const transport = new Transport({
+  onState(status, detail = '') {
+    state.network = status;
+    state.networkDetail = detail;
+    renderNetwork();
+    renderHeader();
+  },
+  onReady: retryConnections,
+  isAllowed: id => !!normalizePeerCode(id) && id !== state.profile?.id && !state.blocked.includes(id),
+  async onHello(id, name) {
+    await changeChat(id, chat => { chat.name = name; }, { request: true });
+    renderSidebar();
+    if (state.current === id) renderHeader();
+  },
+  onContactState(id, status) {
+    state.contactStates.set(id, status);
+    if (status !== 'online') state.typing.delete(id);
+    renderSidebar();
+    if (state.current === id) renderHeader();
+  },
+  onConnected: flushPending,
+  async onMessage(id, packet) {
+    try {
+      let fresh = false;
+      await changeChat(id, chat => {
+        if (chat.messages.some(m => m.id === packet.id)) return false;
+        if (chat.request && chat.messages.length >= 10) throw new Error('Сначала примите запрос на общение.');
+        // Do not evict undelivered outgoing messages to make room for an incoming message.
+        makeRoom(chat);
+        fresh = true;
+        chat.messages.push({
+          id: packet.id, text: packet.text, image: packet.image, reply: packet.reply,
+          at: Math.min(packet.at, Date.now() + 60_000), direction: 'in', status: 'received',
+        });
+        if (state.current !== id || document.hidden) chat.unread = (chat.unread || 0) + 1;
+        chat.updatedAt = Date.now();
+      });
+      transport.send(id, { v: 1, type: 'ack', id: packet.id });
+      state.typing.delete(id);
+      if (fresh) {
+        renderSidebar();
+        if (state.current === id) { renderMessages(); renderHeader(); }
+        playMessageSound();
+      }
+    } catch (error) {
+      transport.closeContact(id);
+      notify(error.message?.includes('запрос') ? error.message : 'Сообщение не сохранено: проверьте свободное место на устройстве.', true);
+    }
+  },
+  async onAck(id, messageId) {
+    try {
+      await changeChat(id, chat => {
+        const index = chat.messages.findIndex(m => m.id === messageId && m.direction === 'out');
+        if (index < 0 || chat.messages[index].status === 'delivered') return false;
+        chat.messages[index] = { ...chat.messages[index], status: 'delivered' };
+      });
+      lastSent.delete(messageId);
+      if (state.current === id) renderMessages(false);
+      renderSidebar();
+    } catch { notify('Не удалось сохранить статус доставки.', true); }
+  },
+  onTyping(id, active) {
+    state.typing.set(id, active ? Date.now() + 3500 : 0);
+    if (state.current === id) renderHeader();
+    setTimeout(() => { if (state.current === id) renderHeader(); }, 3600);
+  },
+  onStorageError() { notify('Не удалось сохранить контакт. Проверьте свободное место.', true); },
+});
+
+// Serialize each chat's writes. Concurrent incoming messages, ACKs, and drafts must not overwrite one another.
+function changeChat(id, mutate, defaults = null) {
+  const previous = locks.get(id) || Promise.resolve();
+  const task = previous.catch(() => {}).then(async () => {
+    const index = state.chats.findIndex(chat => chat.id === id);
+    const original = state.chats[index];
+    if (!original && !defaults) throw new Error('Чат не найден.');
+    if (!original && state.chats.length >= MAX_CHATS) throw new Error('Достигнут лимит: 100 чатов на устройстве.');
+    const chat = original
+      ? { ...original, messages: [...original.messages] }
+      : { id, name: 'Новый контакт', messages: [], unread: 0, createdAt: Date.now(), updatedAt: 0, ...defaults };
+    if (mutate(chat) === false) return original;
+    await store.putChat(chat);
+    if (index === -1) state.chats.push(chat);
+    else state.chats[index] = chat;
+    return chat;
+  });
+  locks.set(id, task);
+  task.then(() => { if (locks.get(id) === task) locks.delete(id); }, () => { if (locks.get(id) === task) locks.delete(id); });
+  return task;
+}
+
+function makeRoom(chat) {
+  if (chat.messages.length < MAX_MESSAGES) return;
+  const index = chat.messages.findIndex(m => m.direction === 'in' || ['delivered', 'local'].includes(m.status));
+  if (index < 0) throw new Error('В очереди уже 500 сообщений. Дождитесь доставки или очистите чат.');
+  chat.messages.splice(index, 1);
+}
+
+function activeChat() { return state.chats.find(chat => chat.id === state.current); }
+
+function notify(text, error = false) {
+  const toast = $('#toast');
+  const open = $('dialog[open]');
+  (open || document.body).appendChild(toast);
+  toast.querySelector('span').textContent = text;
+  toast.querySelector('use').setAttribute('href', error ? '#i-info' : '#i-check');
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, error ? 5500 : 3200);
+}
+
+function renderNetwork() {
+  const el = $('#network-status');
+  el.className = `network-status ${state.network}`;
+  el.querySelector('span').textContent = {
+    ready: 'Вы в сети', connecting: 'Подключаемся…', offline: 'Нет соединения', error: 'Нужно подключение',
+  }[state.network];
+  el.title = state.networkDetail || 'Наличие связи с сигнальным сервером. Статус собеседника показан внутри чата.';
+}
+
+function renderSidebar() {
+  if (!state.profile) return;
+  const query = $('#chat-search').value.trim().toLocaleLowerCase('ru');
+  const chats = [...state.chats].sort((a, b) => a.id === 'saved' ? -1 : b.id === 'saved' ? 1 : b.updatedAt - a.updatedAt);
+  const filtered = chats.filter(chat => {
+    if (state.filter === 'unread' && !chat.unread) return false;
+    return !query || chat.name.toLocaleLowerCase('ru').includes(query) || chat.messages.some(m => m.text.toLocaleLowerCase('ru').includes(query));
+  });
+  const list = $('#chat-list');
+  list.replaceChildren();
+  for (const chat of filtered) {
+    const row = document.createElement('button');
+    row.className = `chat-row${chat.id === state.current ? ' selected' : ''}`;
+    row.dataset.chatId = chat.id;
+    row.setAttribute('aria-label', `Открыть чат ${chat.name}`);
+    row.setAttribute('aria-current', chat.id === state.current ? 'true' : 'false');
+    const online = transport.isOpen(chat.id);
+    const avatar = document.createElement('span');
+    avatar.className = `avatar ${chat.id === 'saved' ? 'saved' : avatarColor(chat.id)}${online ? ' online' : ''}`;
+    if (chat.id === 'saved') avatar.innerHTML = svg('bookmark');
+    else avatar.textContent = initials(chat.name);
+    const body = document.createElement('span');
+    body.className = 'chat-row-body';
+    body.innerHTML = '<span class="chat-row-top"><strong></strong><time></time></span><span class="chat-row-bottom"><p></p></span>';
+    body.querySelector('strong').textContent = chat.name;
+    const last = chat.messages.at(-1);
+    body.querySelector('time').textContent = last ? briefDate(last.at) : '';
+    const excerpt = query ? [...chat.messages].reverse().find(m => m.text.toLocaleLowerCase('ru').includes(query)) || last : last;
+    body.querySelector('p').textContent = !last && chat.id === 'saved' ? 'Ваши заметки, ссылки и идеи' : previewText(excerpt);
+    if (chat.unread) {
+      const badge = document.createElement('span');
+      badge.className = 'unread-badge';
+      badge.textContent = chat.unread > 99 ? '99+' : chat.unread;
+      body.lastElementChild.appendChild(badge);
+    } else if (chat.request) {
+      const badge = document.createElement('span');
+      badge.className = 'request-badge'; badge.textContent = 'ЗАПРОС';
+      body.lastElementChild.appendChild(badge);
+    } else if (chat.id === 'saved') body.lastElementChild.insertAdjacentHTML('beforeend', svg('bookmark'));
+    row.append(avatar, body);
+    list.appendChild(row);
+  }
+  if (!filtered.length || (!query && state.filter === 'all' && chats.length === 1)) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-chats';
+    empty.innerHTML = `${svg('chat').replace('<svg', '<span><svg').replace('</svg>', '</svg></span>')}<strong></strong><p></p>`;
+    empty.querySelector('strong').textContent = query ? 'Ничего не нашлось' : state.filter === 'unread' ? 'Вы всё прочитали' : 'Здесь будут ваши люди';
+    empty.querySelector('p').textContent = query ? 'Попробуйте другое имя или слово из переписки.' : state.filter === 'unread' ? 'Новые сообщения появятся здесь.' : 'Первый разговор — всего в одном личном коде от вас.';
+    if (!query && state.filter === 'all') {
+      const button = document.createElement('button');
+      button.textContent = '+ Добавить контакт';
+      button.dataset.dialog = 'new-dialog';
+      empty.appendChild(button);
+    }
+    list.appendChild(empty);
+  }
+  $('#chat-count').textContent = state.chats.length;
+  const unread = state.chats.filter(c => c.unread > 0).length;
+  $('#unread-count').textContent = unread;
+  $('#unread-count').hidden = !unread;
+  $('#nav-chats').classList.toggle('active', state.current !== 'saved');
+  $('#nav-saved').classList.toggle('active', state.current === 'saved');
+}
+
+function briefDate(at) {
+  const date = new Date(at);
+  return date.toDateString() === new Date().toDateString() ? timeFormat.format(date) : new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short' }).format(date);
+}
+
+function dayLabel(at) {
+  const date = new Date(at);
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) return 'Сегодня';
+  today.setDate(today.getDate() - 1);
+  return date.toDateString() === today.toDateString() ? 'Вчера' : dateFormat.format(date);
+}
+
+function renderHeader() {
+  const chat = activeChat();
+  if (!chat) return;
+  const avatar = $('#chat-avatar');
+  avatar.className = `avatar ${chat.id === 'saved' ? 'saved' : avatarColor(chat.id)}${transport.isOpen(chat.id) ? ' online' : ''}`;
+  if (chat.id === 'saved') avatar.innerHTML = svg('bookmark'); else avatar.textContent = initials(chat.name);
+  $('#chat-title').textContent = chat.name;
+  const presence = $('#chat-presence');
+  presence.classList.toggle('is-online', transport.isOpen(chat.id));
+  if (chat.id === 'saved') presence.textContent = 'Личное пространство · только на этом устройстве';
+  else if (state.typing.get(chat.id) > Date.now()) presence.textContent = 'печатает…';
+  else if (chat.request) presence.textContent = 'Новый запрос на общение';
+  else if (transport.isOpen(chat.id)) presence.textContent = 'В сети · прямое соединение';
+  else if (state.contactStates.get(chat.id) === 'connecting') presence.textContent = 'Ищем собеседника…';
+  else presence.textContent = 'Не подключён · откройте LIBO на обоих устройствах';
+  presence.title = chat.id === 'saved' ? 'Заметки не передаются другим устройствам.' : `Код собеседника: LIBO:${chat.id}`;
+  $('#request-bar').hidden = !chat.request;
+  $('#composer-zone').hidden = !!chat.request;
+  $('#block-contact').hidden = chat.id === 'saved';
+  $('#verify-code').hidden = chat.id === 'saved';
+  $('#composer-hint').textContent = chat.id === 'saved'
+    ? 'Сохранено на этом устройстве. Последние 500 сообщений в чате.'
+    : 'Оба собеседника должны быть в приложении · ✓✓ доставлено, не прочитано';
+}
+
+async function showVerifyCode() {
+  const chat = activeChat();
+  if (!chat || chat.id === 'saved' || !state.profile) return;
+  $('#verify-value').textContent = await verificationCode(state.profile.id, chat.id);
+  $('#verify-peer-name').textContent = chat.name;
+  openDialog('verify-dialog');
+}
+
+function renderMessages(scroll = true) {
+  const chat = activeChat();
+  if (!chat) return;
+  const box = $('#messages');
+  const previousTop = box.scrollTop;
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+  const query = $('#message-search').value.trim().toLocaleLowerCase('ru');
+  const messages = chat.messages.filter(m => !query || m.text.toLocaleLowerCase('ru').includes(query) || m.reply?.text.toLocaleLowerCase('ru').includes(query));
+  box.replaceChildren();
+  if (!messages.length) {
+    const empty = document.createElement('div');
+    empty.className = 'conversation-empty';
+    empty.innerHTML = `<div>${svg(chat.id === 'saved' ? 'bookmark' : 'chat')}</div><h3></h3><p></p>`;
+    empty.querySelector('h3').textContent = query ? 'Ничего не найдено' : chat.id === 'saved' ? 'Мысли, которые стоит сохранить' : 'Ваше первое «привет»';
+    empty.querySelector('p').textContent = query ? 'Попробуйте другое слово.' : chat.id === 'saved' ? 'Заметки, фотографии и важные идеи. Всё в одном месте и только для вас.' : 'Здесь начнётся ваш разговор. Если собеседник не в сети, сообщение подождёт на вашем устройстве.';
+    box.appendChild(empty);
+    return;
+  }
+  let previousDay = '';
+  for (const message of messages) {
+    const day = new Date(message.at).toDateString();
+    if (day !== previousDay) {
+      const separator = document.createElement('div'); separator.className = 'day-separator';
+      const label = document.createElement('span'); label.textContent = dayLabel(message.at);
+      separator.appendChild(label); box.appendChild(separator); previousDay = day;
+    }
+    const row = document.createElement('div');
+    row.className = `message-row ${message.direction === 'out' ? 'outgoing' : 'incoming'}`;
+    row.dataset.messageId = message.id;
+    const bubble = document.createElement('div'); bubble.className = 'message-bubble';
+    if (message.reply) {
+      const quote = document.createElement('div'); quote.className = 'message-quote';
+      quote.innerHTML = '<strong></strong><p></p>';
+      quote.querySelector('strong').textContent = message.reply.name;
+      quote.querySelector('p').textContent = message.reply.text;
+      bubble.appendChild(quote);
+    }
+    if (message.image) {
+      const photo = document.createElement('button'); photo.className = 'message-photo'; photo.dataset.photo = message.id;
+      photo.setAttribute('aria-label', 'Открыть фотографию');
+      const img = document.createElement('img'); img.src = message.image.data; img.alt = message.image.name || 'Фотография'; img.loading = 'lazy';
+      img.onload = () => { if (scroll && nearBottom) box.scrollTop = box.scrollHeight; };
+      photo.appendChild(img); bubble.appendChild(photo);
+    }
+    if (message.text) {
+      const text = document.createElement('p'); text.className = 'message-text'; text.textContent = message.text;
+      bubble.appendChild(text);
+    }
+    const meta = document.createElement('div'); meta.className = 'message-meta';
+    const time = document.createElement('time'); time.dateTime = new Date(message.at).toISOString(); time.textContent = timeFormat.format(new Date(message.at));
+    meta.appendChild(time);
+    if (message.direction === 'out') {
+      const status = document.createElement('span'); status.className = 'message-status'; status.dataset.status = message.status;
+      status.title = { queued: 'В очереди на этом устройстве', sent: 'Отправлено, ждём подтверждения', delivered: 'Сохранено на устройстве собеседника', local: 'Сохранено только на этом устройстве' }[message.status];
+      status.setAttribute('aria-label', status.title);
+      status.innerHTML = svg({ queued: 'clock', sent: 'check', delivered: 'checks', local: 'bookmark' }[message.status] || 'clock');
+      meta.appendChild(status);
+    }
+    bubble.appendChild(meta);
+    const reply = document.createElement('button'); reply.className = 'reply-message'; reply.dataset.reply = message.id;
+    reply.innerHTML = svg('reply'); reply.title = 'Ответить'; reply.setAttribute('aria-label', 'Ответить на сообщение');
+    row.append(bubble, reply); box.appendChild(row);
+  }
+  if (scroll && nearBottom) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
+  else box.scrollTop = previousTop;
+}
+
+function rememberDraft() {
+  if (!state.current) return;
+  const value = $('#message-input').value.slice(0, MAX_TEXT);
+  if (value) state.drafts[state.current] = value;
+  else delete state.drafts[state.current];
+  try { localStorage.setItem('libo-v2-drafts', JSON.stringify(state.drafts)); }
+  catch { notify('Черновик не сохранён: на устройстве мало места.', true); }
+}
+
+function resetComposerExtras() {
+  state.reply = null;
+  state.attachment = null;
+  photoGeneration++;
+  $('#reply-bar').hidden = true;
+  $('#attachment-preview').hidden = true;
+  $('#attachment-image').removeAttribute('src');
+  $('#photo-input').value = '';
+  $('#emoji-picker').hidden = true;
+  $('#emoji-button').setAttribute('aria-expanded', 'false');
+}
+
+async function openChat(id) {
+  if (!state.chats.some(chat => chat.id === id)) return;
+  rememberDraft();
+  state.current = id;
+  $('#shell').classList.add('chat-open');
+  $('#welcome').hidden = true;
+  $('#conversation').hidden = false;
+  closeChatMenu();
+  closeMessageSearch();
+  resetComposerExtras();
+  $('#message-input').value = state.drafts[id] || '';
+  updateComposer();
+  renderHeader(); renderMessages(); renderSidebar();
+  requestAnimationFrame(() => { $('#messages').scrollTop = $('#messages').scrollHeight; });
+  if (id !== 'saved') transport.connect(id);
+  try { await changeChat(id, chat => { if (!chat.unread) return false; chat.unread = 0; }); renderSidebar(); }
+  catch { notify('Не удалось обновить счётчик сообщений.', true); }
+}
+
+function closeChat() {
+  rememberDraft();
+  state.current = null;
+  $('#shell').classList.remove('chat-open');
+  $('#welcome').hidden = false;
+  $('#conversation').hidden = true;
+  resetComposerExtras();
+  renderSidebar();
+}
+
+function updateComposer() {
+  const input = $('#message-input');
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(140, Math.max(37, input.scrollHeight))}px`;
+  $('#send-button').disabled = state.sending || (!input.value.trim() && !state.attachment);
+}
+
+async function sendMessage(event) {
+  event?.preventDefault();
+  const chat = activeChat();
+  const text = $('#message-input').value.trim().slice(0, MAX_TEXT);
+  if (!chat || chat.request || state.sending || (!text && !state.attachment)) return;
+  const id = chat.id;
+  const message = {
+    id: crypto.randomUUID(), text, image: state.attachment, reply: state.reply,
+    at: Date.now(), direction: 'out', status: id === 'saved' ? 'local' : 'queued',
+  };
+  state.sending = true; updateComposer();
+  try {
+    await changeChat(id, next => { makeRoom(next); next.messages.push(message); next.updatedAt = message.at; });
+    if (state.current === id) {
+      $('#message-input').value = '';
+      rememberDraft(); resetComposerExtras();
+      renderMessages();
+      requestAnimationFrame(() => { $('#messages').scrollTop = $('#messages').scrollHeight; });
+    }
+    renderSidebar();
+    if (id !== 'saved') {
+      transport.send(id, { v: 1, type: 'typing', active: false });
+      transport.connect(id);
+      await flushPending(id);
+    }
+  } catch (error) { notify(error.message?.includes('500') ? error.message : 'Не удалось сохранить сообщение. Проверьте свободное место.', true); }
+  finally { state.sending = false; updateComposer(); }
+}
+
+async function flushPending(id) {
+  const chat = state.chats.find(c => c.id === id);
+  if (!chat || chat.request || !transport.isOpen(id)) return;
+  const pending = chat.messages.filter(m => m.direction === 'out' && ['sent', 'queued'].includes(m.status) && Date.now() - (lastSent.get(m.id) || 0) > 15_000).slice(0, 25);
+  const sent = new Set();
+  for (const message of pending) {
+    if (transport.send(id, toPacket(message))) { sent.add(message.id); lastSent.set(message.id, Date.now()); }
+  }
+  if (!sent.size) return;
+  try {
+    await changeChat(id, next => {
+      next.messages = next.messages.map(m => sent.has(m.id) && m.status === 'queued' ? { ...m, status: 'sent' } : m);
+    });
+    if (state.current === id) renderMessages(false);
+  } catch { notify('Не удалось сохранить статус отправки.', true); }
+}
+
+function retryConnections() {
+  if (state.network !== 'ready') return;
+  for (const chat of state.chats) {
+    if (chat.id === 'saved' || chat.request) continue;
+    if (chat.id === state.current || chat.messages.some(m => m.direction === 'out' && ['queued', 'sent'].includes(m.status))) {
+      transport.connect(chat.id);
+      void flushPending(chat.id);
+    }
+  }
+}
+
+function closeDialogs() {
+  for (const dialog of $$('dialog[open]')) dialog.close();
+}
+
+function openDialog(id) {
+  closeDialogs();
+  closeChatMenu();
+  if (id === 'invite-dialog') {
+    const code = `LIBO:${state.profile.id}`;
+    $('#my-code').textContent = code;
+    $('#invite-name').textContent = state.profile.name;
+    const qr = qrcode(0, 'M'); qr.addData(code); qr.make();
+    $('#invite-qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+  }
+  if (id === 'new-dialog') { $('#contact-error').hidden = true; $('#contact-code').value = ''; }
+  if (id === 'settings-dialog') populateSettings();
+  if (id === 'blocked-dialog') renderBlocked();
+  $(`#${id}`).showModal();
+  if (id === 'new-dialog') $('#contact-code').focus();
+}
+
+function confirmDialog(title, text, action, button = 'Продолжить') {
+  openDialog('confirm-dialog');
+  $('#confirm-title').textContent = title;
+  $('#confirm-text').textContent = text;
+  $('#confirm-action').textContent = button;
+  confirmAction = action;
+}
+
+async function addContact(event) {
+  event.preventDefault();
+  const id = normalizePeerCode($('#contact-code').value);
+  const error = $('#contact-error');
+  error.hidden = true;
+  if (!id || id === state.profile.id || state.blocked.includes(id)) {
+    error.textContent = !id ? 'Нужен полный личный код: LIBO:libo- и 32 символа. Проверьте, что скопировали его целиком.'
+      : id === state.profile.id ? 'Это ваш код. Для своих заметок откройте «Избранное».'
+      : 'Этот контакт заблокирован. Сначала разблокируйте его в настройках.';
+    error.hidden = false; return;
+  }
+  try {
+    await changeChat(id, chat => { chat.request = false; }, { request: false, updatedAt: Date.now() });
+    closeDialogs();
+    await openChat(id);
+    notify('Контакт добавлен. Откройте LIBO на обоих устройствах.');
+  } catch (err) { error.textContent = err.message; error.hidden = false; }
+}
+
+function applyTheme() {
+  const dark = state.settings.theme === 'dark' || (state.settings.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.querySelector('meta[name="theme-color"]').content = dark ? '#191920' : '#f7f7fb';
+  $('#theme-toggle use').setAttribute('href', dark ? '#i-sun' : '#i-moon');
+  $$('[data-theme]').forEach(button => {
+    if (button.tagName !== 'BUTTON') return;
+    button.classList.toggle('active', button.dataset.theme === state.settings.theme);
+    button.setAttribute('aria-pressed', button.dataset.theme === state.settings.theme ? 'true' : 'false');
+  });
+  window.LiboAndroid?.setDarkTheme(dark);
+}
+
+async function setTheme(theme) {
+  const previous = state.settings;
+  state.settings = { ...state.settings, theme };
+  applyTheme();
+  try { await store.setMeta('settings', state.settings); }
+  catch { state.settings = previous; applyTheme(); notify('Тема не сохранена.', true); }
+}
+
+function populateSettings() {
+  $('#profile-name').value = state.profile.name;
+  $('#settings-avatar').textContent = initials(state.profile.name);
+  $('#sound-enabled').checked = state.settings.sound;
+  $('#signal-url').value = state.settings.signalUrl;
+  $('#turn-url').value = state.settings.turnUrl;
+  $('#turn-user').value = state.settings.turnUser;
+  $('#turn-password').value = state.settings.turnPassword;
+  $('#settings-error').hidden = true;
+  $('#blocked-summary').textContent = state.blocked.length ? `Контактов: ${state.blocked.length}` : 'Нет заблокированных';
+  applyTheme();
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
+  const error = $('#settings-error'); error.hidden = true;
+  const name = normalizeName($('#profile-name').value);
+  if (!name) { error.textContent = 'Напишите, как вас называть.'; error.hidden = false; return; }
+  const settings = {
+    ...state.settings, sound: $('#sound-enabled').checked,
+    signalUrl: $('#signal-url').value.trim(), turnUrl: $('#turn-url').value.trim(),
+    turnUser: $('#turn-user').value.trim(), turnPassword: $('#turn-password').value,
+  };
+  try {
+    parseSignalingUrl(settings.signalUrl, location.origin);
+    makeIceServers(settings);
+    const reconnect = ['signalUrl', 'turnUrl', 'turnUser', 'turnPassword'].some(key => settings[key] !== state.settings[key]);
+    const profile = { ...state.profile, name };
+    await store.setMeta('settings', settings);
+    await store.setMeta('profile', profile);
+    state.settings = settings; state.profile = profile;
+    $('#profile-button').textContent = initials(name);
+    applyTheme();
+    if (reconnect) {
+      state.contactStates.clear();
+      transport.start(profile, settings);
+    } else transport.updateProfile(profile);
+    closeDialogs(); renderSidebar(); renderHeader();
+    notify('Ваши настройки сохранены');
+  } catch (err) { error.textContent = err.message || 'Не удалось сохранить настройки.'; error.hidden = false; }
+}
+
+async function copyCode() {
+  const text = `LIBO:${state.profile.id}`;
+  try {
+    if (window.LiboAndroid) window.LiboAndroid.copyText(text);
+    else await navigator.clipboard.writeText(text);
+    notify('Личный код скопирован');
+  } catch { notify('Не удалось скопировать. Выделите и скопируйте код вручную.', true); }
+}
+
+async function copyLikeCode(text) {
+  try {
+    if (window.LiboAndroid) window.LiboAndroid.copyText(text);
+    else await navigator.clipboard.writeText(text);
+    notify('Код сверки скопирован');
+  } catch { notify('Не удалось скопировать. Выделите и скопируйте код вручную.', true); }
+}
+
+async function shareCode() {
+  const text = `Добавьте меня в LIBO!\n\nLIBO:${state.profile.id}\n\nAPK для Android: ${APK_URL}\nДля переписки откройте приложение на обоих устройствах.`;
+  try {
+    if (window.LiboAndroid) window.LiboAndroid.shareText(text);
+    else if (navigator.share) await navigator.share({ title: 'Мой личный код LIBO', text });
+    else { await navigator.clipboard.writeText(text); notify('Приглашение скопировано вместе со ссылкой на APK'); }
+  } catch (error) { if (error.name !== 'AbortError') notify('Не удалось поделиться. Используйте кнопку копирования кода.', true); }
+}
+
+function exportChats(chats) {
+  const name = safeFilename(`LIBO-${new Date().toISOString().slice(0, 10)}.json`);
+  const data = textExport(chats, state.profile);
+  if (data.length > 6_000_000) { notify('Экспорт слишком большой. Экспортируйте каждый чат отдельно.', true); return; }
+  if (window.LiboAndroid) window.LiboAndroid.saveText(name, data);
+  else {
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/json;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    notify('Текстовый экспорт подготовлен. Храните файл в безопасном месте.');
+  }
+}
+
+function closeChatMenu() { $('#chat-menu').hidden = true; $('#chat-more').setAttribute('aria-expanded', 'false'); }
+function closeMessageSearch() { $('#message-search-bar').hidden = true; $('#message-search').value = ''; }
+
+async function blockCurrent() {
+  const chat = activeChat();
+  if (!chat || chat.id === 'saved') return;
+  const id = chat.id;
+  confirmDialog('Заблокировать контакт?', 'Этот код больше не сможет подключиться к вам. Переписка удалится только с этого устройства. Собеседник сохранит свою копию.', async () => {
+    try {
+      await locks.get(id)?.catch(() => {});
+      const blocked = [...new Set([...state.blocked, id])];
+      await store.setMeta('blocked', blocked);
+      state.blocked = blocked;
+      transport.closeContact(id);
+      await store.deleteChat(id);
+      state.chats = state.chats.filter(c => c.id !== id);
+      closeChat();
+      delete state.drafts[id];
+      localStorage.setItem('libo-v2-drafts', JSON.stringify(state.drafts));
+      notify('Контакт заблокирован');
+    } catch { notify('Не удалось завершить блокировку. Проверьте свободное место.', true); }
+  }, 'Заблокировать');
+}
+
+function renderBlocked() {
+  const list = $('#blocked-list'); list.replaceChildren();
+  if (!state.blocked.length) { const p = document.createElement('p'); p.className = 'privacy-caption'; p.textContent = 'Нет заблокированных контактов.'; list.appendChild(p); }
+  for (const id of state.blocked) {
+    const row = document.createElement('div'); row.className = 'blocked-row';
+    const code = document.createElement('code'); code.textContent = `LIBO:${id}`;
+    const button = document.createElement('button'); button.textContent = 'Разблокировать';
+    button.onclick = async () => {
+      try { const blocked = state.blocked.filter(item => item !== id); await store.setMeta('blocked', blocked); state.blocked = blocked; renderBlocked(); notify('Контакт разблокирован. Его можно добавить заново.'); }
+      catch { notify('Не удалось сохранить изменения.', true); }
+    };
+    row.append(code, button); list.appendChild(row);
+  }
+}
+
+async function attachPhoto(file) {
+  if (!file || !activeChat() || activeChat().request) return;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { notify('Поддерживаются фотографии JPG, PNG и WebP.', true); return; }
+  if (file.size > 12 * 1024 * 1024) { notify('Выберите фотографию до 12 МБ.', true); return; }
+  const generation = ++photoGeneration;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image(); img.src = url; await img.decode();
+    const scale = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const context = canvas.getContext('2d'); context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(img, 0, 0, canvas.width, canvas.height);
+    let data = canvas.toDataURL('image/jpeg', .82);
+    if (data.length > MAX_IMAGE_DATA) data = canvas.toDataURL('image/jpeg', .58);
+    if (data.length > MAX_IMAGE_DATA) throw new Error('Фото слишком большое даже после сжатия. Попробуйте другое.');
+    if (generation !== photoGeneration) return;
+    state.attachment = { data, name: safeFilename(file.name.replace(/\.[^.]+$/, '') + '.jpg') };
+    $('#attachment-image').src = data; $('#attachment-preview').hidden = false; updateComposer();
+  } catch (error) { notify(error.message?.includes('сжатия') ? error.message : 'Не удалось открыть фотографию.', true); }
+  finally { URL.revokeObjectURL(url); $('#photo-input').value = ''; }
+}
+
+function playMessageSound() {
+  if (!state.settings.sound) return;
+  try {
+    audioContext ||= new AudioContext();
+    if (audioContext.state !== 'running') return;
+    const oscillator = audioContext.createOscillator(); const gain = audioContext.createGain();
+    oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(640, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(820, audioContext.currentTime + .08);
+    gain.gain.setValueAtTime(.04, audioContext.currentTime); gain.gain.exponentialRampToValueAtTime(.001, audioContext.currentTime + .16);
+    oscillator.connect(gain); gain.connect(audioContext.destination); oscillator.start(); oscillator.stop(audioContext.currentTime + .18);
+  } catch { /* Sound is optional; never interrupt messaging when autoplay is blocked. */ }
+}
+
+function handleBack() {
+  const open = $('dialog[open]');
+  if (open) { open.close(); return true; }
+  if (!$('#emoji-picker').hidden) { $('#emoji-picker').hidden = true; $('#emoji-button').setAttribute('aria-expanded', 'false'); return true; }
+  if (!$('#chat-menu').hidden) { closeChatMenu(); return true; }
+  if (!$('#message-search-bar').hidden) { closeMessageSearch(); renderMessages(); return true; }
+  if (state.current) { closeChat(); return true; }
+  return false;
+}
+
+function bindEvents() {
+  document.addEventListener('click', event => {
+    const dialogButton = event.target.closest('[data-dialog]');
+    if (dialogButton) { openDialog(dialogButton.dataset.dialog); return; }
+    if (event.target.closest('[data-close]')) { event.target.closest('dialog')?.close(); return; }
+    const row = event.target.closest('[data-chat-id]');
+    if (row) void openChat(row.dataset.chatId);
+    if (!event.target.closest('#chat-more, #chat-menu')) closeChatMenu();
+    if (state.settings.sound) {
+      try { audioContext ||= new AudioContext(); if (audioContext.state === 'suspended') void audioContext.resume(); } catch { /* Optional. */ }
+    }
+  });
+  $$('dialog').forEach(dialog => {
+    dialog.addEventListener('click', event => {
+      const rect = dialog.getBoundingClientRect();
+      if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+      if (dialog.id === 'confirm-dialog') confirmAction = null;
+      if (dialog.id === 'photo-dialog') $('#full-photo').removeAttribute('src');
+      if (dialog.contains($('#toast'))) { $('#toast').hidden = true; document.body.appendChild($('#toast')); }
+    });
+  });
+  $('#confirm-action').onclick = async () => { const action = confirmAction; $('#confirm-dialog').close(); if (action) await action(); };
+  $('#add-contact-form').onsubmit = addContact;
+  $('#settings-form').onsubmit = saveSettings;
+  $('#chat-search').oninput = renderSidebar;
+  $('#nav-chats').onclick = closeChat;
+  $('#nav-saved').onclick = () => void openChat('saved');
+  $('#chat-back').onclick = closeChat;
+  for (const type of ['all', 'unread']) $(`#filter-${type}`).onclick = () => {
+    state.filter = type;
+    $$('.filter').forEach(button => { const active = button.id === `filter-${type}`; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
+    renderSidebar();
+  };
+  $('#composer').onsubmit = sendMessage;
+  $('#message-input').addEventListener('input', () => {
+    updateComposer(); rememberDraft();
+    if (state.current !== 'saved' && Date.now() - typingSentAt > 1000) {
+      typingSentAt = Date.now(); transport.send(state.current, { v: 1, type: 'typing', active: !!$('#message-input').value });
+    }
+  });
+  $('#message-input').addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void sendMessage(); }
+  });
+  $('#theme-toggle').onclick = () => void setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+  $$('button[data-theme]').forEach(button => { button.onclick = () => void setTheme(button.dataset.theme); });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+  $('#copy-code').onclick = copyCode;
+  $('#share-code').onclick = shareCode;
+  $('#reconnect').onclick = () => {
+    if (state.networkDetail) notify(state.networkDetail, true);
+    state.contactStates.clear(); transport.start(state.profile, state.settings);
+  };
+  $('#chat-more').onclick = () => { const open = $('#chat-menu').hidden; $('#chat-menu').hidden = !open; $('#chat-more').setAttribute('aria-expanded', String(open)); };
+  $('#message-search-toggle').onclick = () => { $('#message-search-bar').hidden = false; $('#message-search').focus(); };
+  $('#message-search').oninput = () => renderMessages(false);
+  $('#close-message-search').onclick = () => { closeMessageSearch(); renderMessages(); };
+  $('#export-all').onclick = () => exportChats(state.chats);
+  $('#export-chat').onclick = () => { if (activeChat()) exportChats([activeChat()]); closeChatMenu(); };
+  $('#verify-code').onclick = () => { closeChatMenu(); void showVerifyCode(); };
+  $('#copy-verify').onclick = () => { const text = $('#verify-value').textContent; if (text) void copyLikeCode(text); };
+  $('#manage-blocked').onclick = () => openDialog('blocked-dialog');
+  $('#clear-chat').onclick = () => {
+    const id = state.current;
+    confirmDialog('Очистить этот чат?', 'Сообщения удалятся только с этого устройства. Это нельзя отменить. У собеседника останется его копия переписки.', async () => {
+      try {
+        await changeChat(id, chat => { chat.messages = []; chat.unread = 0; chat.updatedAt = 0; });
+        if (state.current === id) { resetComposerExtras(); renderMessages(); updateComposer(); }
+        renderSidebar(); notify('Чат очищен на этом устройстве');
+      } catch { notify('Не удалось очистить чат.', true); }
+    }, 'Очистить');
+  };
+  $('#block-contact').onclick = blockCurrent;
+  $('#reject-request').onclick = blockCurrent;
+  $('#accept-request').onclick = async () => {
+    const id = state.current;
+    try { await changeChat(id, chat => { chat.request = false; }); renderHeader(); renderSidebar(); await flushPending(id); }
+    catch { notify('Не удалось принять запрос.', true); }
+  };
+  $('#messages').onclick = event => {
+    const chat = activeChat(); if (!chat) return;
+    const replyButton = event.target.closest('[data-reply]');
+    const photo = event.target.closest('[data-photo]');
+    if (replyButton) {
+      if (chat.request) { notify('Сначала примите запрос на общение.', true); return; }
+      const message = chat.messages.find(m => m.id === replyButton.dataset.reply);
+      if (!message) return;
+      state.reply = { text: (message.text || 'Фотография').slice(0, 160), name: message.direction === 'out' ? state.profile.name : chat.name };
+      $('#reply-name').textContent = state.reply.name; $('#reply-text').textContent = state.reply.text; $('#reply-bar').hidden = false; $('#message-input').focus();
+    }
+    if (photo) {
+      const message = chat.messages.find(m => m.id === photo.dataset.photo);
+      if (message?.image) { openDialog('photo-dialog'); $('#full-photo').src = message.image.data; }
+    }
+  };
+  $('#cancel-reply').onclick = () => { state.reply = null; $('#reply-bar').hidden = true; };
+  $('#attach-button').onclick = () => $('#photo-input').click();
+  $('#photo-input').onchange = () => void attachPhoto($('#photo-input').files[0]);
+  $('#remove-attachment').onclick = () => { photoGeneration++; state.attachment = null; $('#attachment-preview').hidden = true; $('#attachment-image').removeAttribute('src'); updateComposer(); };
+  for (const emoji of ['😊', '💜', '👋', '✨', '👍', '❤️', '😂', '🥰', '🎉', '🔥', '🤗', '☕']) {
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = emoji; button.setAttribute('aria-label', emoji);
+    button.onclick = () => {
+      const input = $('#message-input');
+      if (input.value.length + emoji.length > MAX_TEXT) return;
+      input.setRangeText(emoji, input.selectionStart, input.selectionEnd, 'end');
+      input.focus(); updateComposer(); rememberDraft();
+    };
+    $('#emoji-picker').appendChild(button);
+  }
+  $('#emoji-button').onclick = () => { $('#emoji-picker').hidden = !$('#emoji-picker').hidden; $('#emoji-button').setAttribute('aria-expanded', String(!$('#emoji-picker').hidden)); };
+  window.addEventListener('online', () => { if (state.network !== 'ready') transport.start(state.profile, state.settings); });
+  window.addEventListener('offline', () => { state.network = 'offline'; renderNetwork(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) rememberDraft();
+    else {
+      if (state.current) void changeChat(state.current, chat => { if (!chat.unread) return false; chat.unread = 0; }).then(renderSidebar).catch(() => {});
+      retryConnections();
+    }
+  });
+  window.addEventListener('pagehide', () => { rememberDraft(); transport.stop(); });
+  window.addEventListener('pageshow', event => { if (event.persisted) transport.start(state.profile, state.settings); });
+  document.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !$('dialog[open]')) { event.preventDefault(); closeChat(); $('#chat-search').focus(); }
+    if (event.key === 'Escape' && !$('dialog[open]')) handleBack();
+  });
+  window.Libo = { handleBack, onExportSaved: () => notify('Экспорт сохранён') };
+}
+
+async function main() {
+  await store.open();
+  state.profile = await store.getMeta('profile');
+  if (!state.profile || !normalizePeerCode(state.profile.id)) {
+    state.profile = { id: makePeerId(), name: 'Пользователь LIBO' };
+    await store.setMeta('profile', state.profile);
+  }
+  const defaultServer = import.meta.env.DEV ? new URL('/peerjs', location.origin).href : 'https://0.peerjs.com';
+  state.settings = {
+    theme: 'light', sound: false, signalUrl: defaultServer, turnUrl: '', turnUser: '', turnPassword: '',
+    ...await store.getMeta('settings'),
+  };
+  state.blocked = await store.getMeta('blocked') || [];
+  state.chats = await store.getChats();
+  state.chats = state.chats.filter(chat => !state.blocked.includes(chat.id));
+  if (!state.chats.some(chat => chat.id === 'saved')) {
+    await changeChat('saved', chat => { chat.name = 'Избранное'; }, { request: false });
+  }
+  try { state.drafts = JSON.parse(localStorage.getItem('libo-v2-drafts') || '{}') || {}; } catch { state.drafts = {}; }
+  $('#profile-button').textContent = initials(state.profile.name);
+  $('#app-version').textContent = VERSION;
+  $$('.github-link').forEach(link => { link.href = REPO_URL; });
+  $('#download-apk').href = APK_URL;
+  bindEvents(); applyTheme(); renderSidebar(); renderNetwork();
+  transport.start(state.profile, state.settings);
+  setInterval(retryConnections, 6000);
+}
+
+main().catch(error => {
+  const banner = $('#boot-error');
+  banner.hidden = false;
+  banner.textContent = `LIBO не может открыть хранилище. Проверьте свободное место, разрешите хранение данных в браузере и обновите Android System WebView. Данные не отправлены в сеть. ${error.message || ''}`;
+  console.error('LIBO startup failed', error);
+});
