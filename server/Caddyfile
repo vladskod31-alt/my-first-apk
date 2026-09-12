@@ -1,0 +1,4 @@
+{$LIBO_DOMAIN} {
+    encode gzip zstd
+    reverse_proxy libo:3000
+}

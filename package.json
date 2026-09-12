@@ -1,0 +1,44 @@
+{
+  "name": "libo-messenger",
+  "version": "2.3.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "build": "vite build",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "preview": "vite preview --host 0.0.0.0",
+    "server": "node --env-file-if-exists=.env server/index.mjs",
+    "check:private": "node scripts/assert-private.mjs",
+    "test:apk-assets": "node scripts/test-packaged.mjs",
+    "package:private": "node scripts/package-private.mjs"
+  },
+  "dependencies": {
+    "@emoji-mart/data": "1.2.1",
+    "@fontsource-variable/manrope": "5.3.0",
+    "@twemoji/api": "17.0.3",
+    "@twemoji/svg": "15.0.0",
+    "emoji-mart": "5.6.0",
+    "emojibase-data": "16.0.3",
+    "express": "4.22.1",
+    "libphonenumber-js": "1.13.12",
+    "peer": "1.0.2",
+    "peerjs": "1.5.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@sparticuz/chromium": "143.0.4",
+    "acorn": "8.15.0",
+    "fake-indexeddb": "6.2.4",
+    "fflate": "0.8.3",
+    "vite": "7.3.6"
+  },
+  "license": "UNLICENSED",
+  "overrides": {
+    "qs": "6.16.0"
+  }
+}

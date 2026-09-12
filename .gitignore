@@ -1,0 +1,41 @@
+# Dependencies and generated build/test files
+node_modules/
+dist/
+build/
+.gradle/
+local.properties
+playwright-report/
+test-results/
+artifacts/
+.cache/
+.local/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Generated APKs, archives and local handoff pages are not source review material.
+*.apk
+*.aab
+*.apks
+*.xapk
+*.zip
+/deliverables/
+
+# Credentials, signing material and private runtime data
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.password
+private-signing/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal

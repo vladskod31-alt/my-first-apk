@@ -1,0 +1,42 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'app.libo.messenger'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'app.libo.messenger'
+        minSdk 26
+        targetSdk 35
+        versionCode 20300
+        versionName '2.3.0'
+    }
+    buildFeatures { buildConfig true }
+    buildTypes {
+        debug {
+            // Separate test install; never overwrite the older beta with an unrelated signing key.
+            applicationIdSuffix '.preview23'
+            debuggable false
+        }
+        release {
+            minifyEnabled false
+            // Supply your own private release signing configuration before distribution.
+        }
+    }
+    sourceSets { main { assets.srcDirs = ["${rootDir}/dist"] } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint { abortOnError true }
+}
+
+tasks.register('verifyWebAssets') {
+    doLast {
+        if (!file("${rootDir}/dist/index.html").isFile()) {
+            throw new GradleException('Web assets are missing. Run npm ci && npm run build before assembling the APK.')
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'verifyWebAssets' }

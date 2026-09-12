@@ -1,0 +1,42 @@
+# Inactive template. A repository owner with Workflows permission may install it.
+name: Private Android preview
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: private-android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    if: github.event.repository.private == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:e2e
+      - run: npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - run: ./gradlew --no-daemon assembleDebug lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LIBO-private-preview
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+# No automatic release, public download or source publication step.
+# CI debug signing is ephemeral. A stable deployment needs an owner-managed private keystore.
