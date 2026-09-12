@@ -1,6 +1,6 @@
-export const VERSION = '2.0.0-beta.1';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.0.0-beta.1/downloads/LIBO-2.0.0-beta.1.apk';
-export const REPO_URL = 'https://github.com/vladskod31-alt/my-first-apk/tree/arena/01a0708b-my-first-apk';
+import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
+import { hashHex } from './crypto.mjs';
+export const VERSION = '2.3.0';
 export const MAX_TEXT = 4000;
 export const MAX_IMAGE_DATA = 1_400_000;
 export const MAX_MESSAGES = 500;
@@ -8,15 +8,25 @@ export const MAX_CHATS = 100;
 const PEER_ID = /^libo-[a-f0-9]{32}$/;
 const MESSAGE_ID = /^[a-f0-9-]{16,64}$/;
 
-export function makePeerId() {
-  return `libo-${crypto.randomUUID().replaceAll('-', '')}`;
+export function normalizeNickname(value) {
+  if (typeof value !== 'string') return null;
+  const name = value.trim().replace(/^@/, '').normalize('NFKC').toLowerCase();
+  return name.length <= 24 && /^[\p{L}\p{N}_]{3,24}$/u.test(name) && !['пользователь_libo', 'libo', 'admin'].includes(name) ? name : null;
+}
+export async function peerIdForNickname(value) {
+  const nick = normalizeNickname(value);
+  if (!nick) throw new Error('NAME_INVALID');
+  return `libo-${(await hashHex('LIBO-NICK-2.1:' + nick)).slice(0,32)}`;
+}
+export function normalizePhone(value) {
+  if (!value) return '';
+  if (typeof value !== 'string' || value.length > 60 || !/^\+[\d ().-]+$/.test(value)) return null;
+  const phone = parsePhoneNumberFromString(value);
+  return phone?.isValid() ? phone.number : null;
 }
 
-export function normalizePeerCode(value) {
-  if (typeof value !== 'string' || value.length > 512) return null;
-  const text = value.trim().toLowerCase();
-  const id = text.startsWith('libo:') ? text.slice(5).trim() : text;
-  return PEER_ID.test(id) ? id : null;
+export function normalizePeerId(value) {
+  return typeof value === 'string' && PEER_ID.test(value) ? value : null;
 }
 
 export function normalizeName(value) {
@@ -34,10 +44,10 @@ export function avatarColor(id) {
   return ['violet', 'mint', 'rose', 'peach', 'blue'][Math.abs(hash) % 5];
 }
 
-export function previewText(message) {
-  if (!message) return 'Начните с простого «привет»';
-  const prefix = message.direction === 'out' ? 'Вы: ' : '';
-  return prefix + (message.text || (message.image ? '📷 Фотография' : 'Сообщение'));
+export function previewText(message, t = value => value) {
+  if (!message) return t('Начните с простого «привет»');
+  const prefix = message.direction === 'out' ? t('Вы: ') : '';
+  return prefix + (message.text || (message.image ? t('📷 Фотография') : t('Сообщение')));
 }
 
 export function safeFilename(name) {
@@ -80,17 +90,16 @@ export function makeIceServers(settings) {
 
 // Never spread untrusted data into application state. Each packet is copied and bounded.
 export function validatePacket(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || value.v !== 1) return null;
-  if (value.type === 'hello') {
-    const name = normalizeName(value.name);
-    if (!PEER_ID.test(value.id) || !name || typeof value.name !== 'string' || value.name.length > 80) return null;
-    return { v: 1, type: 'hello', id: value.id, name };
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.v !== 2) return null;
+  if (['read', 'read-ack'].includes(value.type)) {
+    if (!Array.isArray(value.ids) || !value.ids.length || value.ids.length > 100 || value.ids.some(id => typeof id !== 'string' || !MESSAGE_ID.test(id))) return null;
+    return { v: 2, type: value.type, ids: [...new Set(value.ids)] };
   }
   if (value.type === 'ack') {
-    return typeof value.id === 'string' && MESSAGE_ID.test(value.id) ? { v: 1, type: 'ack', id: value.id } : null;
+    return typeof value.id === 'string' && MESSAGE_ID.test(value.id) ? { v: 2, type: 'ack', id: value.id } : null;
   }
   if (value.type === 'typing') {
-    return typeof value.active === 'boolean' ? { v: 1, type: 'typing', active: value.active } : null;
+    return typeof value.active === 'boolean' ? { v: 2, type: 'typing', active: value.active } : null;
   }
   if (value.type !== 'message' || typeof value.id !== 'string' || !MESSAGE_ID.test(value.id)) return null;
   if (typeof value.text !== 'string' || value.text.length > MAX_TEXT) return null;
@@ -108,12 +117,12 @@ export function validatePacket(value) {
     if (typeof value.reply.name !== 'string' || value.reply.name.length > 40) return null;
     reply = { text: value.reply.text, name: normalizeName(value.reply.name) };
   }
-  return { v: 1, type: 'message', id: value.id, text: value.text, at: value.at, image, reply };
+  return { v: 2, type: 'message', id: value.id, text: value.text, at: value.at, image, reply };
 }
 
 export function toPacket(message) {
   return {
-    v: 1, type: 'message', id: message.id, text: message.text,
+    v: 2, type: 'message', id: message.id, text: message.text,
     at: message.at, image: message.image || null, reply: message.reply || null,
   };
 }
@@ -121,7 +130,7 @@ export function toPacket(message) {
 export function textExport(chats, profile) {
   return JSON.stringify({
     app: 'LIBO', version: VERSION, exportedAt: new Date().toISOString(),
-    note: 'Текстовый экспорт. Фотографии, личный код и настройки подключения не включены.',
+    note: 'Text export. Photos, phone numbers, encryption keys and connection settings are not included.',
     profile: { name: profile.name },
     chats: chats.map(chat => ({
       name: chat.name,

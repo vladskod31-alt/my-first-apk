@@ -1,20 +1,41 @@
+# Dependencies and generated build/test files
 node_modules/
 dist/
 build/
 .gradle/
 local.properties
-*.apk
-*.aab
-*.jks
-*.keystore
-*.p12
-.env
-.env.*
-!.env.example
 playwright-report/
 test-results/
 artifacts/
+.cache/
+.local/
+__pycache__/
+*.pyc
 .DS_Store
 
-# Requested tiny beta APK: fallback when binary uploads to Releases are unavailable.
-!downloads/LIBO-2.0.0-beta.1.apk
+# Generated APKs, archives and local handoff pages are not source review material.
+*.apk
+*.aab
+*.apks
+*.xapk
+*.zip
+/deliverables/
+
+# Credentials, signing material and private runtime data
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.password
+private-signing/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal

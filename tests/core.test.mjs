@@ -1,24 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  normalizePeerCode, makePeerId, normalizeName, validatePacket, parseSignalingUrl,
+  normalizePeerId, normalizeNickname, peerIdForNickname, normalizePhone, normalizeName, validatePacket, parseSignalingUrl,
   makeIceServers, textExport, MAX_TEXT, MAX_IMAGE_DATA, safeFilename, initials, toPacket,
 } from '../web/lib/core.mjs';
 
 const peerId = 'libo-0123456789abcdef0123456789abcdef';
-const message = { v: 1, type: 'message', id: '01234567-89ab-cdef-0123-456789abcdef', text: 'Привет! 👋', at: 1788591600000 };
+const message = { v: 2, type: 'message', id: '01234567-89ab-cdef-0123-456789abcdef', text: 'Привет! 👋', at: 1788591600000 };
 
-test('random peer identities are valid and distinct', () => {
-  const ids = new Set(Array.from({ length: 500 }, makePeerId));
-  assert.equal(ids.size, 500);
-  for (const id of ids) assert.equal(normalizePeerCode(id), id);
+test('nicknames are mandatory, Unicode-normalized and case insensitive', async () => {
+  assert.equal(normalizeNickname(' @САШКО_01 '), 'сашко_01');
+  assert.equal(normalizeNickname('Ａlice'), 'alice');
+  for (const value of ['', 'ab', 'has spaces', '<img>', 'a'.repeat(25), null, {}, 'LIBO:libo-1234', 'admin']) assert.equal(normalizeNickname(value), null);
+  assert.equal(await peerIdForNickname('@Alice'), await peerIdForNickname('alice'));
+  assert.notEqual(await peerIdForNickname('alice'), await peerIdForNickname('bob'));
+  assert.match(await peerIdForNickname('сашко'), /^libo-[a-f0-9]{32}$/);
+  await assert.rejects(peerIdForNickname(''));
 });
-test('accepts full contact codes, case and harmless surrounding whitespace', () => {
-  assert.equal(normalizePeerCode(`  LIBO:${peerId.toUpperCase()}\n`), peerId);
-  assert.equal(normalizePeerCode(peerId), peerId);
+test('internal peer IDs do not accept invitation codes, URLs or partial values', () => {
+  assert.equal(normalizePeerId(peerId), peerId);
+  for (const value of [null, {}, 'LIBO:' + peerId, 'libo-12', `https://example.com/${peerId}`, `<b>${peerId}</b>`, 'x'.repeat(513)]) assert.equal(normalizePeerId(value), null);
 });
-test('rejects partial, URL, HTML, self-invoking or overlong codes', () => {
-  for (const value of [null, {}, 'libo-12', `https://example.com/${peerId}`, `<b>${peerId}</b>`, `${peerId}?x=1`, 'x'.repeat(513)]) assert.equal(normalizePeerCode(value), null);
+test('phone numbers use validated international E.164, not fabricated verification', () => {
+  assert.equal(normalizePhone('+380 50 123 45 67'), '+380501234567');
+  assert.equal(normalizePhone('+1 (202) 555-0123'), '+12025550123');
+  assert.equal(normalizePhone(''), '');
+  for (const value of ['0501234567', '+9991234', '+380123', '+380501234567<script>', {}, 123]) assert.equal(normalizePhone(value), null);
 });
 test('names and file names are bounded', () => {
   assert.equal(normalizeName('  Аня\u0000  '), 'Аня');
@@ -33,7 +40,7 @@ test('validates and copies message packets without arbitrary fields', () => {
   assert.equal(packet.admin, undefined);
 });
 test('rejects invalid packet types and protocol versions', () => {
-  for (const value of [null, [], 'message', { ...message, v: 2 }, { ...message, type: 'eval' }]) assert.equal(validatePacket(value), null);
+  for (const value of [null, [], 'message', { ...message, v: 1 }, { ...message, type: 'eval' }]) assert.equal(validatePacket(value), null);
 });
 test('message IDs, text, timestamps and limits are mandatory', () => {
   for (const replacement of [
@@ -55,15 +62,15 @@ test('replies are copied and bounded', () => {
   assert.equal(validatePacket({ ...message, reply: { ...reply, name: 'x'.repeat(41) } }), null);
 });
 test('ACKs only acknowledge well-formed message IDs', () => {
-  assert.deepEqual(validatePacket({ v: 1, type: 'ack', id: message.id }), { v: 1, type: 'ack', id: message.id });
-  assert.equal(validatePacket({ v: 1, type: 'ack', id: '' }), null);
+  assert.deepEqual(validatePacket({ v: 2, type: 'ack', id: message.id }), { v: 2, type: 'ack', id: message.id });
+  assert.equal(validatePacket({ v: 2, type: 'ack', id: '' }), null);
 });
-test('hello must identify a LIBO peer, typing must be boolean', () => {
-  assert.ok(validatePacket({ v: 1, type: 'hello', id: peerId, name: 'Аня' }));
-  assert.equal(validatePacket({ v: 1, type: 'hello', id: 'fake', name: 'Аня' }), null);
-  assert.equal(validatePacket({ v: 1, type: 'hello', id: peerId, name: ' ' }), null);
-  assert.equal(validatePacket({ v: 1, type: 'typing', active: 'yes' }), null);
-  assert.deepEqual(validatePacket({ v: 1, type: 'typing', active: false }), { v: 1, type: 'typing', active: false });
+test('hello requires the separate signed handshake; typing must be boolean', () => {
+  assert.equal(validatePacket({ v: 2, type: 'hello', id: peerId, name: 'Аня' }), null);
+  assert.equal(validatePacket({ v: 2, type: 'hello', id: 'fake', name: 'Аня' }), null);
+  assert.equal(validatePacket({ v: 2, type: 'hello', id: peerId, name: ' ' }), null);
+  assert.equal(validatePacket({ v: 2, type: 'typing', active: 'yes' }), null);
+  assert.deepEqual(validatePacket({ v: 2, type: 'typing', active: false }), { v: 2, type: 'typing', active: false });
 });
 test('outgoing serialization excludes local state', () => {
   const packet = toPacket({ ...message, status: 'local', direction: 'out', secret: 'private' });
@@ -98,4 +105,11 @@ test('text exports never leak identity, TURN credentials or photo bytes', () => 
   const data = JSON.parse(json);
   assert.equal(data.chats[0].messages[0].photoFilename, 'photo.jpg');
   assert.equal(data.chats[0].messages[0].text, message.text);
+});
+
+test('read receipts and their acknowledgements are distinct, bounded and deduplicated', () => {
+  for (const type of ['read', 'read-ack']) {
+    assert.deepEqual(validatePacket({ v: 2, type, ids: [message.id, message.id] }), { v: 2, type, ids: [message.id] });
+    for (const ids of [null, [], ['invalid'], Array(101).fill(message.id)]) assert.equal(validatePacket({ v: 2, type, ids }), null);
+  }
 });

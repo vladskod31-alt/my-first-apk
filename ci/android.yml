@@ -1,89 +1,42 @@
-name: Android APK
-
+# Inactive template. A repository owner with Workflows permission may install it.
+name: Private Android preview
 on:
-  push:
-    branches: ['arena/01a0708b-my-first-apk']
-  pull_request:
   workflow_dispatch:
-    inputs:
-      publish:
-        description: 'Publish a new beta APK to GitHub Releases (bump the version first)'
-        type: boolean
-        default: false
-
-concurrency:
-  group: android-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
-
+concurrency:
+  group: private-android-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
+    if: github.event.repository.private == true
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - name: Install locked web dependencies
-        run: npm ci
-      - name: Validate message protocol
-        run: npm test
-      - name: Verify browser messaging and offline persistence
-        run: npm run test:e2e
-      - name: Build offline web assets
-        run: npm run build
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:e2e
+      - run: npm run build
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install Android build tools
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-      - name: Build and lint the installable beta
-        run: ./gradlew --no-daemon assembleDebug lintDebug
-      - name: Verify APK and prepare checksum
-        id: apk
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")
-          mkdir -p apk
-          cp app/build/outputs/apk/debug/app-debug.apk "apk/LIBO-${VERSION}.apk"
-          "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --verbose --print-certs "apk/LIBO-${VERSION}.apk"
-          "${ANDROID_HOME}/build-tools/35.0.0/aapt" dump badging "apk/LIBO-${VERSION}.apk" > apk/APK-INFO.txt
-          head -20 apk/APK-INFO.txt
-          (cd apk && sha256sum "LIBO-${VERSION}.apk" > SHA256SUMS.txt)
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - run: ./gradlew --no-daemon assembleDebug lintDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: LIBO-${{ steps.apk.outputs.version }}-APK
-          path: apk/
+          name: LIBO-private-preview
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
-      - name: Publish requested beta release
-        if: >-
-          github.ref == 'refs/heads/arena/01a0708b-my-first-apk' &&
-          ((github.event_name == 'workflow_dispatch' && inputs.publish) ||
-          (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-apk]')))
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.apk.outputs.version }}
-        run: |
-          set -euo pipefail
-          if gh release view "v${VERSION}" >/dev/null 2>&1; then
-            echo 'This release already exists. Bump the version; never replace a published APK silently.'
-            exit 1
-          fi
-          gh release create "v${VERSION}" \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "LIBO ${VERSION} — Android beta" \
-            --notes-file RELEASE_NOTES.md \
-            "apk/LIBO-${VERSION}.apk" apk/SHA256SUMS.txt
+          retention-days: 7
+# No automatic release, public download or source publication step.
+# CI debug signing is ephemeral. A stable deployment needs an owner-managed private keystore.

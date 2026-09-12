@@ -6,6 +6,9 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.provider.Settings;
+import org.json.JSONObject;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.net.Uri;
@@ -13,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.view.WindowInsetsController;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -35,6 +39,8 @@ import java.util.Map;
 
 /** A small, offline-capable shell. Only bundled application code can access the native bridge. */
 public final class MainActivity extends Activity {
+    public static volatile boolean isForeground = false;
+    private static final int REQUEST_NOTIFICATIONS = 2303;
     private static final String ORIGIN = "https://appassets.androidplatform.net";
     private static final int PICK_PHOTO = 100;
     private static final int SAVE_EXPORT = 101;
@@ -46,11 +52,18 @@ public final class MainActivity extends Activity {
     private FrameLayout root;
     private ValueCallback<Uri[]> photoCallback;
     private byte[] pendingExport;
+    private String pendingExportAsset;
+    private View privacyCover;
+    private volatile String appLanguage = "ru";
 
     @Override
     @SuppressLint("SetJavaScriptEnabled") // Required by the bundled messenger; arbitrary remote pages are never loaded.
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        appLanguage = getSharedPreferences("privacy", MODE_PRIVATE).getString("language", "ru");
+        if (getSharedPreferences("privacy", MODE_PRIVATE).getBoolean("vault", false)) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        }
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(247, 247, 251));
         setContentView(root);
@@ -59,6 +72,11 @@ public final class MainActivity extends Activity {
         webView = new WebView(this);
         webView.setBackgroundColor(Color.TRANSPARENT);
         root.addView(webView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        privacyCover = new View(this);
+        privacyCover.setBackgroundColor(Color.rgb(247, 247, 251));
+        privacyCover.setVisibility(View.GONE);
+        root.addView(privacyCover, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -72,7 +90,7 @@ public final class MainActivity extends Activity {
         settings.setSupportMultipleWindows(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setSafeBrowsingEnabled(true);
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
+        WebView.setWebContentsDebuggingEnabled(false);
         webView.addJavascriptInterface(new NativeBridge(), "LiboAndroid");
         webView.setWebViewClient(new LocalContentClient());
         webView.setWebChromeClient(new WebChromeClient() {
@@ -83,8 +101,15 @@ public final class MainActivity extends Activity {
                 photoCallback = callback;
                 Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 pick.addCategory(Intent.CATEGORY_OPENABLE);
-                pick.setType("image/*");
-                pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp"});
+                boolean json = false;
+                for (String accept : params.getAcceptTypes()) if (accept != null && (accept.contains("json") || accept.contains(".json"))) json = true;
+                if (json) {
+                    pick.setType("*/*");
+                    pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "text/plain", "application/octet-stream"});
+                } else {
+                    pick.setType("image/*");
+                    pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp"});
+                }
                 try { startActivityForResult(pick, PICK_PHOTO); }
                 catch (ActivityNotFoundException error) {
                     photoCallback.onReceiveValue(null);
@@ -166,6 +191,8 @@ public final class MainActivity extends Activity {
         if (path.endsWith(".woff2")) return "font/woff2";
         if (path.endsWith(".png")) return "image/png";
         if (path.endsWith(".json")) return "application/json";
+        if (path.endsWith(".zip")) return "application/zip";
+        if (path.endsWith(".webp")) return "image/webp";
         return "application/octet-stream";
     }
 
@@ -175,19 +202,7 @@ public final class MainActivity extends Activity {
             if (text == null || text.length() > 1024) return;
             runOnUiThread(new Runnable() { @Override public void run() {
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("Личный код LIBO", text));
-            }});
-        }
-
-        @JavascriptInterface
-        public void shareText(String text) {
-            if (text == null || text.length() > 3000) return;
-            runOnUiThread(new Runnable() { @Override public void run() {
-                Intent send = new Intent(Intent.ACTION_SEND);
-                send.setType("text/plain");
-                send.putExtra(Intent.EXTRA_TEXT, text);
-                try { startActivity(Intent.createChooser(send, "Пригласить в LIBO")); }
-                catch (ActivityNotFoundException error) { showToast("Не удалось открыть меню отправки."); }
+                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("LIBO", text));
             }});
         }
 
@@ -196,7 +211,7 @@ public final class MainActivity extends Activity {
             if (content == null || content.length() > 6_000_000) return;
             final String safe = filename == null ? "LIBO-export.json" : filename.replaceAll("[^a-zA-Z0-9._-]", "_");
             runOnUiThread(new Runnable() { @Override public void run() {
-                if (pendingExport != null) { showToast("Сначала завершите текущий экспорт."); return; }
+                if (pendingExport != null || pendingExportAsset != null) { showToast("Сначала завершите текущий экспорт."); return; }
                 pendingExport = content.getBytes(StandardCharsets.UTF_8);
                 Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                 create.addCategory(Intent.CATEGORY_OPENABLE);
@@ -211,9 +226,90 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void saveEmojiPack() {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                if (pendingExport != null || pendingExportAsset != null) { showToast("Сначала завершите текущий экспорт."); return; }
+                // Fixed bundled asset: the bridge never accepts an arbitrary filesystem path.
+                pendingExportAsset = "emoji/libo-emoji-svg.zip";
+                Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                create.addCategory(Intent.CATEGORY_OPENABLE);
+                create.setType("application/zip");
+                create.putExtra(Intent.EXTRA_TITLE, "LIBO-Emoji-15.0-SVG.zip");
+                try { startActivityForResult(create, SAVE_EXPORT); }
+                catch (ActivityNotFoundException error) { pendingExportAsset = null; showToast("Нет приложения для сохранения файла."); }
+            }});
+        }
+
+        @JavascriptInterface
+        public void setLanguage(String language) {
+            if (!"ru".equals(language) && !"uk".equals(language) && !"en".equals(language)) return;
+            appLanguage = language;
+            getSharedPreferences("privacy", MODE_PRIVATE).edit().putString("language", language).apply();
+        }
+
+        @JavascriptInterface
+        public void setSecureWindow(boolean enabled) {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                getSharedPreferences("privacy", MODE_PRIVATE).edit().putBoolean("vault", enabled).apply();
+                if (enabled) getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+                else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            }});
+        }
+
+        @JavascriptInterface
+        public String notificationStatus() {
+            try {
+                JSONObject info = new JSONObject(); info.put("available", true);
+                info.put("permission", MessageSyncService.notificationPermission(MainActivity.this) ? "granted" : "denied");
+                info.put("running", MessageSyncService.running); info.put("connected", MessageSyncService.connected); return info.toString();
+            } catch (Exception ignored) { return "{}"; }
+        }
+
+        @JavascriptInterface
+        public void requestNotifications() {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+                    boolean asked = getSharedPreferences("privacy", MODE_PRIVATE).getBoolean("notificationAsked", false);
+                    if (asked && !shouldShowRequestPermissionRationale("android.permission.POST_NOTIFICATIONS")) {
+                        try { startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())); }
+                        catch (ActivityNotFoundException ignored) { showToast("Настройки Android недоступны."); }
+                    } else {
+                        getSharedPreferences("privacy", MODE_PRIVATE).edit().putBoolean("notificationAsked", true).apply();
+                        requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQUEST_NOTIFICATIONS);
+                    }
+                } else {
+                    try { startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())); }
+                    catch (ActivityNotFoundException ignored) { showToast("Настройки Android недоступны."); }
+                }
+            }});
+        }
+
+        @JavascriptInterface
+        public void openBatterySettings() {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                try { startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); }
+                catch (ActivityNotFoundException ignored) { showToast("Настройки Android недоступны."); }
+            }});
+        }
+
+        @JavascriptInterface
+        public void configureBackground(String value) {
+            if (value == null || value.length() > 4096) return;
+            runOnUiThread(new Runnable() { @Override public void run() {
+                try {
+                    JSONObject config = new JSONObject(value);
+                    if (!config.optBoolean("enabled")) { MessageSyncService.stop(MainActivity.this); BackgroundPreferences.clear(MainActivity.this); return; }
+                    if (!MessageSyncService.notificationPermission(MainActivity.this)) return;
+                    BackgroundPreferences.save(MainActivity.this, config); MessageSyncService.start(MainActivity.this);
+                } catch (Exception ignored) { showToast("Не удалось включить фоновую доставку."); }
+            }});
+        }
+
+        @JavascriptInterface
         public void setDarkTheme(boolean dark) {
             runOnUiThread(new Runnable() { @Override public void run() {
                 root.setBackgroundColor(dark ? Color.rgb(25, 25, 32) : Color.rgb(247, 247, 251));
+                privacyCover.setBackgroundColor(dark ? Color.rgb(25, 25, 32) : Color.rgb(247, 247, 251));
                 if (Build.VERSION.SDK_INT >= 30) {
                     WindowInsetsController controller = getWindow().getInsetsController();
                     if (controller != null) {
@@ -241,14 +337,20 @@ public final class MainActivity extends Activity {
         }
         if (request == SAVE_EXPORT) {
             byte[] bytes = pendingExport;
-            pendingExport = null;
-            if (bytes == null || result != RESULT_OK || data == null || data.getData() == null) return;
+            String asset = pendingExportAsset;
+            pendingExport = null; pendingExportAsset = null;
+            if ((bytes == null && asset == null) || result != RESULT_OK || data == null || data.getData() == null) return;
             Uri uri = data.getData();
             new Thread(new Runnable() { @Override public void run() {
                 try (OutputStream output = getContentResolver().openOutputStream(uri)) {
                     if (output == null) throw new IOException("No output stream");
-                    output.write(bytes);
-                    runOnUiThread(new Runnable() { @Override public void run() { showToast("Текстовый экспорт сохранён"); }});
+                    if (asset != null) {
+                        try (InputStream input = getAssets().open(asset)) {
+                            byte[] buffer = new byte[8192]; int count;
+                            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                        }
+                    } else output.write(bytes);
+                    runOnUiThread(new Runnable() { @Override public void run() { showToast("Файл сохранён"); }});
                 } catch (IOException | SecurityException error) {
                     runOnUiThread(new Runnable() { @Override public void run() { showToast("Не удалось сохранить файл. Проверьте свободное место."); }});
                 }
@@ -267,16 +369,29 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        isForeground = false;
         super.onPause();
-        if (webView != null) webView.onPause();
+        if (privacyCover != null) privacyCover.setVisibility(View.VISIBLE);
+        if (webView != null) {
+            webView.evaluateJavascript("window.Libo && window.Libo.onBackground()", null);
+            webView.onPause();
+        }
     }
     @Override protected void onResume() {
-        super.onResume();
-        if (webView != null) webView.onResume();
+        super.onResume(); isForeground = true; MessageSyncService.clearMessages(this);
+        if (webView != null) {
+            webView.onResume();
+            webView.evaluateJavascript("window.Libo && window.Libo.onForeground()", new ValueCallback<String>() {
+                @Override public void onReceiveValue(String ignored) {
+                    if (privacyCover != null) privacyCover.setVisibility(View.GONE);
+                }
+            });
+        }
     }
     @Override protected void onDestroy() {
+        isForeground = false;
         if (photoCallback != null) { photoCallback.onReceiveValue(null); photoCallback = null; }
-        pendingExport = null;
+        pendingExport = null; pendingExportAsset = null;
         if (webView != null) {
             root.removeView(webView);
             webView.removeJavascriptInterface("LiboAndroid");
@@ -285,5 +400,32 @@ public final class MainActivity extends Activity {
         }
         super.onDestroy();
     }
-    private void showToast(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
+    @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] grants) {
+        super.onRequestPermissionsResult(request, permissions, grants);
+        if (request == REQUEST_NOTIFICATIONS && webView != null) webView.evaluateJavascript("window.Libo && window.Libo.onNotificationPermission()", null);
+    }
+
+    private void showToast(String text) {
+        String value = text;
+        if ("uk".equals(appLanguage)) {
+            if (text.equals("Настройки Android недоступны.")) value = "Налаштування Android недоступні.";
+            if (text.equals("Не удалось включить фоновую доставку.")) value = "Не вдалося ввімкнути фонову доставку.";
+            if (text.equals("На устройстве нет приложения для выбора фотографий.")) value = "Немає застосунку для вибору фотографій.";
+            if (text.equals("Нет браузера для открытия ссылки.")) value = "Немає браузера для відкриття посилання.";
+            if (text.equals("Сначала завершите текущий экспорт.")) value = "Спочатку завершіть поточний експорт.";
+            if (text.equals("Нет приложения для сохранения файла.")) value = "Немає застосунку для збереження файлу.";
+            if (text.equals("Файл сохранён")) value = "Файл збережено";
+            if (text.equals("Не удалось сохранить файл. Проверьте свободное место.")) value = "Не вдалося зберегти файл. Перевірте вільне місце.";
+        } else if ("en".equals(appLanguage)) {
+            if (text.equals("Настройки Android недоступны.")) value = "Android settings are unavailable.";
+            if (text.equals("Не удалось включить фоновую доставку.")) value = "Could not enable background delivery.";
+            if (text.equals("На устройстве нет приложения для выбора фотографий.")) value = "No photo picker is available on this device.";
+            if (text.equals("Нет браузера для открытия ссылки.")) value = "No browser is available to open the link.";
+            if (text.equals("Сначала завершите текущий экспорт.")) value = "Finish the current export first.";
+            if (text.equals("Нет приложения для сохранения файла.")) value = "No app is available to save this file.";
+            if (text.equals("Файл сохранён")) value = "File saved";
+            if (text.equals("Не удалось сохранить файл. Проверьте свободное место.")) value = "Could not save the file. Check your device’s free space.";
+        }
+        Toast.makeText(this, value, Toast.LENGTH_LONG).show();
+    }
 }

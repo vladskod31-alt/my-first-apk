@@ -1,0 +1,41 @@
+services:
+  libo:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      ACCOUNT_DB: /data/accounts.sqlite
+      CLOUD_DB: /data/cloud.sqlite
+      TRUST_PROXY: "1"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://appassets.androidplatform.net}
+      CLOUD_QUOTA_BYTES: ${CLOUD_QUOTA_BYTES:-67108864}
+      CLOUD_TOTAL_QUOTA_BYTES: ${CLOUD_TOTAL_QUOTA_BYTES:-536870912}
+      CLOUD_MAX_ACCOUNTS: ${CLOUD_MAX_ACCOUNTS:-100}
+      MAX_SMS_PER_DAY: ${MAX_SMS_PER_DAY:-25}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_VERIFY_SERVICE_SID: ${TWILIO_VERIFY_SERVICE_SID:-}
+    volumes:
+      - libo-data:/data
+    expose:
+      - "3000"
+  https:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      LIBO_DOMAIN: ${LIBO_DOMAIN:?Set LIBO_DOMAIN to your domain}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - libo
+volumes:
+  libo-data:
+  caddy-data:
+  caddy-config:

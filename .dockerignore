@@ -1,0 +1,17 @@
+.git
+node_modules
+.cache
+.local
+build
+dist
+artifacts
+deliverables
+.env
+.env.*
+*.keystore
+*.jks
+*.password
+private-signing
+uploads
+test-results
+playwright-report

@@ -9,15 +9,15 @@ android {
         applicationId 'app.libo.messenger'
         minSdk 26
         targetSdk 35
-        versionCode 20001
-        versionName '2.0.0-beta.1'
+        versionCode 20300
+        versionName '2.3.0'
     }
     buildFeatures { buildConfig true }
     buildTypes {
         debug {
-            // This first downloadable beta is a test APK, not a Play Store release.
-            applicationIdSuffix '.beta'
-            debuggable true
+            // Separate test install; never overwrite the older beta with an unrelated signing key.
+            applicationIdSuffix '.preview23'
+            debuggable false
         }
         release {
             minifyEnabled false

@@ -1,27 +1,20 @@
-MIT License
+LIBO 2.1–2.3 — proprietary project additions
 
-Copyright (c) 2026 LIBO contributors
+Copyright (c) 2026 LIBO project authors. All rights reserved in the new
+project-owned additions and modifications introduced with version 2.1 and later, including version 2.3.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+No permission to redistribute, sublicense, publish or commercially exploit
+these new additions is granted by this repository. Obtain written permission
+from the rights holder. Access to a working copy or an APK is not a grant of
+redistribution rights.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This notice does not revoke or restrict rights already granted for earlier
+copies. The earlier 2.0 MIT notice is retained in licenses/LIBO-2.0-MIT.txt;
+those portions and third-party components remain subject to their respective
+licences. See THIRD_PARTY_NOTICES.md. The pre-existing
+LIBO_v-1.4.6_SUPER_MEGA_STABLE-6.html retains its original rights; this notice
+does not assert additional rights over it.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-Scope: this license applies to the new modular web/Android application and
-supporting files introduced in version 2.0. The pre-existing file
-LIBO_v-1.4.6_SUPER_MEGA_STABLE-6.html retains its original rights; no license
-for that legacy file is asserted here. Third-party software and fonts retain
-their respective licenses; see THIRD_PARTY_NOTICES.md.
+THE NEW ADDITIONS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, TO THE
+EXTENT PERMITTED BY APPLICABLE LAW. THE BETA HAS NOT RECEIVED AN INDEPENDENT
+SECURITY AUDIT AND MUST NOT BE REPRESENTED AS A CERTIFIED SECURE PRODUCT.
