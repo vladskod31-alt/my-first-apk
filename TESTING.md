@@ -1,4 +1,4 @@
-# Проверка LIBO 2.5.0
+# Проверка LIBO 2.6.0
 
 Дата прогона: 12 сентября 2026. Среда: Linux x64; Node.js 22.22.3; Chromium 143
 (пакет `@sparticuz/chromium@143.0.4` из npm, без внешних загрузок браузеров);
@@ -74,14 +74,14 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
   Полный вывод сохраняется в `artifacts/SIGNING.txt`.
 - `zipalign -c 4` проходит; целостность ZIP и состав APK проверены разбором архива.
 - `aapt2 dump badging` (вывод в `artifacts/APK-INFO.txt`): пакет `app.libo.messenger`,
-  versionCode 20500, versionName 2.5.0, minSdk 26, targetSdk 35, единственное разрешение
+  versionCode 20600, versionName 2.6.0, minSdk 26, targetSdk 35, единственное разрешение
   `android.permission.INTERNET`, запускаемая активность
   `app.libo.messenger.MainActivity`, иконка `mipmap-anydpi-v26/ic_launcher.xml` во всех
   плотностях, в assets входят `index.html`, JS/CSS-бандл, шрифты WOFF2, `icon.svg`,
   `icon-192.png`, `icon-512.png` и `third-party-notices.txt`.
 - Контрольная сумма APK: `artifacts/SHA256SUMS.txt` и `downloads/SHA256SUMS.txt`
-  (значения совпадают): `78c05f191d5625e37ffe3c63132441affc7b005c31d408395b6c20d8adc82bcf`.
-- Иконки: legacy PNG во всех плотностях, адаптивные слои и монохромный слой присутствуют
+  (значения совпадают): `3926549d9237067f9bfcbba4ecbb6c9c700259bcf2621b982a3920041f99cb2e`.
+- Иконки 2.6.0: плоский 2D-набор (legacy PNG во всех плотностях, адаптивные слои, монохромный слой) присутствует
   в APK; веб-фавикон и `icon-512.png` входят в assets.
 
 ## Что не подтверждено

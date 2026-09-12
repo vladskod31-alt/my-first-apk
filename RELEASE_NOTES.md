@@ -1,6 +1,6 @@
-# LIBO 2.5.0 для Android
+# LIBO 2.6.0 для Android
 
-Тег релиза: `v2.5.0` · Дата публикации: 12 сентября 2026 · Язык документации: русский
+Тег релиза: `v2.6.0` · Дата публикации: 12 сентября 2026 · Язык документации: русский
 (команды, имена файлов и API приводятся по-английски — это код, а не текст).
 
 LIBO — мессенджер для личной переписки один на один: сообщения, фотографии, голосовые
@@ -10,45 +10,61 @@ LIBO — мессенджер для личной переписки один н
 
 | Файл | Ссылка | Размер |
 | --- | --- | --- |
-| Установочный APK (основная ссылка) | [LIBO-2.5.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.5.0/downloads/LIBO-2.5.0.apk) | 387 451 байт |
-| Установочный APK (зеркало в релизе) | [LIBO-2.5.0.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.5.0/LIBO-2.5.0.apk) | 387 451 байт |
-| Контрольные суммы | [SHA256SUMS.txt](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.5.0/downloads/SHA256SUMS.txt) | 81 байт |
+| Установочный APK (основная ссылка) | [LIBO-2.6.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.6.0/downloads/LIBO-2.6.0.apk) | 276 859 байт |
+| Установочный APK (зеркало в релизе) | [LIBO-2.6.0.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.6.0/LIBO-2.6.0.apk) | 276 859 байт |
+| Контрольные суммы | [SHA256SUMS.txt](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.6.0/downloads/SHA256SUMS.txt) | 81 байт |
 
-Основная ссылка ведёт в каталог `downloads/` неизменяемого тега `v2.5.0` и работает
+Основная ссылка ведёт в каталог `downloads/` неизменяемого тега `v2.6.0` и работает
 всегда; зеркало — release-asset GitHub (про загрузку бинарных файлов см. раздел «Файлы
 релиза и uploads.github.com»).
 
-Контрольная сумма SHA-256 файла `LIBO-2.5.0.apk`:
+Контрольная сумма SHA-256 файла `LIBO-2.6.0.apk`:
 
 ```text
-78c05f191d5625e37ffe3c63132441affc7b005c31d408395b6c20d8adc82bcf
+3926549d9237067f9bfcbba4ecbb6c9c700259bcf2621b982a3920041f99cb2e
 ```
 
 ```sh
 # Linux: проверка одной командой
-curl -fsSL https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.5.0/downloads/SHA256SUMS.txt | sha256sum -c -
-# macOS: shasum -a 256 LIBO-2.5.0.apk
-# Windows PowerShell: (Get-FileHash LIBO-2.5.0.apk -Algorithm SHA256).Hash
+curl -fsSL https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.6.0/downloads/SHA256SUMS.txt | sha256sum -c -
+# macOS: shasum -a 256 LIBO-2.6.0.apk
+# Windows PowerShell: (Get-FileHash LIBO-2.6.0.apk -Algorithm SHA256).Hash
 ```
 
 ### Подпись
 
-APK подписан тем же релизным ключом RSA-4096, что и 2.3.0, поэтому обновление
+APK подписан тем же релизным ключом RSA-4096, что и 2.3.0/2.5.0, поэтому обновление
 устанавливается поверх без переустановления. Отпечаток SHA-256 сертификата:
 
 ```text
 3bb3878c0b3dd9ec3a31905da3a22fd7730a72ca83cf9421e582f70b527510e0
 ```
 
-Проверка: `apksigner verify --verbose --print-certs LIBO-2.5.0.apk` — сверьте строку
+Проверка: `apksigner verify --verbose --print-certs LIBO-2.6.0.apk` — сверьте строку
 `Signer #1 certificate SHA-256 digest`. Схемы подписи v2 и v3 (v1 для minSdk 26 не
-требуется). Манифест: пакет `app.libo.messenger`, версия 2.5.0 (код 20500), minSdk 26,
+требуется). Манифест: пакет `app.libo.messenger`, версия 2.6.0 (код 20600), minSdk 26,
 targetSdk 35, единственное разрешение `INTERNET`, `debuggable=false`.
 
-## Иконка 2.5.0
+## Что нового в 2.6.0
 
-Старая плоская иконка 2.3.0 удалена. Новая иконка построена по присланному владельцем
-изображению: фиолетовые концентрические кольца с глянцевой дугой, салатовая стрелка
+1. **Плоская 2D-иконка, квадрат 1:1.** Глянцевый арт 2.5.0 (градиенты, тени, блики,
+   световая дуга с растушёвкой) заменён строгой плоской композицией: сплошное
+   фиолетовое поле `#A855F7`, одна плоская кольцевая полоса `#7C1FD8`, плоское белое
+   кольцо, салатовая стрелка `#84CC16` и белые «i B O» — без градиентов, теней и
+   бликов. Формат 1:1 во всех артефактах.
+2. **Промо-квадраты 1:1**: `art/libo-2d-1024.png` (1024×1024) и `web/public/icon-512.png`.
+3. Весь набор сгенерирован одним скриптом `scripts/make-icons-26.py`: legacy PNG
+   mdpi…xxxhdpi, круглые варианты, адаптивные слои background/foreground, монохромный
+   слой для Android 13+, плоский веб-фавикон `icon.svg`. Сравнение 2.5 → 2.6:
+   `art/icon-comparison-old-new.png`.
+4. Функциональность и протокол не менялись: это релиз стабильности и нового знака.
+   Всё перечисленное в разделах ниже (функции 2.5.0, уборка, ограничения) сохраняется.
+
+## Иконка: история замен
+
+В 2.5.0 знак построен по присланному владельцем изображению; в 2.6.0 он переведён в
+плоский 2D-вид по запросу владельца (раздел «Что нового в 2.6.0»). Реконструкция
+выполнена параметрически: фиолетовые концентрические кольца с глянцевой дугой, салатовая стрелка
 и белая надпись «i B O» по диагонали. Поскольку исходный файл изображения не сохранился
 в среде сборки, арт параметрически воссоздан в скрипте `scripts/make-icons-25.py`
 (структура, цвета и композиция совпадают с присланным образцом; пиксельных отличий от
@@ -59,7 +75,7 @@ Android 13+, веб-фавикон `icon.svg` и `icon-512.png`/`icon-192.png`. 
 новой иконок: `art/icon-comparison-old-new.png`. Если владелец приложит исходный
 PNG-файл ещё раз, набор пересобирается из него без ручных правок.
 
-## Что нового в 2.5.0 (функции)
+## Функции 2.5.0 (сохранены в 2.6.0)
 
 1. **Голосовые сообщения**: кнопка микрофона в компоновщике, запись до 60 секунд,
    плеер в пузыре сообщения с длительностью.
@@ -96,7 +112,7 @@ PNG-файл ещё раз, набор пересобирается из нег�
 каналы с подписчиками, группы с ролями администратора. LIBO остаётся P2P-мессенджером:
 эти возможности вернулись бы центральным сервером контактов, чего архитектура избегает.
 
-## Уборка интерфейса (20 пунктов)
+## Уборка интерфейса 2.5.0 (20 пунктов, сохранена в 2.6.0)
 
 1. Декоративные элементы без функции: удалены старые плоские слои иконки и лишние
    градиенты фона; герой-арт оставлен один.
@@ -145,7 +161,7 @@ PNG-файл ещё раз, набор пересобирается из нег�
 Требования: Android 8.0 (API 26) или новее, обновлённый Android System WebView, около
 8 МБ свободного места. Установка не из Google Play.
 
-1. Скачайте `LIBO-2.5.0.apk` по основной ссылке и проверьте SHA-256.
+1. Скачайте `LIBO-2.6.0.apk` по основной ссылке и проверьте SHA-256.
 2. Разрешите установку из неизвестных источников приложению, которым скачали файл:
    - **Android 8.0–8.1 и 9**: «Настройки → Приложения и уведомления → Специальный
      доступ → Установка неизвестных приложений» → выбрать браузер/файловый менеджер →
@@ -162,9 +178,9 @@ PNG-файл ещё раз, набор пересобирается из нег�
    запрос на общение.
 4. Сверьте код сверки (кнопка-щит в шапке чата или меню «⋯» → «Код сверки»).
 
-### Обновление с 2.3.0 и с 2.0.0-beta.1
+### Обновление с 2.5.0, 2.3.0 и с 2.0.0-beta.1
 
-- С 2.3.0: тот же пакет и тот же ключ подписи — установка поверх сохраняет историю,
+- С 2.5.0 и 2.3.0: тот же пакет и тот же ключ подписи — установка поверх сохраняет историю,
   личный код и настройки.
 - С 2.0.0-beta.1: другой пакет (`app.libo.messenger.beta`) и debug-ключ, поэтому
   сначала экспортируйте тексты в бете, затем установите 2.5.0 и обменяйтесь кодами
@@ -188,7 +204,7 @@ PNG-файл ещё раз, набор пересобирается из нег�
   LIBO не анонимайзер.
 - GitHub хранит код, документацию и APK, но не переписку: она не покидает устройства
   кроме прямого канала между двумя собеседниками.
-- Совместимость версий: 2.5.0 и 2.3.0 обмениваются обычными сообщениями без потерь;
+- Совместимость версий: 2.6.0, 2.5.0 и 2.3.0 обмениваются обычными сообщениями без потерь;
   новые пакеты (правки, удаления, закрепы, реакции) версии 2.3.0 игнорируют — пара
   «2.5.0 + 2.3.0» работает как 2.3.0, новые возможности требуют 2.5.0 с обеих сторон.
 
@@ -241,7 +257,7 @@ lint, аудит секретов на каждый push/PR) и `.github/workflo
 Загрузка бинарных assets из среды сборки по-прежнему упирается в обрыв соединения с
 `uploads.github.com` (повторы 12.09.2026: EOF). Поэтому APK лежит в `downloads/` тега
 (основная ссылка), а release-asset остаётся зеркалом: его догружает CI или владелец
-вручную (`gh release upload v2.5.0 LIBO-2.5.0.apk SHA256SUMS.txt --clobber`).
+вручную (`gh release upload v2.6.0 LIBO-2.6.0.apk SHA256SUMS.txt --clobber`).
 
 ## Известные ограничения, отчёты, безопасность
 
@@ -269,7 +285,10 @@ MIT, текст в `LICENSE`; сторонние компоненты — `THIRD
 
 ### English summary
 
-LIBO 2.5.0 keeps the P2P one-to-one design and adds: voice messages, file and video
+LIBO 2.6.0 replaces the glossy 2.5.0 artwork with a strict flat 2D square (1:1) icon
+across all launcher densities, adaptive layers, themed-icon monochrome layer, web
+favicon and 1024 px promo art, without functional or protocol changes. LIBO 2.5.0 keeps
+the P2P one-to-one design and adds: voice messages, file and video
 attachments (1.5 MB cap), message editing with an «edited» marker, delete-for-both,
 pinned messages with a pinned bar, six built-in SVG-emoji reactions, close (starred)
 contacts, last-seen presence, JSON backup import as read-only archives, a shield button
@@ -279,8 +298,8 @@ across all launcher densities, adaptive layers, themed-icon monochrome layer and
 favicon. UI cleanup: compact paddings under 420 px, reduced-motion support, lazier
 startup, fewer confirmations, no stray console output, capability-gated recording
 buttons. Signed with the same RSA-4096 release certificate as 2.3.0 (SHA-256
-`3bb3878c0b3dd9ec3a31905da3a22fd7730a72ca83cf9421e582f70b527510e0`); APK SHA-256
-`78c05f191d5625e37ffe3c63132441affc7b005c31d408395b6c20d8adc82bcf`. Verified by 21 unit
+`3bb3878c0b3dd9ec3a31905da3a22fd7730a72ca83cf9421e582f70b527510e0`); APK SHA-256 for 2.6.0 is
+`3926549d9237067f9bfcbba4ecbb6c9c700259bcf2621b982a3920041f99cb2e`. Verified by 21 unit
 tests and 7 Playwright scenarios including a real WebRTC exchange with reactions, pins,
 edits and delete-for-both between two isolated clients. Phone-number registration,
 people search, channels and groups remain roadmap items because they require a central

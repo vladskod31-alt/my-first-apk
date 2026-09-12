@@ -6,7 +6,7 @@
 напрямую между двумя устройствами по WebRTC: без сервера переписки, без регистрации по
 телефону и без облачной истории. Личный код устройства — единственный адрес.
 
-Текущая версия: **2.5.0** (тестовый релиз для Android 8.0+). Актуальные ссылки на
+Текущая версия: **2.6.0** (тестовый релиз для Android 8.0+). Актуальные ссылки на
 скачивание, контрольные суммы и отпечаток подписи — в
 [RELEASE_NOTES.md](RELEASE_NOTES.md) и в
 [релизах GitHub](https://github.com/vladskod31-alt/my-first-apk/releases).
@@ -14,12 +14,12 @@
 ## Скачать APK
 
 - Основная ссылка (каталог `downloads/` тега `v2.3.0`):
-  [LIBO-2.3.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.5.0/downloads/LIBO-2.5.0.apk)
-- Зеркало (release-asset): [LIBO-2.3.0.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.5.0/LIBO-2.5.0.apk)
+  [LIBO-2.3.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.6.0/downloads/LIBO-2.6.0.apk)
+- Зеркало (release-asset): [LIBO-2.3.0.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.6.0/LIBO-2.6.0.apk)
 - Контрольные суммы: [SHA256SUMS.txt](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.3.0/downloads/SHA256SUMS.txt)
 
 ```text
-SHA-256 LIBO-2.5.0.apk = 78c05f191d5625e37ffe3c63132441affc7b005c31d408395b6c20d8adc82bcf
+SHA-256 LIBO-2.6.0.apk = 3926549d9237067f9bfcbba4ecbb6c9c700259bcf2621b982a3920041f99cb2e
 ```
 
 Полный порядок установки для Android 8.0/8.1, 9, 10–12 и 13+ — в разделе «Установка»
@@ -94,7 +94,7 @@ Gradle-сборка (CI и обычные машины с SDK Android):
 | `web/` | Интерфейс и логика мессенджера (P2P-транспорт, хранилище, протокол) |
 | `app/` | Оболочка Android: WebView, мост к системе, ресурсы и иконки |
 | `tests/` | Модульные тесты и браузерные сценарии |
-| `scripts/` | Локальный сервер разработки, сборка APK, генерация иконок 2.5.0, аудит секретов |
+| `scripts/` | Локальный сервер разработки, сборка APK, генерация иконок (2.6.0 — плоский 2D-набор), аудит секретов |
 | `docs/` | Инструкции: свой signaling и TURN (`SELF_HOSTING.md`) |
 | `ci/` | Шаблон workflow для собственного CI |
 | `downloads/` | Зеркало APK для тегов релизов (когда бинарные загрузки недоступны) |

@@ -1,18 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="LIBO">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#b678fb"/><stop offset="1" stop-color="#9333ea"/>
-    </linearGradient>
-  </defs>
-  <rect width="96" height="96" rx="20" fill="url(#g)"/>
-  <g fill="none" stroke="#7e22ce" stroke-width="9">
-    <circle cx="-40" cy="136" r="118"/>
-    <circle cx="-40" cy="136" r="152"/>
-  </g>
-  <g fill="none" stroke="#d8b4fe" stroke-width="2.4">
-    <circle cx="-40" cy="136" r="124"/>
-    <circle cx="-40" cy="136" r="158"/>
-  </g>
+  <rect width="96" height="96" fill="#a855f7"/>
+  <path fill="#7c1fd8" fill-rule="evenodd" d="M-40 136a179 179 0 1 0 0-358 179 179 0 0 0 0 358Zm0-32a147 147 0 1 1 0-294 147 147 0 0 1 0 294Z"/>
+  <circle cx="-40" cy="136" r="163" fill="none" stroke="#fff" stroke-width="2.6"/>
   <g transform="rotate(33 48 44)">
     <path d="M22 44 L40 31 M22 44 L40 57" stroke="#84cc16" stroke-width="10" stroke-linecap="round" fill="none"/>
     <path d="M48 49 h10" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
