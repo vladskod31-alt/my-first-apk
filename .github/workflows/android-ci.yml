@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-tests:
+    name: Модульные тесты и браузерные сценарии
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Модульные тесты (19)
+        run: npm test
+      - name: Браузерные сценарии (6)
+        run: npm run test:e2e
+      - name: Production-бандл веб-части
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-logs
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+
+  android-build:
+    name: Gradle-сборка и lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: assembleDebug
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Android lint (не блокирует, пока SDK-окружение стабилизируется)
+        continue-on-error: true
+        run: ./gradlew --no-daemon lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LIBO-debug-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  secrets-audit:
+    name: Аудит истории Git на секреты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 scripts/scan-secrets.py
