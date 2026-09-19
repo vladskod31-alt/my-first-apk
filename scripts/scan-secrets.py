@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""Scan every blob reachable from Git history for credentials and key material.
+"""Scan Git blobs for credentials and key material.
 
-Usage: python3 scripts/scan-secrets.py [repository-root]
+Usage:
+  python3 scripts/scan-secrets.py [--all] [repository-root]
+
+Without ``--all`` the scanner walks the history of the current branch (HEAD) only —
+appropriate for CI, where the checkout and the branch are what this workflow owns.
+With ``--all`` it walks every branch and tag in the repository (a full repository
+audit, suitable for manual or scheduled runs by the maintainer).
 
 Checks each blob for PEM private keys, Java keystores, literal password assignments,
 GitHub/AWS tokens and DER/PKCS containers. Environment references such as
@@ -33,9 +39,10 @@ KEYSTORE_MAGICS = {
 SELF_PATHS = ("scripts/scan-secrets.py",)  # the scanner contains detection patterns
 
 
-def blobs(root: Path):
+def blobs(root: Path, all_refs: bool):
+    ref = "--all" if all_refs else "HEAD"
     listed = subprocess.run(
-        ["git", "rev-list", "--all", "--objects"],
+        ["git", "rev-list", ref, "--objects"],
         cwd=root, capture_output=True, text=True, check=True,
     ).stdout.splitlines()
     names = {}
@@ -56,10 +63,15 @@ def blobs(root: Path):
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    args = [a for a in sys.argv[1:]]
+    all_refs = False
+    if "--all" in args:
+        all_refs = True
+        args.remove("--all")
+    root = Path(args[0] if args else ".").resolve()
     findings: list[str] = []
     checked = 0
-    for sha, size in blobs(root):
+    for sha, size in blobs(root, all_refs):
         data = subprocess.run(["git", "cat-file", "blob", sha], cwd=root, capture_output=True, check=True).stdout
         checked += 1
         for label, pattern in PATTERNS:
@@ -71,7 +83,8 @@ def main() -> int:
             findings.append(f"{sha}: {KEYSTORE_MAGICS[jks_magic]}")
         elif data.startswith(der_magic) and size > 1000 and b"PKCS" in data[:4096]:
             findings.append(f"{sha}: {KEYSTORE_MAGICS[der_magic]}")
-    print(f"Scanned {checked} blobs across all branches and tags.")
+    scope = "all branches and tags" if all_refs else "the current branch"
+    print(f"Scanned {checked} blobs across {scope}.")
     if findings:
         print("FINDINGS (rotate or remove these secrets):")
         for finding in sorted(set(findings)):
