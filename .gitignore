@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.gradle/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
+.env
+.env.*
+!.env.example
+playwright-report/
+test-results/
+artifacts/
+.DS_Store
+
+# Small APK mirror: fallback when binary uploads to Releases are unavailable
+# (uploads.github.com was unreachable from the build environment on 2026-09-12).
+!downloads/LIBO-2.8.1.apk

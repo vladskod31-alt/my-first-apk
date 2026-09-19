@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Вопросы и идеи
+    url: https://github.com/vladskod31-alt/my-first-apk/discussions
+    about: Обсуждения, предложения и вопросы без воспроизведения ошибки.
+  - name: Безопасность
+    url: https://github.com/vladskod31-alt/my-first-apk/security
+    about: Уязвимости сообщайте приватно, по инструкции SECURITY.md, без публичного issue.
