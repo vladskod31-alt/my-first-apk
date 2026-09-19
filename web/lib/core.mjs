@@ -1,7 +1,18 @@
-export const VERSION = '2.8.0';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.0/downloads/LIBO-2.8.0.apk';
-export const APK_URL_MIRROR = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.0/LIBO-2.8.0.apk';
-export const REPO_URL = 'https://github.com/vladskod31-alt/my-first-apk';
+export const VERSION = '2.8.1';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.1/downloads/LIBO-2.8.1.apk';
+// 2.8.1: the application UI no longer mentions open source or source-code hosting.
+export const FEATURES = {
+  delivered: 'Двойные галочки: ✓ — сохранено у собеседника, ✓✓ — прочитано.',
+  folders: 'Папки чатов: «Личные» и «Работа» — свои вкладки в списке чатов.',
+  forward: 'Пересылка сообщений в любой чат и в «Избранное» с пометкой «Переслано от …».',
+  timer: 'Секретный таймер: сообщение исчезает у обоих через 10 с, 1 мин или 1 час.',
+  polls: 'Опросы до четырёх вариантов с голосованием в одно нажатие и живыми итогами.',
+  lock: 'Код-замок: локальный PIN 4–8 цифр защищает вход в приложение на устройстве.',
+  wallpapers: 'Фоны переписки: четыре плоских фона в настройках оформления.',
+  multiselect: 'Мультивыбор: пакетное удаление для обоих и пересылка нескольких сообщений.',
+  search: 'Глобальный поиск по чатам и сообщениям с переходом к найденному.',
+  mute: 'Без звука для отдельного контакта — значок в списке чатов.',
+};
 export const MAX_TEXT = 4000;
 export const MAX_IMAGE_DATA = 1_400_000;
 export const MAX_ATT_DATA = 2_000_000;

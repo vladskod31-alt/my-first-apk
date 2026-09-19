@@ -1,4 +1,4 @@
-# Проверка LIBO 2.8.0
+# Проверка LIBO 2.8.1
 
 Дата прогона: 12 сентября 2026. Среда: Linux x64; Node.js 22.22.3; Chromium 143
 (пакет `@sparticuz/chromium@143.0.4` из npm, без внешних загрузок браузеров);
@@ -35,16 +35,17 @@ lint выполняются в GitHub Actions, а не локально.
 21. attachments are bounded and mime-checked (voice/video/file, лимиты base64)
 22. mt session seals, rejects replays and tampering, shares fingerprint
 23. poll tally and vote merge are pure and bounded
-24. 2.8.0 packets: poll message, ttl bounds, forward label, read marker (новое в 2.3.0)
+24. 2.8.1 packets: poll message, ttl bounds, forward label, read marker
 
 ## Браузерные сценарии: 8 из 8 (`npm run test:e2e`)
 
 Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signaling `peer` на том же
 порту разработки. Сценарии:
 
-1. **real welcome, no invented contacts, valid QR and source links** — пустой старт без
-   вымышленных контактов, личный код формата `LIBO:libo-…`, валидный SVG-QR, ссылка на
-   репозиторий, отсутствие ошибок страницы.
+1. **real welcome, no invented contacts, valid QR and version; no open-source claims in UI** —
+   пустой старт без вымышленных контактов, личный код формата `LIBO:libo-…`, валидный
+   SVG-QR, экран «О LIBO» без упоминаний открытого кода, версия 2.8.1, список из десяти
+   возможностей, отсутствие ошибок страницы.
 2. **saved messages, literal HTML, drafts, search, theme and reload** — «Избранное»,
    внедрённый `<img onerror>` остаётся текстом и не исполняется, черновики переживают
    перезагрузку, поиск, переключение темы. В 2.3.0 дополнительно: в «Избранном» пункт
@@ -81,15 +82,15 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
   Полный вывод сохраняется в `artifacts/SIGNING.txt`.
 - `zipalign -c 4` проходит; целостность ZIP и состав APK проверены разбором архива.
 - `aapt2 dump badging` (вывод в `artifacts/APK-INFO.txt`): пакет `app.libo.messenger`,
-  versionCode 20800, versionName 2.8.0, minSdk 26, targetSdk 35, единственное разрешение
+  versionCode 20801, versionName 2.8.1, minSdk 26, targetSdk 35, единственное разрешение
   `android.permission.INTERNET`, запускаемая активность
   `app.libo.messenger.MainActivity`, иконка `mipmap-anydpi-v26/ic_launcher.xml` во всех
   плотностях, в assets входят `index.html`, JS/CSS-бандл, шрифты WOFF2, `icon.svg`,
   `icon-192.png`, `icon-512.png` и `third-party-notices.txt`.
 - Контрольная сумма APK: `artifacts/SHA256SUMS.txt` и `downloads/SHA256SUMS.txt`
   (значения совпадают): `0f4adca0189137df77e76683e7d6db2638e8bda384b117523cdbb789c57e3cfa`.
-- Иконки 2.8.0: плоский дуотон 1:1 (legacy PNG во всех плотностях, адаптивные слои, монохромный слой) присутствует
-- Подпись 2.8.0: новый ключ RSA-4096 после ротации, сертификат `f4e4b3e5e1cb0c102ca27273f86126b976149ea8850be3396e80c6549992dba4`
+- Иконки 2.8.1: плоский дуотон 1:1 (набор 2.8.0 сохранён; legacy PNG во всех плотностях, адаптивные слои, монохромный слой)
+- Подпись 2.8.1: тот же релизный ключ RSA-4096, что и у 2.8.0 (ротация выполнена в 2.8.0), сертификат `f4e4b3e5e1cb0c102ca27273f86126b976149ea8850be3396e80c6549992dba4`
   в APK; веб-фавикон и `icon-512.png` входят в assets.
 
 ## Что не подтверждено

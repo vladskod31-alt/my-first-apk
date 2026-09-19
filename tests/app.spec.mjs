@@ -29,7 +29,7 @@ async function send(page, text) {
   await expect(page.locator('#messages .message-text').filter({ hasText: text })).toBeVisible();
 }
 
-test('real welcome, no invented contacts, valid QR and source links', async ({ page }) => {
+test('real welcome, no invented contacts, valid QR and version; no open-source claims in UI', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await ready(page);
@@ -39,7 +39,15 @@ test('real welcome, no invented contacts, valid QR and source links', async ({ p
   await page.locator('.invite-card').click();
   await expect(page.locator('#invite-qr svg')).toHaveCount(1);
   await expect(page.locator('#invite-qr svg path, #invite-qr svg rect')).not.toHaveCount(0);
-  expect(await page.locator('.github-link').first().getAttribute('href')).toContain('vladskod31-alt/my-first-apk');
+  await page.locator('#invite-dialog [data-close]').click();
+  // 2.8.1: the UI must not mention open source, source code hosting or GitHub.
+  await page.locator('.quiet-button').click();
+  const about = await page.locator('#about-dialog').innerText();
+  expect(about).toContain('2.8.1');
+  expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
+  expect(about).not.toMatch(/github/i);
+  expect(await page.locator('#about-features li').count()).toBe(10);
+  expect(await page.locator('#about-version').innerText()).toBe('2.8.1');
   expect(errors).toEqual([]);
 });
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the LIBO 2.8.0 icon set (square 1:1, flat 2D, richer composition).
+"""Render the LIBO 2.8.0 icon set (square 1:1, flat 2D, richer composition; unchanged in 2.8.1).
 
 Improvements over the 2.6.0 flat mark, all still strict flat 2D (no gradients,
 no blur, no gloss):
@@ -193,7 +193,7 @@ def main() -> None:
 </svg>
 """
     (ROOT / "web/public/icon.svg").write_text(svg, encoding="utf-8", newline="\n")
-    print("wrote web/public/icon.svg (2.8.0 flat duotone)")
+    print("wrote web/public/icon.svg (2.8.0 flat duotone, kept for 2.8.1)")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,8 @@ import qrcode from 'qrcode-generator';
 import { Store } from './lib/storage.mjs';
 import { Transport } from './lib/transport.mjs';
 import {
-  APK_URL, REPO_URL, VERSION, MAX_TEXT, MAX_IMAGE_DATA, MAX_MESSAGES, MAX_CHATS,
+  APK_URL, VERSION, MAX_TEXT, MAX_IMAGE_DATA, MAX_MESSAGES, MAX_CHATS,
+  FEATURES,
   makePeerId, normalizePeerCode, normalizeName, initials, avatarColor,
   previewText, safeFilename, parseSignalingUrl, makeIceServers, toPacket, textExport, verificationCode,
   MAX_ATT_DATA, MAX_ATTACH_BYTES, MAX_VOICE_SECONDS, MAX_PINS, REACTIONS,
@@ -679,6 +680,29 @@ async function openSecurity() {
   openDialog('security-dialog');
 }
 
+// 2.8.1: ссылка «Безопасность соединения» в настройках открывает сводку по открытому
+// личному чату; без открытого чата она неактивна.
+function syncSecurityLink() {
+  const link = $('#security-connection-link');
+  if (!link) return;
+  const chat = activeChat();
+  const personal = chat && chat.id !== 'saved' ? chat.id : null;
+  if (personal) {
+    link.dataset.chatId = personal;
+    link.classList.remove('disabled');
+  } else {
+    delete link.dataset.chatId;
+    link.classList.add('disabled');
+  }
+}
+
+async function gotoSecurity(id) {
+  const chat = state.chats.find(c => c.id === id);
+  if (!chat) { notify('Откройте чат, чтобы увидеть безопасность соединения.', true); return; }
+  await openChat(id);
+  await openSecurity();
+}
+
 async function importBackup(file) {
   if (!file) return;
   try {
@@ -857,8 +881,23 @@ function openDialog(id) {
     $('#invite-qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
   }
   if (id === 'new-dialog') { $('#contact-error').hidden = true; $('#contact-code').value = ''; }
-  if (id === 'settings-dialog') populateSettings();
+  if (id === 'settings-dialog') { populateSettings(); syncSecurityLink(); }
   if (id === 'blocked-dialog') renderBlocked();
+  if (id === 'about-dialog') {
+    const features = [
+      FEATURES.delivered,
+      FEATURES.folders,
+      FEATURES.forward,
+      FEATURES.timer,
+      FEATURES.polls,
+      FEATURES.lock,
+      FEATURES.wallpapers,
+      FEATURES.multiselect,
+      FEATURES.search,
+      FEATURES.mute,
+    ];
+    $('#about-features').innerHTML = features.map(text => `<li>${text}</li>`).join('');
+  }
   $(`#${id}`).showModal();
   if (id === 'new-dialog') $('#contact-code').focus();
 }
@@ -989,7 +1028,7 @@ async function copyLikeCode(text) {
 }
 
 async function shareCode() {
-  const text = `Добавьте меня в LIBO!\n\nLIBO:${state.profile.id}\n\nAPK для Android: ${APK_URL}\nДля переписки откройте приложение на обоих устройствах.`;
+  const text = `Добавьте меня в LIBO!\n\nLIBO:${state.profile.id}\n\nДля переписки откройте приложение на обоих устройствах.`;
   try {
     if (window.LiboAndroid) window.LiboAndroid.shareText(text);
     else if (navigator.share) await navigator.share({ title: 'Мой личный код LIBO', text });
@@ -1632,7 +1671,12 @@ async function main() {
   try { state.drafts = JSON.parse(localStorage.getItem('libo-v2-drafts') || '{}') || {}; } catch { state.drafts = {}; }
   $('#profile-button').textContent = initials(state.profile.name);
   $('#app-version').textContent = VERSION;
-  $$('.github-link').forEach(link => { link.href = REPO_URL; });
+  $('#about-version').textContent = VERSION;
+  $('#security-connection-link').classList.add('disabled');
+  $('#security-connection-link').addEventListener('click', event => {
+    event.preventDefault();
+    if (event.currentTarget.dataset.chatId) void gotoSecurity(event.currentTarget.dataset.chatId);
+  });
   $('#download-apk').href = APK_URL;
   const savedSeen = await store.getMeta('lastSeen');
   if (savedSeen && typeof savedSeen === 'object') for (const [id, at] of Object.entries(savedSeen)) state.lastSeen.set(id, at);

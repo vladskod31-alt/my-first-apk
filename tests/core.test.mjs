@@ -188,7 +188,7 @@ test('poll tally and vote merge are pure and bounded', () => {
   assert.equal(validatePacket({ v: 1, type: 'pollvote', pid: '01234567-89ab-cdef-0123-456789abcdef', opt: 9 }), null);
 });
 
-test('2.8.0 packets: poll message, ttl bounds, forward label, read marker', () => {
+test('2.8.1 packets: poll message, ttl bounds, forward label, read marker', () => {
   const id = '01234567-89ab-cdef-0123-456789abcdef';
   const poll = validatePacket({ v: 1, type: 'message', id, text: '', at: 5, att: { kind: 'poll', q: 'Чай?', opts: ['Да', 'Нет'] } });
   assert.equal(poll.att.kind, 'poll');

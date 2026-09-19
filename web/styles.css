@@ -307,14 +307,17 @@ h1, h2, h3, p { margin: 0; }
 .settings-action span { font-size: 11px; flex: 1; }
 .settings-action small { display: block; font-size: 9px; color: var(--muted); margin-top: 5px; }
 .settings-footer { display: flex; justify-content: space-between; align-items: center; font-size: 9px; padding: 22px 0 0; color: var(--muted); gap: 10px; }
-.github-link { display: inline-flex; align-items: center; gap: 5px; color: var(--secondary); font-size: 10px; cursor: pointer; }
-.github-link:hover { color: var(--accent-text); }
-.github-link svg { width: 14px; height: 14px; }
+.account-link { display: inline-flex; align-items: center; gap: 5px; color: var(--secondary); font-size: 10px; cursor: pointer; }
+.account-link:hover { color: var(--accent-text); }
+.account-link svg { width: 14px; height: 14px; }
+.account-link.disabled { color: var(--muted); opacity: .5; cursor: default; }
 .about-item { display: flex; gap: 13px; margin: 22px 0; }
 .about-item > svg { color: var(--accent-text); width: 19px; height: 19px; margin-top: 1px; }
 .about-item h3 { font-size: 12px; font-weight: 750; }
 .about-item p { font-size: 10px; line-height: 1.9; color: var(--muted); margin-top: 7px; }
-.about-github { display: block; text-align: center; margin-top: 19px; }
+.about-features-list { margin: 0; padding: 0; list-style: none; }
+.about-features-list li { position: relative; padding-left: 14px; margin: 5px 0; font-size: 10px; line-height: 1.7; color: var(--muted); }
+.about-features-list li::before { content: "·"; position: absolute; left: 4px; color: var(--accent-text); }
 .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .confirm-dialog h2 { font-size: 21px; }
 .blocked-row { padding: 12px 0; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
@@ -414,7 +417,7 @@ h1, h2, h3, p { margin: 0; }
   .primary-button, .secondary-button { font-size: 12px; }
   .settings-action span { font-size: 12px; }
   .settings-action small { font-size: 10px; }
-  .settings-footer, .github-link { font-size: 9px; }
+  .settings-footer, .account-link { font-size: 9px; }
   .toast { bottom: 82px; font-size: 11px; padding: 13px 16px; }
   .about-item p { font-size: 11px; }
   .qr-image svg { width: 145px; height: 145px; }
@@ -479,7 +482,7 @@ h1, h2, h3, p { margin: 0; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
 
-/* ===== LIBO 2.8.0: folders, polls, secret timer, selection, wallpapers, lock ===== */
+/* ===== LIBO 2.8.1: folders, polls, secret timer, selection, wallpapers, lock ===== */
 .folder-tabs { display: flex; gap: 6px; padding: 0 12px 8px; overflow-x: auto; scrollbar-width: none; }
 .folder-tab { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 999px; padding: 5px 11px; font: 600 12px/1 inherit; font-family: inherit; cursor: pointer; white-space: nowrap; }
 .folder-tab svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }
