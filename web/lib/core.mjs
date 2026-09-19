@@ -1,6 +1,7 @@
 export const VERSION = '2.8.1';
 export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.1/downloads/LIBO-2.8.1.apk';
-// 2.8.1: the application UI no longer mentions open source or source-code hosting.
+// 2.8.1: the in-app interface no longer mentions code hosting; the About screen
+// describes the product, its version and its feature set instead.
 export const FEATURES = {
   delivered: 'Двойные галочки: ✓ — сохранено у собеседника, ✓✓ — прочитано.',
   folders: 'Папки чатов: «Личные» и «Работа» — свои вкладки в списке чатов.',
