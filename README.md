@@ -17,10 +17,12 @@
 
 ## Скачать APK
 
-- Основная ссылка (каталог `downloads/` тега `v2.8.2`):
-  [LIBO-2.8.2.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.2/downloads/LIBO-2.8.2.apk)
-- Контрольные суммы: [SHA256SUMS.txt](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.2/downloads/SHA256SUMS.txt)
-- Предыдущая версия (тег `v2.8.1`): `downloads/LIBO-2.8.1.apk` того же каталога.
+- Файл релиза (основная ссылка):
+  [LIBO-2.8.2.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.2/LIBO-2.8.2.apk)
+- Контрольные суммы: [SHA256SUMS.txt](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.2/SHA256SUMS.txt)
+- Зеркало в репозитории (каталог тега `v2.8.2`):
+  [downloads/](https://github.com/vladskod31-alt/my-first-apk/tree/v2.8.2/downloads)
+- Страница релиза: [v2.8.2](https://github.com/vladskod31-alt/my-first-apk/releases/tag/v2.8.2)
 
 Полный порядок установки для Android 8.0/8.1, 9, 10–12 и 13+ — в разделе «Установка»
 файла [RELEASE_NOTES.md](RELEASE_NOTES.md).

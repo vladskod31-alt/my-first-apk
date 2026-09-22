@@ -7,6 +7,11 @@
 SHA-256 файла: `594a2dbc5814baebc2152929283b7f2eb1761423960bc63da28209e56cb4c279`
 (см. `SHA256SUMS.txt` рядом).
 
+Тот же файл приложен к релизу `v2.8.2` как его файл:
+https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.2/LIBO-2.8.2.apk
+(загружено workflow `publish-asset.yml` из GitHub Actions). Этот каталог — зеркало на
+случай недоступности `uploads.github.com`.
+
 `LIBO-2.8.1.apk` оставлен как предыдущая версия: versionCode 20801, версия 2.8.1,
 SHA-256 `47d67439f22eb3db3e704a2075b1df0449e5de01853e2a0b723a3ad5acd4536b`.
 
