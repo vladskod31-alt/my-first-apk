@@ -4,10 +4,17 @@
 
 ## Скачать
 
-| Файл | Ссылка | Формат |
+| Файл | Прямая ссылка | Размер |
 |---|---|---|
-| Установочный APK (основная ссылка) | `downloads/LIBO-2.8.2.apk` каталога тега `v2.8.2` | ~283 КБ |
-| Контрольная сумма | `downloads/SHA256SUMS.txt` каталога тега `v2.8.2` | текст |
+| **LIBO-2.8.2.apk** — установочный файл | https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.2/downloads/LIBO-2.8.2.apk | 289 147 Б (~283 КБ) |
+| `SHA256SUMS.txt` — контрольные суммы | https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.2/downloads/SHA256SUMS.txt | текст |
+| Каталог загрузок тега (через браузер) | https://github.com/vladskod31-alt/my-first-apk/tree/v2.8.2/downloads | — |
+| Страница этого релиза | https://github.com/vladskod31-alt/my-first-apk/releases/tag/v2.8.2 | — |
+
+Ссылки на файлы релиза, созданные автоматически на этой странице, оставлены пустыми:
+`uploads.github.com` из среды сборки недоступен (см. KNOWN_ISSUES.md, пункт 5), поэтому
+APK лежит в каталоге `downloads/` тега `v2.8.2` — ссылки выше ведут прямо на него.
+Pull request с этой версией: https://github.com/vladskod31-alt/my-first-apk/pull/4
 
 SHA-256 файла `LIBO-2.8.2.apk`, собранного в песочнице (совпадает со строкой в `SHA256SUMS.txt`):
 
