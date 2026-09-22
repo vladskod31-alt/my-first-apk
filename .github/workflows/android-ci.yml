@@ -24,9 +24,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Модульные тесты (19)
+      - name: Модульные тесты (30)
         run: npm test
-      - name: Браузерные сценарии (6)
+      - name: Браузерные сценарии (11)
         run: npm run test:e2e
       - name: Production-бандл веб-части
         run: npm run build

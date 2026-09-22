@@ -10,6 +10,10 @@ import {
   makeEditPacket, makeDeletePacket, makePinPacket, makeReactPacket,
   makeReadPacket, makePollVotePacket, mergePollVote, pollTally,
   TTL_OPTIONS, WALLPAPERS, FOLDERS,
+  // 2.8.2 additions: markup, spoilers, hashtags, gestures, scheduled and silent
+  // messages, quiz polls, the media panel and the scheduled night theme.
+  richTokens, plainText, hashtags, scheduleAt, SCHEDULE_PRESETS, DEFAULT_REACTION,
+  hasVoted, votesOf, isNightNow, NIGHT_DEFAULT, MAX_POLL_OPTIONS,
 } from './lib/core.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -22,8 +26,11 @@ const state = {
   typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
   lastSeen: new Map(), recording: null, archiveNotice: false,
   folderTab: '', selection: null, ttl: 0, highlight: null,
+  // 2.8.2: silent sending, the archive shelf and the "unread" separator of the open chat.
+  silent: false, showArchive: false, unreadDividerId: null,
 };
 const ttlTimers = new Map();
+const scheduleTimers = new Map();
 const locks = new Map();
 const lastSent = new Map();
 const timeFormat = new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' });
@@ -67,13 +74,17 @@ const transport = new Transport({
         // Do not evict undelivered outgoing messages to make room for an incoming message.
         makeRoom(chat);
         fresh = true;
+        // 2.8.2: an inbound message that was not on screen is remembered as unread so the
+        // chat can draw the "Непрочитанные" separator once it is opened.
+        const unread = state.current !== id || document.hidden;
         chat.messages.push({
           id: packet.id, text: packet.text, image: packet.image, reply: packet.reply,
           att: packet.att || null, editedAt: packet.editedAt || null,
-          ttl: packet.ttl || 0, fwd: packet.fwd || null,
+          ttl: packet.ttl || 0, fwd: packet.fwd || null, silent: packet.silent === true,
           at: Math.min(packet.at, Date.now() + 60_000), direction: 'in', status: 'received',
+          unread,
         });
-        if (state.current !== id || document.hidden) chat.unread = (chat.unread || 0) + 1;
+        if (unread) chat.unread = (chat.unread || 0) + 1;
         chat.updatedAt = Date.now();
       });
       transport.send(id, { v: 1, type: 'ack', id: packet.id });
@@ -82,7 +93,9 @@ const transport = new Transport({
         if (packet.ttl) scheduleExpiry(id, packet.id, packet.ttl, packet.at);
         renderSidebar();
         if (state.current === id) { renderMessages(); renderHeader(); sendReadReceipt(id); }
-        playMessageSound(id);
+        // 'Отправить без звука': the recipient stays quiet.
+        if (!packet.silent) playMessageSound(id);
+        else notify('Тихое сообщение получено');
       }
     } catch (error) {
       transport.closeContact(id);
@@ -229,8 +242,14 @@ function renderNetwork() {
 function renderSidebar() {
   if (!state.profile) return;
   const query = $('#chat-search').value.trim().toLocaleLowerCase('ru');
-  const chats = [...state.chats].sort((a, b) => a.id === 'saved' ? -1 : b.id === 'saved' ? 1 : (b.starred ? 1 : 0) - (a.starred ? 1 : 0) || b.updatedAt - a.updatedAt);
+  const chats = [...state.chats].sort((a, b) => {
+    if (a.id === 'saved') return -1;
+    if (b.id === 'saved') return 1;
+    // 2.8.2: pinned chats sit on top, then close contacts, then the freshest ones.
+    return (Number(!!b.pinned) - Number(!!a.pinned)) || (Number(!!b.starred) - Number(!!a.starred)) || b.updatedAt - a.updatedAt;
+  });
   const filtered = chats.filter(chat => {
+    if (!!chat.archived !== state.showArchive) return false;
     if (state.folderTab && (chat.folder || '') !== state.folderTab) return false;
     if (state.filter === 'unread' && !chat.unread) return false;
     return !query || chat.name.toLocaleLowerCase('ru').includes(query) || chat.messages.some(m => m.text.toLocaleLowerCase('ru').includes(query));
@@ -239,7 +258,7 @@ function renderSidebar() {
   list.replaceChildren();
   for (const chat of filtered) {
     const row = document.createElement('button');
-    row.className = `chat-row${chat.id === state.current ? ' selected' : ''}`;
+    row.className = `chat-row${chat.id === state.current ? ' selected' : ''}${chat.pinned ? ' pinned' : ''}`;
     row.dataset.chatId = chat.id;
     row.setAttribute('aria-label', `Открыть чат ${chat.name}`);
     row.setAttribute('aria-current', chat.id === state.current ? 'true' : 'false');
@@ -252,6 +271,7 @@ function renderSidebar() {
     body.className = 'chat-row-body';
     body.innerHTML = '<span class="chat-row-top"><strong></strong><time></time></span><span class="chat-row-bottom"><p></p></span>';
     body.querySelector('strong').textContent = chat.name;
+    if (chat.pinned) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="pin-mark" title="Закреплённый чат">${svg('pin')}</span>`);
     if (chat.starred) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="star-mark" title="Близкий контакт">${svg('star')}</span>`);
     if (chat.muted) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="star-mark" title="Без звука">${svg('mute')}</span>`);
     if (chat.folder) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="folder-mark" title="Папка: ${FOLDERS[chat.folder] || ''}">${svg('folder')}</span>`);
@@ -259,7 +279,9 @@ function renderSidebar() {
     const last = chat.messages.at(-1);
     body.querySelector('time').textContent = last ? briefDate(last.at) : '';
     const excerpt = query ? [...chat.messages].reverse().find(m => m.text.toLocaleLowerCase('ru').includes(query)) || last : last;
-    body.querySelector('p').textContent = !last && chat.id === 'saved' ? 'Ваши заметки, ссылки и идеи' : previewText(excerpt);
+    body.querySelector('p').textContent = !last && chat.id === 'saved' ? 'Ваши заметки, ссылки и идеи'
+      : excerpt?.status === 'scheduled' ? `Отложено на ${timeFormat.format(new Date(excerpt.scheduledAt))}`
+      : previewText(excerpt);
     if (chat.unread) {
       const badge = document.createElement('span');
       badge.className = 'unread-badge';
@@ -273,6 +295,7 @@ function renderSidebar() {
     row.append(avatar, body);
     list.appendChild(row);
   }
+  renderArchiveShelf();
   if (query) {
     const hits = [];
     for (const chat of chats) {
@@ -321,6 +344,22 @@ function renderSidebar() {
   $('#nav-saved').classList.toggle('active', state.current === 'saved');
 }
 
+// 2.8.2: the archive shelf keeps rare dialogs out of the main list but never hides them.
+function renderArchiveShelf() {
+  const button = $('#archive-toggle');
+  if (!button) return;
+  const archived = state.chats.filter(chat => chat.archived && chat.id !== 'saved');
+  const unread = archived.reduce((sum, chat) => sum + (chat.unread || 0), 0);
+  button.hidden = !archived.length && !state.showArchive;
+  button.classList.toggle('active', state.showArchive);
+  button.setAttribute('aria-pressed', state.showArchive ? 'true' : 'false');
+  button.querySelector('span.archive-name').textContent = state.showArchive ? 'Обычные чаты' : 'Архив';
+  $('#archive-count').textContent = archived.length ? String(archived.length) : '';
+  const badge = $('#archive-unread');
+  badge.textContent = unread > 99 ? '99+' : String(unread);
+  badge.hidden = !unread;
+}
+
 function briefDate(at) {
   const date = new Date(at);
   return date.toDateString() === new Date().toDateString() ? timeFormat.format(date) : new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short' }).format(date);
@@ -359,9 +398,25 @@ function renderHeader() {
   $('#verify-code').hidden = chat.id === 'saved' || !!chat.archive;
   $('#star-contact').hidden = chat.id === 'saved';
   $('#star-contact').querySelector('span').textContent = chat.starred ? 'Убрать из близких' : 'В близкие';
+  // 2.8.2 chat shelf controls.
+  $('#pin-chat').hidden = chat.id === 'saved';
+  $('#pin-chat').querySelector('span').textContent = chat.pinned ? 'Открепить чат' : 'Закрепить чат';
+  $('#archive-chat').hidden = chat.id === 'saved';
+  $('#archive-chat').querySelector('span').textContent = chat.archived ? 'Вернуть из архива' : 'В архив';
+  $('#open-media').hidden = !!chat.archive;
+  syncSilentButton();
   $('#composer-hint').textContent = chat.id === 'saved'
     ? 'Сохранено на этом устройстве. Последние 500 сообщений в чате.'
+    : state.silent ? 'Тихий режим: сообщение придёт без звука. Оба собеседника в приложении.'
     : 'Оба собеседника в приложении · ✓ сохранено у собеседника, ✓✓ прочитано';
+}
+
+function syncSilentButton() {
+  const button = $('#silent-button');
+  if (!button) return;
+  button.classList.toggle('active', state.silent);
+  button.setAttribute('aria-pressed', state.silent ? 'true' : 'false');
+  button.title = state.silent ? 'Тихое сообщение: включено' : 'Отправить без звука';
 }
 
 async function showVerifyCode() {
@@ -398,6 +453,14 @@ function renderMessages(scroll = true) {
       const label = document.createElement('span'); label.textContent = dayLabel(message.at);
       separator.appendChild(label); box.appendChild(separator); previousDay = day;
     }
+    // 2.8.2: Telegram-style separator above the first message that arrived off-screen.
+    if (state.unreadDividerId === message.id) {
+      const divider = document.createElement('div');
+      divider.className = 'unread-divider';
+      divider.setAttribute('role', 'separator');
+      divider.textContent = 'Непрочитанные сообщения';
+      box.appendChild(divider);
+    }
     const row = document.createElement('div');
     row.className = `message-row ${message.direction === 'out' ? 'outgoing' : 'incoming'}${message.deleted ? ' deleted-row' : ''}${state.selection?.has(message.id) ? ' in-selection' : ''}${state.highlight === message.id ? ' highlight' : ''}`;
     row.dataset.messageId = message.id;
@@ -419,9 +482,14 @@ function renderMessages(scroll = true) {
     }
     if (message.reply) {
       const quote = document.createElement('div'); quote.className = 'message-quote';
-      quote.innerHTML = '<strong></strong><p></p>';
+      quote.innerHTML = '<strong></strong><em class="quote-fragment" hidden></em><p></p>';
       quote.querySelector('strong').textContent = message.reply.name;
       quote.querySelector('p').textContent = message.reply.text;
+      if (message.reply.quote) {
+        const fragment = quote.querySelector('.quote-fragment');
+        fragment.hidden = false;
+        fragment.textContent = `«${message.reply.quote}»`;
+      }
       bubble.appendChild(quote);
     }
     if (message.image) {
@@ -433,7 +501,8 @@ function renderMessages(scroll = true) {
     }
     if (message.att) bubble.appendChild(renderAttachment(message));
     if (message.text) {
-      const text = document.createElement('p'); text.className = 'message-text'; text.textContent = message.text;
+      const text = document.createElement('p'); text.className = 'message-text';
+      renderRich(text, message.text);
       bubble.appendChild(text);
     }
     const reactions = message.reactions || {};
@@ -455,6 +524,18 @@ function renderMessages(scroll = true) {
       bubble.appendChild(strip);
     }
     const meta = document.createElement('div'); meta.className = 'message-meta';
+    if (message.status === 'scheduled' && message.scheduledAt) {
+      const planned = document.createElement('span'); planned.className = 'schedule-chip';
+      planned.textContent = `отправлю в ${timeFormat.format(new Date(message.scheduledAt))}`;
+      planned.title = new Date(message.scheduledAt).toLocaleString('ru');
+      meta.appendChild(planned);
+    }
+    if (message.silent && !message.deleted) {
+      const quiet = document.createElement('span'); quiet.className = 'silent-mark';
+      quiet.innerHTML = svg('mute');
+      quiet.title = 'Тихое сообщение: без звука у собеседника';
+      meta.appendChild(quiet);
+    }
     const time = document.createElement('time'); time.dateTime = new Date(message.at).toISOString(); time.textContent = timeFormat.format(new Date(message.at));
     meta.appendChild(time);
     if (message.editedAt) {
@@ -472,11 +553,11 @@ function renderMessages(scroll = true) {
     if ((activeChat()?.pins || []).includes(message.id)) meta.insertAdjacentHTML('beforeend', `<span class="pin-mark" title="Закреплено">${svg('pin')}</span>`);
     if (message.direction === 'out') {
       const status = document.createElement('span'); status.className = 'message-status'; status.dataset.status = message.status;
-      status.title = { queued: 'В очереди на этом устройстве', sent: 'Отправлено, ждём подтверждения', delivered: 'Сохранено на устройстве собеседника', local: 'Сохранено только на этом устройстве' }[message.status];
+      status.title = { queued: 'В очереди на этом устройстве', sent: 'Отправлено, ждём подтверждения', delivered: 'Сохранено на устройстве собеседника', local: 'Сохранено только на этом устройстве', scheduled: 'Отложенное сообщение: ждёт своего времени' }[message.status];
       status.setAttribute('aria-label', status.title);
       const read = message.status === 'delivered' && (chat.readUpTo || 0) >= message.at;
       status.classList.toggle('read', read);
-      status.innerHTML = svg({ queued: 'clock', sent: 'check', delivered: read ? 'checks' : 'check', local: 'bookmark' }[message.status] || 'clock');
+      status.innerHTML = svg({ queued: 'clock', sent: 'check', delivered: read ? 'checks' : 'check', local: 'bookmark', scheduled: 'timer' }[message.status] || 'clock');
       status.title = read ? 'Прочитано собеседником' : status.title;
       meta.appendChild(status);
     }
@@ -487,6 +568,67 @@ function renderMessages(scroll = true) {
   }
   if (scroll && nearBottom) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
   else box.scrollTop = previousTop;
+  updateJumpButton();
+}
+
+// 2.8.2: markup is rendered as DOM nodes — user text is never parsed as HTML.
+function renderRich(container, text) {
+  for (const token of richTokens(text)) {
+    if (token.type === 'text') { container.appendChild(document.createTextNode(token.text)); continue; }
+    if (token.type === 'hashtag') {
+      const tag = document.createElement('button');
+      tag.type = 'button';
+      tag.className = 'hashtag';
+      tag.dataset.tag = token.text.toLowerCase();
+      tag.textContent = token.text;
+      tag.title = `Найти всё по тегу ${token.text}`;
+      container.appendChild(tag);
+      continue;
+    }
+    if (token.type === 'link') {
+      const link = document.createElement('a');
+      link.className = 'rich-link';
+      link.href = token.text.startsWith('www.') ? `https://${token.text}` : token.text;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = token.text;
+      container.appendChild(link);
+      continue;
+    }
+    const span = document.createElement('span');
+    span.className = token.type === 'spoiler' ? 'rich-spoiler spoiler' : `rich-${token.type}`;
+    span.textContent = token.text;
+    if (token.type === 'spoiler') {
+      span.dataset.spoiler = '1';
+      span.setAttribute('role', 'button');
+      span.tabIndex = 0;
+      span.title = 'Нажмите, чтобы открыть спойлер';
+    }
+    container.appendChild(span);
+  }
+}
+
+// The floating "down" button with the counter of messages below the viewport.
+function updateJumpButton() {
+  const button = $('#jump-button');
+  const box = $('#messages');
+  if (!button || !box || !activeChat() || !box.clientHeight) { if (button) button.hidden = true; return; }
+  const gap = box.scrollHeight - box.scrollTop - box.clientHeight;
+  if (gap < 120) { button.hidden = true; return; }
+  const hidden = [...box.querySelectorAll('[data-message-id]')].filter(row => row.offsetTop > box.scrollTop + box.clientHeight - 12).length;
+  const badge = $('#jump-count');
+  badge.hidden = !hidden;
+  badge.textContent = hidden > 99 ? '99+' : String(hidden);
+  button.hidden = false;
+}
+
+function onMessagesScroll() {
+  const box = $('#messages');
+  updateJumpButton();
+  if (state.unreadDividerId && box.scrollHeight - box.scrollTop - box.clientHeight < 24) {
+    state.unreadDividerId = null;
+    box.querySelectorAll('.unread-divider').forEach(node => node.remove());
+  }
 }
 
 function renderAttachment(message) {
@@ -510,22 +652,36 @@ function renderAttachment(message) {
     const total = tally.reduce((sum, value) => sum + value, 0);
     const head = document.createElement('strong'); head.textContent = att.q;
     wrap.appendChild(head);
+    // 2.8.2: quiz mode reveals the right answer, multiple-choice polls accept several picks.
+    const mineVotes = votesOf(att.votes, 'mine');
+    const voted = mineVotes.length > 0;
+    const kind = document.createElement('small');
+    kind.className = 'poll-kind';
+    kind.textContent = att.quiz ? 'Квиз · один верный ответ' : att.multi ? 'Несколько ответов' : 'Опрос';
+    wrap.appendChild(kind);
     att.opts.forEach((opt, index) => {
       const option = document.createElement('button');
       option.className = 'poll-option';
       option.dataset.vote = index; option.dataset.messageId = message.id;
-      const mine = att.votes?.mine === index;
-      const theirs = att.votes?.theirs === index;
+      const mine = mineVotes.includes(index);
+      const theirs = hasVoted(att.votes, 'theirs', index);
       if (mine) option.classList.add('mine');
+      if (att.quiz && voted && index === att.correct) option.classList.add('correct');
+      if (att.quiz && voted && mine && index !== att.correct) option.classList.add('wrong');
       const share = total ? Math.round(tally[index] / total * 100) : 0;
       option.style.setProperty('--share', `${share}%`);
       option.innerHTML = '<span class="poll-label"></span><span class="poll-share"></span>';
       option.querySelector('.poll-label').textContent = `${mine ? '✓ ' : ''}${opt}`;
-      option.querySelector('.poll-share').textContent = total ? `${share}% · ${tally[index]}` : 'голосовать';
-      option.title = theirs && !mine ? 'Выбор собеседника' : 'Нажмите, чтобы проголосовать';
+      const mark = att.quiz && voted && index === att.correct ? ' · верно' : '';
+      option.querySelector('.poll-share').textContent = total ? `${share}% · ${tally[index]}${mark}` : 'голосовать';
+      option.title = att.quiz && voted && index === att.correct ? 'Правильный ответ'
+        : theirs && !mine ? 'Выбор собеседника' : 'Нажмите, чтобы проголосовать';
       wrap.appendChild(option);
     });
-    const foot = document.createElement('small'); foot.textContent = `Всего голосов: ${total}`;
+    const foot = document.createElement('small');
+    foot.textContent = att.quiz && voted
+      ? `${mineVotes.includes(att.correct) ? 'Верно!' : 'Не угадали.'} Всего голосов: ${total}`
+      : `Всего голосов: ${total}`;
     wrap.appendChild(foot);
     return wrap;
   }
@@ -556,11 +712,16 @@ function openMessageActions(anchor, messageId) {
   if (!message || message.deleted) return;
   const menu = $('#message-actions');
   menu.dataset.messageId = messageId;
-  menu.querySelector('[data-act="pin"]').hidden = chat.id === 'saved';
+  // 2.8.2: a selected fragment is captured here, while the selection is still alive.
+  menu.dataset.quote = String(window.getSelection?.()?.toString() || '').trim().slice(0, 160);
+  menu.querySelector('[data-act="pin"]').hidden = chat.id === 'saved' || message.status === 'scheduled';
   menu.querySelector('[data-act="pin"]').lastChild.textContent = (chat.pins || []).includes(messageId) ? ' Открепить' : ' Закрепить';
+  menu.querySelector('[data-act="quote"]').hidden = !!message.att || !message.text;
+  menu.querySelector('[data-act="sendnow"]').hidden = message.status !== 'scheduled';
   menu.querySelector('[data-act="edit"]').hidden = message.direction !== 'out' || !!message.att || chat.id === 'saved';
   menu.querySelector('[data-act="forward"]').hidden = chat.id === 'saved' && false ? true : !!chat.archive;
   menu.querySelector('[data-act="delete"]').hidden = message.direction !== 'out' || chat.id === 'saved';
+  menu.querySelector('[data-act="delete"]').lastChild.textContent = message.status === 'scheduled' ? ' Отменить отправку' : ' Удалить для обоих';
   const strip = menu.querySelector('.reaction-strip-picker');
   strip.replaceChildren();
   for (const key of REACTIONS) {
@@ -582,12 +743,21 @@ async function actOnMessage(action, messageId, extra) {
   const chat = activeChat();
   const message = chat?.messages.find(m => m.id === messageId);
   if (!chat || !message) return;
-  if (action === 'reply') {
-    state.reply = { text: (message.text || (message.att ? { voice: 'Голосовое сообщение', video: 'Видео', file: message.att.name }[message.att.kind] : 'Фотография')).slice(0, 160), name: message.direction === 'out' ? state.profile.name : chat.name };
-    $('#reply-name').textContent = state.reply.name; $('#reply-text').textContent = state.reply.text;
+  if (action === 'reply' || action === 'quote') {
+    const author = message.direction === 'out' ? state.profile.name : chat.name;
+    const preview = plainText(message.text || '').slice(0, 160)
+      || (message.att ? { voice: 'Голосовое сообщение', video: 'Видео', file: message.att.name }[message.att.kind] : 'Фотография');
+    state.reply = { text: preview, name: author };
+    if (action === 'quote') {
+      const fragment = ($('#message-actions').dataset.quote || preview).slice(0, 160);
+      if (fragment) state.reply.quote = fragment;
+    }
+    $('#reply-name').textContent = state.reply.name;
+    $('#reply-text').textContent = state.reply.quote ? `«${state.reply.quote}» · ${state.reply.text}` : state.reply.text;
     $('#reply-bar').hidden = false; $('#message-input').focus();
     return;
   }
+  if (action === 'sendnow') { await sendScheduledNow(chat.id, messageId); return; }
   if (action === 'copy') {
     if (message.text) await copyLikeCode(message.text);
     return;
@@ -768,6 +938,8 @@ async function openChat(id) {
   if (!state.chats.some(chat => chat.id === id)) return;
   rememberDraft();
   state.current = id;
+  // 2.8.2: remember where the unread run begins before the counters are cleared.
+  state.unreadDividerId = state.chats.find(chat => chat.id === id)?.messages.find(message => message.unread)?.id || null;
   closeMessageActions();
   $('#shell').classList.add('chat-open');
   $('#welcome').hidden = true;
@@ -775,7 +947,6 @@ async function openChat(id) {
   closeChatMenu();
   closeMessageSearch();
   setSelection(null);
-  state.highlight = null;
   resetComposerExtras();
   $('#message-input').value = state.drafts[id] || '';
   updateComposer();
@@ -783,13 +954,22 @@ async function openChat(id) {
   requestAnimationFrame(() => { $('#messages').scrollTop = $('#messages').scrollHeight; });
   if (id !== 'saved') transport.connect(id);
   sendReadReceipt(id);
-  try { await changeChat(id, chat => { if (!chat.unread) return false; chat.unread = 0; }); renderSidebar(); }
-  catch { notify('Не удалось обновить счётчик сообщений.', true); }
+  try {
+    await changeChat(id, chat => {
+      const flagged = chat.messages.some(message => message.unread);
+      if (!chat.unread && !flagged) return false;
+      chat.unread = 0;
+      chat.messages = chat.messages.map(message => message.unread ? { ...message, unread: false } : message);
+    });
+    renderSidebar();
+  } catch { notify('Не удалось обновить счётчик сообщений.', true); }
 }
 
 function closeChat() {
   rememberDraft();
   state.current = null;
+  state.unreadDividerId = null;
+  state.highlight = null;
   $('#shell').classList.remove('chat-open');
   $('#welcome').hidden = false;
   $('#conversation').hidden = true;
@@ -804,20 +984,26 @@ function updateComposer() {
   $('#send-button').disabled = state.sending || (!input.value.trim() && !state.attachment);
 }
 
+// One place builds an outgoing message: instant, silent or scheduled.
+function buildOutgoing(id, text, attachment, extra = {}) {
+  return {
+    id: crypto.randomUUID(), text,
+    image: attachment?.kind === 'photo' ? { data: attachment.data, name: attachment.name } : null,
+    att: attachment && attachment.kind !== 'photo' ? attachment : null,
+    reply: state.reply || null, ttl: state.ttl || 0,
+    silent: state.silent === true,
+    at: Date.now(), direction: 'out', status: id === 'saved' ? 'local' : 'queued',
+    ...extra,
+  };
+}
+
 async function sendMessage(event) {
   event?.preventDefault();
   const chat = activeChat();
   const text = $('#message-input').value.trim().slice(0, MAX_TEXT);
   if (!chat || chat.request || chat.archive || state.sending || (!text && !state.attachment)) return;
   const id = chat.id;
-  const attachment = state.attachment;
-  const message = {
-    id: crypto.randomUUID(), text,
-    image: attachment?.kind === 'photo' ? { data: attachment.data, name: attachment.name } : null,
-    att: attachment && attachment.kind !== 'photo' ? attachment : null,
-    reply: state.reply, ttl: state.ttl || 0,
-    at: Date.now(), direction: 'out', status: id === 'saved' ? 'local' : 'queued',
-  };
+  const message = buildOutgoing(id, text, state.attachment);
   state.sending = true; updateComposer();
   try {
     await changeChat(id, next => { makeRoom(next); next.messages.push(message); next.updatedAt = message.at; });
@@ -836,6 +1022,282 @@ async function sendMessage(event) {
     }
   } catch (error) { notify(error.message?.includes('500') ? error.message : 'Не удалось сохранить сообщение. Проверьте свободное место.', true); }
   finally { state.sending = false; updateComposer(); }
+}
+
+// 2.8.2 «Отправить позже»: the message is stored locally with an absolute time and is
+// released by a timer — also after a reload or a suspended tab.
+async function scheduleMessage(preset) {
+  const chat = activeChat();
+  if (!chat || chat.request || chat.archive) return;
+  const text = $('#message-input').value.trim().slice(0, MAX_TEXT);
+  if (!text && !state.attachment) { notify('Сначала напишите сообщение или прикрепите файл.', true); return; }
+  const at = scheduleAt(preset);
+  if (!at) return;
+  const id = chat.id;
+  const message = buildOutgoing(id, text, state.attachment, { scheduledAt: at, status: 'scheduled' });
+  try {
+    await changeChat(id, next => { makeRoom(next); next.messages.push(message); });
+    if (state.current === id) { $('#message-input').value = ''; rememberDraft(); resetComposerExtras(); renderMessages(); }
+    renderSidebar();
+    closeDialogs();
+    armScheduled(id, message.id, at);
+    notify(`Отправлю ${new Date(at).toLocaleString('ru', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`);
+  } catch (error) { notify(error.message || 'Не удалось отложить сообщение.', true); }
+}
+
+function armScheduled(chatId, messageId, at) {
+  const key = `${chatId}|${messageId}`;
+  clearTimeout(scheduleTimers.get(key));
+  const delay = at - Date.now();
+  if (delay > 2_147_000_000) return; // beyond setTimeout range: rearmed on the next launch
+  scheduleTimers.set(key, setTimeout(() => { scheduleTimers.delete(key); void releaseScheduled(chatId, messageId); }, Math.max(0, delay)));
+}
+
+async function releaseScheduled(chatId, messageId) {
+  const chat = state.chats.find(item => item.id === chatId);
+  const message = chat?.messages.find(item => item.id === messageId);
+  if (!chat || !message || message.status !== 'scheduled') return;
+  await changeChat(chatId, next => {
+    const index = next.messages.findIndex(item => item.id === messageId);
+    if (index < 0 || next.messages[index].status !== 'scheduled') return false;
+    const now = Date.now();
+    next.messages[index] = { ...next.messages[index], scheduledAt: 0, at: now, status: chatId === 'saved' ? 'local' : 'queued' };
+    next.updatedAt = now;
+  });
+  if (state.current === chatId) renderMessages(false);
+  renderSidebar();
+  if (chatId !== 'saved') { transport.connect(chatId); await flushPending(chatId); }
+}
+
+async function sendScheduledNow(chatId, messageId) {
+  const key = `${chatId}|${messageId}`;
+  clearTimeout(scheduleTimers.get(key));
+  scheduleTimers.delete(key);
+  await releaseScheduled(chatId, messageId);
+  notify('Сообщение отправлено сейчас');
+}
+
+function restoreScheduled() {
+  for (const chat of state.chats) {
+    for (const message of chat.messages) {
+      if (message.status !== 'scheduled' || !message.scheduledAt) continue;
+      if (message.scheduledAt <= Date.now()) void releaseScheduled(chat.id, message.id);
+      else armScheduled(chat.id, message.id, message.scheduledAt);
+    }
+  }
+}
+
+function openScheduleDialog() {
+  const chat = activeChat();
+  if (!chat || chat.request || chat.archive) return;
+  const list = $('#schedule-list');
+  list.replaceChildren();
+  for (const preset of SCHEDULE_PRESETS) {
+    const at = scheduleAt(preset.id);
+    const button = document.createElement('button');
+    button.className = 'forward-row';
+    button.dataset.preset = preset.id;
+    button.innerHTML = `${svg('clock')}<span></span><small></small>`;
+    button.querySelector('span').textContent = preset.label;
+    button.querySelector('small').textContent = at
+      ? new Date(at).toLocaleString('ru', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+      : '';
+    list.appendChild(button);
+  }
+  openDialog('schedule-dialog');
+}
+
+// 2.8.2 formatting bar: markup markers are inserted around the current selection.
+const FORMAT_MARKERS = { bold: '**', italic: '_', underline: '__', strike: '~~', mono: '`', spoiler: '||' };
+
+function applyFormat(kind) {
+  const marker = FORMAT_MARKERS[kind];
+  const input = $('#message-input');
+  if (!marker || !input) return;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? start;
+  const chosen = input.value.slice(start, end) || 'текст';
+  const next = `${input.value.slice(0, start)}${marker}${chosen}${marker}${input.value.slice(end)}`;
+  if (next.length > MAX_TEXT) { notify(`Разметка не вмещается: лимит ${MAX_TEXT} символов.`, true); return; }
+  input.value = next;
+  input.focus();
+  input.setSelectionRange(start + marker.length, start + marker.length + chosen.length);
+  updateComposer(); rememberDraft();
+}
+
+// 2.8.2 chat shelf: pinned chats and the archive.
+async function togglePinChat() {
+  const chat = activeChat();
+  if (!chat || chat.id === 'saved') return;
+  const pinned = !chat.pinned;
+  await changeChat(chat.id, next => { next.pinned = pinned; });
+  closeChatMenu();
+  renderSidebar(); renderHeader();
+  notify(pinned ? 'Чат закреплён наверху списка' : 'Чат откреплён');
+}
+
+async function toggleArchiveChat() {
+  const chat = activeChat();
+  if (!chat || chat.id === 'saved') return;
+  const archived = !chat.archived;
+  await changeChat(chat.id, next => { next.archived = archived; });
+  state.showArchive = false;
+  closeChatMenu();
+  renderSidebar(); renderHeader();
+  notify(archived ? 'Чат убран в архив' : 'Чат возвращён из архива');
+}
+
+function toggleArchiveShelf() {
+  const hasArchived = state.chats.some(chat => chat.archived && chat.id !== 'saved');
+  if (!hasArchived && !state.showArchive) { notify('В архиве пока пусто', true); return; }
+  state.showArchive = !state.showArchive;
+  renderSidebar();
+}
+
+// 2.8.2 media panel: every photo, file and hashtag of the chat in one place.
+function mediaRow(chatId, message, label, note) {
+  const button = document.createElement('button');
+  button.className = 'media-row';
+  button.dataset.goto = `${chatId}|${message.id}`;
+  button.innerHTML = `${svg('file')}<span></span><small></small>`;
+  button.querySelector('span').textContent = label;
+  button.querySelector('small').textContent = note;
+  return button;
+}
+
+function openMedia() {
+  const chat = activeChat();
+  if (!chat) return;
+  const photos = chat.messages.filter(message => !message.deleted && message.image);
+  const files = chat.messages.filter(message => !message.deleted && message.att && ['file', 'video'].includes(message.att.kind));
+  const voices = chat.messages.filter(message => !message.deleted && message.att?.kind === 'voice');
+  const tags = new Map();
+  for (const message of chat.messages) {
+    if (message.deleted) continue;
+    for (const tag of hashtags(message.text)) tags.set(tag, (tags.get(tag) || 0) + 1);
+  }
+  $('#media-title').textContent = chat.name;
+  $('#media-photos-head').textContent = `Фотографии · ${photos.length}`;
+  $('#media-files-head').textContent = `Файлы и видео · ${files.length}`;
+  $('#media-voices-head').textContent = `Голосовые · ${voices.length}`;
+  $('#media-tags-head').textContent = `Теги · ${tags.size}`;
+  const grid = $('#media-photos');
+  grid.replaceChildren();
+  if (!photos.length) {
+    const empty = document.createElement('p');
+    empty.className = 'privacy-caption';
+    empty.textContent = 'Фотографий пока нет: прикрепите снимок кнопкой-скрепкой.';
+    grid.appendChild(empty);
+  }
+  for (const message of photos.slice(-60)) {
+    const button = document.createElement('button');
+    button.className = 'media-thumb';
+    button.dataset.goto = `${chat.id}|${message.id}`;
+    button.title = new Date(message.at).toLocaleString('ru');
+    button.setAttribute('aria-label', 'Перейти к фотографии');
+    const img = document.createElement('img');
+    img.src = message.image.data;
+    img.alt = message.image.name || 'Фотография из переписки';
+    img.loading = 'lazy';
+    button.appendChild(img);
+    grid.appendChild(button);
+  }
+  const fileList = $('#media-files');
+  fileList.replaceChildren();
+  if (!files.length) {
+    const empty = document.createElement('p'); empty.className = 'privacy-caption';
+    empty.textContent = 'Файлов и видео нет.';
+    fileList.appendChild(empty);
+  }
+  for (const message of files.slice(-40)) {
+    const note = message.att.kind === 'video' ? 'Видео' : `${message.att.name}`;
+    fileList.appendChild(mediaRow(chat.id, message, message.att.name, `${note} · ${timeFormat.format(new Date(message.at))}`));
+  }
+  const voiceList = $('#media-voices');
+  voiceList.replaceChildren();
+  if (!voices.length) {
+    const empty = document.createElement('p'); empty.className = 'privacy-caption';
+    empty.textContent = 'Голосовых сообщений нет.';
+    voiceList.appendChild(empty);
+  }
+  for (const message of voices.slice(-40)) {
+    voiceList.appendChild(mediaRow(chat.id, message, 'Голосовое сообщение', `${message.att.dur ? Math.round(message.att.dur / 1000) + ' с · ' : ''}${timeFormat.format(new Date(message.at))}`));
+  }
+  const tagList = $('#media-tags');
+  tagList.replaceChildren();
+  if (!tags.size) {
+    const empty = document.createElement('p'); empty.className = 'privacy-caption';
+    empty.textContent = 'Поставьте #тег в сообщении — он появится здесь.';
+    tagList.appendChild(empty);
+  }
+  for (const [tag, count] of [...tags].sort((a, b) => b[1] - a[1]).slice(0, 40)) {
+    const chip = document.createElement('button');
+    chip.className = 'tag-chip';
+    chip.dataset.tag = tag;
+    chip.textContent = `${tag} · ${count}`;
+    chip.title = `Найти сообщения с тегом ${tag}`;
+    tagList.appendChild(chip);
+  }
+  openDialog('media-dialog');
+}
+
+// 2.8.2 gestures: swipe a message to reply, double tap for the default reaction.
+let lastTap = { id: '', at: 0 };
+
+async function quickReact(messageId) {
+  const chat = activeChat();
+  const message = chat?.messages.find(item => item.id === messageId);
+  if (!chat || !message || message.deleted || chat.request || chat.archive) return;
+  const row = document.querySelector(`[data-message-id="${messageId}"]`);
+  if (row) { row.classList.add('quick-react'); setTimeout(() => row.classList.remove('quick-react'), 620); }
+  await actOnMessage('react', messageId, DEFAULT_REACTION);
+}
+
+function bindMessageGestures() {
+  const box = $('#messages');
+  let swipe = null;
+  box.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (state.selection || !activeChat()) return;
+    const row = event.target.closest('[data-message-id]');
+    if (!row || event.target.closest('button, a, audio, video, input')) return;
+    swipe = { row, id: row.dataset.messageId, x: event.clientX, y: event.clientY, dx: 0, active: false, pointer: event.pointerId, touch: event.pointerType !== 'mouse' };
+  });
+  box.addEventListener('pointermove', event => {
+    if (!swipe || event.pointerId !== swipe.pointer) return;
+    const dx = event.clientX - swipe.x;
+    const dy = event.clientY - swipe.y;
+    if (!swipe.active) {
+      if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy)) return;
+      swipe.active = true;
+      swipe.row.classList.add('swiping');
+    }
+    swipe.dx = Math.max(-96, Math.min(96, dx));
+    swipe.row.style.setProperty('--swipe', `${swipe.dx}px`);
+    swipe.row.classList.toggle('swipe-ready', Math.abs(swipe.dx) >= 64);
+    event.preventDefault();
+  });
+  const finish = () => {
+    if (!swipe) return;
+    const { row, id, dx, active, touch } = swipe;
+    swipe = null;
+    row.classList.remove('swiping', 'swipe-ready');
+    row.style.removeProperty('--swipe');
+    if (active && Math.abs(dx) >= 64) { void actOnMessage('reply', id); return; }
+    if (!active && touch) {
+      const now = Date.now();
+      if (lastTap.id === id && now - lastTap.at < 360) { lastTap = { id: '', at: 0 }; void quickReact(id); }
+      else lastTap = { id, at: now };
+    }
+  };
+  box.addEventListener('pointerup', finish);
+  box.addEventListener('pointercancel', finish);
+  // Desktop double click reaches the same quick reaction as a mobile double tap.
+  box.addEventListener('dblclick', event => {
+    const row = event.target.closest('[data-message-id]');
+    if (!row || event.target.closest('button, a, audio, video, input')) return;
+    void quickReact(row.dataset.messageId);
+  });
 }
 
 async function flushPending(id) {
@@ -884,19 +1346,8 @@ function openDialog(id) {
   if (id === 'settings-dialog') { populateSettings(); syncSecurityLink(); }
   if (id === 'blocked-dialog') renderBlocked();
   if (id === 'about-dialog') {
-    const features = [
-      FEATURES.delivered,
-      FEATURES.folders,
-      FEATURES.forward,
-      FEATURES.timer,
-      FEATURES.polls,
-      FEATURES.lock,
-      FEATURES.wallpapers,
-      FEATURES.multiselect,
-      FEATURES.search,
-      FEATURES.mute,
-    ];
-    $('#about-features').innerHTML = features.map(text => `<li>${text}</li>`).join('');
+    // 2.8.2: the About screen always lists exactly what this build ships.
+    $('#about-features').innerHTML = Object.values(FEATURES).map(text => `<li>${text}</li>`).join('');
   }
   $(`#${id}`).showModal();
   if (id === 'new-dialog') $('#contact-code').focus();
@@ -929,8 +1380,20 @@ async function addContact(event) {
   } catch (err) { error.textContent = err.message; error.hidden = false; }
 }
 
+// 2.8.2 bonus: the night window forces the dark theme between the chosen hours.
+function nightActive() {
+  const night = state.settings?.night;
+  return !!(night?.enabled && isNightNow(Date.now(), night.from, night.to));
+}
+
+function applySecureScreen() {
+  // 2.8.2 bonus: in the APK the shell turns on FLAG_SECURE (no screenshots, no recents preview).
+  const on = state.settings?.secureScreen === true;
+  try { window.LiboAndroid?.setSecureScreen?.(on); } catch { /* The web build has no native shell. */ }
+}
+
 function applyTheme() {
-  const dark = state.settings.theme === 'dark' || (state.settings.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  const dark = nightActive() || state.settings.theme === 'dark' || (state.settings.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.querySelector('meta[name="theme-color"]').content = dark ? '#191920' : '#f7f7fb';
   $('#theme-toggle use').setAttribute('href', dark ? '#i-sun' : '#i-moon');
@@ -967,6 +1430,11 @@ function populateSettings() {
   $('#profile-name').value = state.profile.name;
   $('#settings-avatar').textContent = initials(state.profile.name);
   $('#sound-enabled').checked = state.settings.sound;
+  $('#night-enabled').checked = state.settings.night?.enabled === true;
+  $('#night-from').value = state.settings.night?.from || NIGHT_DEFAULT.from;
+  $('#night-to').value = state.settings.night?.to || NIGHT_DEFAULT.to;
+  $('#secure-screen').checked = state.settings.secureScreen === true;
+  $('#secure-screen-row').hidden = !window.LiboAndroid;
   $('#wall-select').value = WALLPAPERS.includes(state.settings.wall) ? state.settings.wall : 'plain';
   const lock = lockState();
   $('#lock-state').value = lock ? 'Включён' : 'Выключен';
@@ -988,6 +1456,13 @@ async function saveSettings(event) {
   const settings = {
     ...state.settings, sound: $('#sound-enabled').checked,
     wall: WALLPAPERS.includes($('#wall-select').value) ? $('#wall-select').value : 'plain',
+    // 2.8.2: scheduled dark theme and the screenshot guard of the Android shell.
+    night: {
+      enabled: $('#night-enabled').checked,
+      from: /^\d{2}:\d{2}$/.test($('#night-from').value) ? $('#night-from').value : NIGHT_DEFAULT.from,
+      to: /^\d{2}:\d{2}$/.test($('#night-to').value) ? $('#night-to').value : NIGHT_DEFAULT.to,
+    },
+    secureScreen: $('#secure-screen').checked,
     signalUrl: $('#signal-url').value.trim(), turnUrl: $('#turn-url').value.trim(),
     turnUser: $('#turn-user').value.trim(), turnPassword: $('#turn-password').value,
   };
@@ -1000,7 +1475,7 @@ async function saveSettings(event) {
     await store.setMeta('profile', profile);
     state.settings = settings; state.profile = profile;
     $('#profile-button').textContent = initials(name);
-    applyTheme(); applyWall(); rememberUi();
+    applyTheme(); applyWall(); applySecureScreen(); rememberUi();
     if (reconnect) {
       state.contactStates.clear();
       transport.start(profile, settings);
@@ -1204,14 +1679,23 @@ async function votePoll(messageId, opt) {
   const chat = activeChat();
   const message = chat?.messages.find(m => m.id === messageId && m.att?.kind === 'poll');
   if (!chat || !message || chat.archive) return;
-  const next = (message.att.votes || {}).mine === opt ? null : opt;
+  const mine = votesOf(message.att.votes, 'mine');
+  let next;
+  if (message.att.multi) {
+    const picks = new Set(mine);
+    if (picks.has(opt)) picks.delete(opt); else picks.add(opt);
+    next = [...picks].sort((a, b) => a - b);
+    if (!next.length) next = null;
+  } else {
+    next = mine[0] === opt ? null : opt;
+  }
   await changeChat(chat.id, nextChat => {
     const index = nextChat.messages.findIndex(m => m.id === messageId);
     if (index < 0) return false;
     const att = { ...nextChat.messages[index].att, votes: mergePollVote(nextChat.messages[index].att.votes, 'mine', next) };
     nextChat.messages[index] = { ...nextChat.messages[index], att };
   });
-  if (chat.id !== 'saved') void transport.send(chat.id, makePollVotePacket(messageId, next ?? -1));
+  if (chat.id !== 'saved') void transport.send(chat.id, makePollVotePacket(messageId, next == null ? -1 : next));
   renderMessages(false);
 }
 
@@ -1350,6 +1834,7 @@ function handleBack() {
   if (state.selection) { setSelection(null); return true; }
   const open = $('dialog[open]');
   if (open) { open.close(); return true; }
+  if (!$('#format-bar').hidden) { $('#format-bar').hidden = true; $('#format-button').setAttribute('aria-expanded', 'false'); return true; }
   if (!$('#emoji-picker').hidden) { $('#emoji-picker').hidden = true; $('#emoji-button').setAttribute('aria-expanded', 'false'); return true; }
   if (!$('#chat-menu').hidden) { closeChatMenu(); return true; }
   if (!$('#message-actions').hidden) { closeMessageActions(); return true; }
@@ -1395,6 +1880,7 @@ function bindEvents() {
   document.addEventListener('click', event => {
     const goto = event.target.closest('[data-goto]');
     if (!goto) return;
+    closeDialogs();
     const [chatId, messageId] = goto.dataset.goto.split('|');
     state.highlight = messageId;
     void openChat(chatId).then(() => {
@@ -1458,6 +1944,9 @@ function bindEvents() {
   };
   $('#messages').onclick = event => {
     const chat = activeChat(); if (!chat) return;
+    // 2.8.2: spoilers open on tap, hashtags act as search buttons.
+    const spoiler = event.target.closest('[data-spoiler]');
+    if (spoiler) { spoiler.classList.toggle('revealed'); return; }
     const voteButton = event.target.closest('[data-vote]');
     if (voteButton) { void votePoll(voteButton.dataset.messageId, Number(voteButton.dataset.vote)); return; }
     if (state.selection) {
@@ -1511,6 +2000,15 @@ function bindEvents() {
   document.addEventListener('click', event => {
     if (!event.target.closest('#message-actions, [data-actions]')) closeMessageActions();
   });
+  // 2.8.2: every hashtag — in a bubble or in the media panel — is a search button.
+  document.addEventListener('click', event => {
+    const tag = event.target.closest('[data-tag]');
+    if (!tag) return;
+    closeDialogs();
+    $('#chat-search').value = tag.dataset.tag;
+    renderSidebar();
+    notify(`Поиск по тегу ${tag.dataset.tag}`);
+  });
   $('#pinned-jump').onclick = () => {
     const chat = activeChat();
     const id = chat?.pins?.at(-1);
@@ -1563,9 +2061,18 @@ function bindEvents() {
     $('#poll-q').value = '';
     $$('.poll-opt').forEach(input => { input.value = ''; });
     $('#poll-error').hidden = true;
+    $('#poll-quiz').checked = false;
+    $('#poll-multi').checked = false;
+    $('#poll-correct-row').hidden = true;
     openDialog('poll-dialog');
     $('#poll-q').focus();
   };
+  // 2.8.2: quiz polls need a marked answer, multiple-choice polls forbid one.
+  $('#poll-quiz').onchange = () => {
+    $('#poll-correct-row').hidden = !$('#poll-quiz').checked;
+    if ($('#poll-quiz').checked) $('#poll-multi').checked = false;
+  };
+  $('#poll-multi').onchange = () => { if ($('#poll-multi').checked) $('#poll-quiz').checked = false, $('#poll-correct-row').hidden = true; };
   $('#poll-send').onclick = () => {
     const q = $('#poll-q').value.trim();
     const opts = $$('.poll-opt').map(input => input.value.trim()).filter(Boolean);
@@ -1573,7 +2080,14 @@ function bindEvents() {
     error.hidden = true;
     if (!q) { error.textContent = 'Напишите вопрос.'; error.hidden = false; return; }
     if (opts.length < 2) { error.textContent = 'Нужно минимум два варианта ответа.'; error.hidden = false; return; }
-    state.attachment = { kind: 'poll', q: q.slice(0, 300), opts: opts.slice(0, 4), votes: {} };
+    state.attachment = { kind: 'poll', q: q.slice(0, 300), opts: opts.slice(0, MAX_POLL_OPTIONS), votes: {} };
+    if ($('#poll-quiz').checked) {
+      const correct = Math.min(Number($('#poll-correct').value) || 0, opts.length - 1);
+      state.attachment.quiz = true;
+      state.attachment.correct = correct;
+    } else if ($('#poll-multi').checked) {
+      state.attachment.multi = true;
+    }
     $('#attachment-image').hidden = true;
     $('#attachment-preview').hidden = false;
     $('#attachment-label').textContent = `Опрос: ${state.attachment.q}`;
@@ -1610,6 +2124,37 @@ function bindEvents() {
   $('#attach-button').onclick = () => $('#photo-input').click();
   $('#photo-input').onchange = () => void attachPhoto($('#photo-input').files[0]);
   $('#remove-attachment').onclick = () => { photoGeneration++; state.attachment = null; $('#attachment-preview').hidden = true; $('#attachment-image').removeAttribute('src'); updateComposer(); };
+  // 2.8.2 controls: formatting bar, silence, scheduling, chat shelf, media panel, gestures.
+  $('#format-button').onclick = () => {
+    const bar = $('#format-bar');
+    bar.hidden = !bar.hidden;
+    $('#format-button').setAttribute('aria-expanded', String(!bar.hidden));
+  };
+  $$('#format-bar [data-format]').forEach(button => { button.onclick = () => applyFormat(button.dataset.format); });
+  $('#silent-button').onclick = () => {
+    state.silent = !state.silent;
+    syncSilentButton();
+    renderHeader();
+    notify(state.silent ? 'Тихий режим: сообщения придут без звука' : 'Тихий режим выключен');
+  };
+  $('#schedule-button').onclick = () => openScheduleDialog();
+  $('#schedule-list').onclick = event => {
+    const row = event.target.closest('[data-preset]');
+    if (row) void scheduleMessage(row.dataset.preset);
+  };
+  $('#pin-chat').onclick = () => void togglePinChat();
+  $('#archive-chat').onclick = () => void toggleArchiveChat();
+  $('#open-media').onclick = () => { closeChatMenu(); openMedia(); };
+  $('#archive-toggle').onclick = () => toggleArchiveShelf();
+  $('#jump-button').onclick = () => {
+    const box = $('#messages');
+    box.scrollTop = box.scrollHeight;
+    state.unreadDividerId = null;
+    box.querySelectorAll('.unread-divider').forEach(node => node.remove());
+    updateJumpButton();
+  };
+  $('#messages').addEventListener('scroll', onMessagesScroll, { passive: true });
+  bindMessageGestures();
   buildEmojiPicker();
   $('#emoji-button').onclick = () => {
     buildEmojiPicker();
@@ -1660,6 +2205,7 @@ async function main() {
   const defaultServer = import.meta.env.DEV ? new URL('/peerjs', location.origin).href : 'https://0.peerjs.com';
   state.settings = {
     theme: 'light', sound: false, signalUrl: defaultServer, turnUrl: '', turnUser: '', turnPassword: '',
+    night: { ...NIGHT_DEFAULT }, secureScreen: false,
     ...recallUi(), ...await store.getMeta('settings'),
   };
   state.blocked = await store.getMeta('blocked') || [];
@@ -1681,7 +2227,10 @@ async function main() {
   const savedSeen = await store.getMeta('lastSeen');
   if (savedSeen && typeof savedSeen === 'object') for (const [id, at] of Object.entries(savedSeen)) state.lastSeen.set(id, at);
   if (!window.MediaRecorder || !navigator.mediaDevices) $('#voice-button').hidden = true;
-  bindEvents(); applyTheme(); applyWall(); renderSidebar(); renderNetwork();
+  bindEvents(); applyTheme(); applyWall(); applySecureScreen(); renderSidebar(); renderNetwork();
+  restoreScheduled();
+  // The night window is opened and closed by the clock, so re-evaluate it regularly.
+  if (state.settings.night?.enabled) setInterval(applyTheme, 60_000);
   if (lockState()) {
     $('#lock-screen').hidden = false;
     setTimeout(() => $('#lock-input').focus(), 50);

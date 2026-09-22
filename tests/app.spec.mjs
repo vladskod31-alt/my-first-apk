@@ -43,11 +43,12 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   // 2.8.1: the UI must not mention open source, source code hosting or GitHub.
   await page.locator('.quiet-button').click();
   const about = await page.locator('#about-dialog').innerText();
-  expect(about).toContain('2.8.1');
+  expect(about).toContain('2.8.2');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
-  expect(await page.locator('#about-features li').count()).toBe(10);
-  expect(await page.locator('#about-version').innerText()).toBe('2.8.1');
+  // 2.8.2 advertises twelve Telegram-style features plus two extras.
+  expect(await page.locator('#about-features li').count()).toBe(14);
+  expect(await page.locator('#about-version').innerText()).toBe('2.8.2');
   expect(errors).toEqual([]);
 });
 
@@ -305,4 +306,180 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await expect(alice.locator('.message-text').filter({ hasText: 'миг' })).toBeHidden({ timeout: 25000 });
   await expect(bob.locator('.message-deleted').first()).toBeVisible({ timeout: 20000 });
   expect(errors).toEqual([]);
+});
+
+test('2.8.2 markup, spoilers, hashtags, quiet mode, scheduling, quiz and media panel', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await ready(page);
+  await page.locator('#nav-saved').click();
+  // The formatting bar wraps the selection into markup markers.
+  await page.locator('#message-input').fill('важное слово');
+  await page.locator('#message-input').evaluate(input => input.setSelectionRange(0, 6));
+  await page.locator('#format-button').click();
+  await page.locator('#format-bar [data-format="bold"]').click();
+  await expect(page.locator('#message-input')).toHaveValue('**важное** слово');
+  await page.locator('#send-button').click();
+  await expect(page.locator('.message-text .rich-bold').first()).toHaveText('важное');
+  await expect(page.locator('.message-text').first()).toContainText('слово');
+  // A spoiler stays hidden until it is tapped.
+  await page.locator('#message-input').fill('Секрет ||спрятано|| конец');
+  await page.locator('#send-button').click();
+  const spoiler = page.locator('.message-text .spoiler').last();
+  await expect(spoiler).toHaveText('спрятано');
+  await expect(spoiler).not.toHaveClass(/revealed/);
+  await spoiler.click();
+  await expect(spoiler).toHaveClass(/revealed/);
+  // Hashtags act as search buttons.
+  await page.locator('#message-input').fill('Разбор #поездка и ещё #поездка');
+  await page.locator('#send-button').click();
+  await page.locator('.message-text .hashtag').first().click();
+  await expect(page.locator('#chat-search')).toHaveValue('#поездка');
+  await page.locator('#chat-search').fill('');
+  // Quiet messages carry the mute mark.
+  await page.locator('#silent-button').click();
+  await page.locator('#message-input').fill('без звука');
+  await page.locator('#send-button').click();
+  await expect(page.locator('.message-row').last().locator('.silent-mark')).toBeVisible();
+  await page.locator('#silent-button').click();
+  // A scheduled message is shown with its clock chip and can be released at once.
+  await page.locator('#message-input').fill('напомни вечером');
+  await page.locator('#schedule-button').click();
+  await expect(page.locator('#schedule-dialog')).toBeVisible();
+  await page.locator('#schedule-list [data-preset="5m"]').click();
+  await expect(page.locator('#schedule-dialog')).not.toBeVisible();
+  const scheduled = page.locator('.message-row').last();
+  await expect(scheduled.locator('.schedule-chip')).toContainText('отправлю в');
+  await expect(scheduled.locator('.message-status')).toHaveAttribute('data-status', 'scheduled');
+  await scheduled.hover();
+  await scheduled.locator('.message-actions-button').click();
+  await page.locator('#message-actions [data-act="sendnow"]').click();
+  await expect(page.locator('.message-row').last().locator('.message-status')).toHaveAttribute('data-status', 'local');
+  await expect(page.locator('.schedule-chip')).toHaveCount(0);
+  // A quiz poll marks the wrong pick and reveals the right answer.
+  await page.locator('#poll-button').click();
+  await page.locator('#poll-q').fill('Столица Франции?');
+  await page.locator('#poll-opt-0').fill('Марсель');
+  await page.locator('#poll-opt-1').fill('Париж');
+  await page.locator('#poll-quiz').check();
+  await page.locator('#poll-correct').selectOption('1');
+  await page.locator('#poll-send').click();
+  await page.locator('#send-button').click();
+  await expect(page.locator('.att-poll .poll-kind')).toContainText('Квиз');
+  await page.locator('.poll-option').first().click();
+  await expect(page.locator('.poll-option').first()).toHaveClass(/wrong/);
+  await expect(page.locator('.poll-option').nth(1)).toHaveClass(/correct/);
+  await expect(page.locator('.att-poll small').last()).toContainText('Не угадали');
+  // A quoted reply keeps the fragment of the source message.
+  await page.locator('.message-row').first().hover();
+  await page.locator('.message-row').first().locator('.message-actions-button').click();
+  await page.locator('#message-actions [data-act="quote"]').click();
+  await expect(page.locator('#reply-bar')).toBeVisible();
+  await page.locator('#message-input').fill('согласен');
+  await page.locator('#send-button').click();
+  await expect(page.locator('.message-row').last().locator('.quote-fragment')).toContainText('важное');
+  // The media panel collects photos, files, voices and tags of the chat.
+  await page.locator('#photo-input').setInputFiles({
+    name: 'pixel.png', mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6q1EAAAAASUVORK5CYII=', 'base64'),
+  });
+  await expect(page.locator('#attachment-preview')).toBeVisible();
+  await page.locator('#send-button').click();
+  await page.locator('#chat-more').click();
+  await page.locator('#open-media').click();
+  await expect(page.locator('#media-dialog')).toBeVisible();
+  await expect(page.locator('#media-photos .media-thumb')).toHaveCount(1);
+  await expect(page.locator('#media-tags .tag-chip').first()).toContainText('#поездка');
+  await expect(page.locator('#media-voices')).toContainText('Голосовых сообщений нет');
+  await page.locator('#media-tags .tag-chip').first().click();
+  await expect(page.locator('#media-dialog')).not.toBeVisible();
+  await expect(page.locator('#chat-search')).toHaveValue('#поездка');
+  await page.locator('#chat-search').fill('');
+  // A thumbnail jumps to its message and closes the panel.
+  await page.locator('#chat-more').click();
+  await page.locator('#open-media').click();
+  await page.locator('#media-photos .media-thumb').first().click();
+  await expect(page.locator('#media-dialog')).not.toBeVisible();
+  await expect(page.locator('.message-row.highlight')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+test('2.8.2 pinned chats and the archive shelf keep the list tidy', async ({ page }) => {
+  await ready(page);
+  await add(page, 'LIBO:libo-abcdef0123456789abcdef0123456789');
+  const row = page.locator('[data-chat-id="libo-abcdef0123456789abcdef0123456789"]');
+  await page.locator('#chat-more').click();
+  await page.locator('#pin-chat').click();
+  await expect(row.locator('.pin-mark')).toBeVisible();
+  await page.locator('#chat-more').click();
+  await page.locator('#archive-chat').click();
+  await expect(row).toBeHidden();
+  await expect(page.locator('#archive-toggle')).toBeVisible();
+  await page.locator('#archive-toggle').click();
+  await expect(row).toBeVisible();
+  await expect(page.locator('#archive-toggle')).toContainText('Обычные чаты');
+  await page.locator('#chat-more').click();
+  await page.locator('#archive-chat').click();
+  await expect(row).toBeVisible();
+  await expect(page.locator('#archive-toggle')).toBeHidden();
+  await expect(row.locator('.pin-mark')).toBeVisible();
+});
+
+test('2.8.2 unread separator, jump counter, swipe reply and quiet delivery', async ({ page: alice, browser }) => {
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5173' });
+  const bob = await context.newPage();
+  const errors = [];
+  alice.on('pageerror', error => errors.push(error.message));
+  bob.on('pageerror', error => errors.push(error.message));
+  await ready(alice);
+  await ready(bob);
+  await profile(alice, 'Аня');
+  await profile(bob, 'Богдан');
+  await add(alice, await code(bob));
+  await expect(alice.locator('#chat-presence')).toContainText('В сети');
+  await bob.locator('.chat-row').filter({ hasText: 'Аня' }).click();
+  await bob.locator('#accept-request').click();
+  await expect(bob.locator('#chat-presence')).toContainText('В сети');
+  // Bob leaves the chat: three messages arrive while it is closed.
+  await bob.locator('#nav-chats').click();
+  await expect(bob.locator('#shell')).not.toHaveClass(/chat-open/);
+  await send(alice, 'первое');
+  await send(alice, 'второе');
+  await send(alice, 'третье');
+  await expect(bob.locator('.chat-row').filter({ hasText: 'Аня' }).locator('.unread-badge')).toHaveText('3');
+  await bob.locator('.chat-row').filter({ hasText: 'Аня' }).click();
+  await expect(bob.locator('.unread-divider')).toBeVisible();
+  await expect(bob.locator('.message-text').last()).toHaveText('третье');
+  // Reaching the bottom retires the separator, like in Telegram.
+  await bob.locator('#messages').evaluate(node => { node.scrollTop = node.scrollHeight; node.dispatchEvent(new Event('scroll')); });
+  await expect(bob.locator('.unread-divider')).toBeHidden();
+  // A quiet message arrives with the mute mark and without the sound flag.
+  await alice.locator('#silent-button').click();
+  await send(alice, 'тихо');
+  await expect(bob.locator('.incoming .silent-mark').last()).toBeVisible();
+  await alice.locator('#silent-button').click();
+  // Swiping a message with a finger opens the reply bar.
+  const target = bob.locator('.message-row').last();
+  const box = await target.boundingBox();
+  await target.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 3, isPrimary: true, button: 0, buttons: 1, clientX: box.x + 30, clientY: box.y + 20 });
+  await target.dispatchEvent('pointermove', { pointerType: 'touch', pointerId: 3, isPrimary: true, button: 0, buttons: 1, clientX: box.x + 130, clientY: box.y + 24 });
+  await target.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 3, isPrimary: true, button: 0, clientX: box.x + 130, clientY: box.y + 24 });
+  await expect(bob.locator('#reply-bar')).toBeVisible();
+  await bob.locator('#cancel-reply').click();
+  // A double tap leaves the default reaction and it reaches the peer.
+  await bob.locator('.message-row').last().dblclick();
+  await expect(bob.locator('.reaction-chip').last()).toBeVisible();
+  await expect(alice.locator('.reaction-chip').first()).toBeVisible({ timeout: 20000 });
+  // Once the thread overflows the viewport, the counter button appears.
+  for (let index = 0; index < 12; index++) await send(alice, `строка ${index}`);
+  await expect(bob.locator('.message-text').last()).toHaveText('строка 11');
+  // Let the auto-scroll of the arriving messages settle before scrolling up.
+  await bob.waitForTimeout(500);
+  await bob.locator('#messages').evaluate(node => { node.scrollTop = 0; });
+  await expect(bob.locator('#jump-button')).toBeVisible();
+  await expect(bob.locator('#jump-count')).toHaveText(/^\d+$/);
+  await bob.locator('#jump-button').click();
+  await expect(bob.locator('#jump-button')).toBeHidden();
+  expect(errors).toEqual([]);
+  await context.close();
 });

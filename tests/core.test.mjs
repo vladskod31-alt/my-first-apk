@@ -6,6 +6,9 @@ import {
   makeIceServers, textExport, MAX_TEXT, MAX_IMAGE_DATA, MAX_ATT_DATA, safeFilename, initials, toPacket, verificationCode,
   makeEditPacket, makeDeletePacket, makePinPacket, makeReactPacket,
   mergePollVote, pollTally, REACTIONS,
+  // 2.8.2 helpers
+  richTokens, plainText, hashtags, previewText, scheduleAt, isNightNow,
+  hasVoted, votesOf, FEATURES, VERSION, APK_URL, DEFAULT_REACTION, SCHEDULE_PRESETS,
 } from '../web/lib/core.mjs';
 
 const peerId = 'libo-0123456789abcdef0123456789abcdef';
@@ -203,4 +206,98 @@ test('2.8.1 packets: poll message, ttl bounds, forward label, read marker', () =
   assert.equal(validatePacket({ v: 1, type: 'read', upTo: 123 }).upTo, 123);
   assert.equal(validatePacket({ v: 1, type: 'read', upTo: -1 }), null);
   assert.equal(validatePacket({ v: 1, type: 'mt-hello', pub: 'AAAA' }).pub, 'AAAA');
+});
+
+test('2.8.2 markup is tokenized, spoilers hidden and markers stripped from previews', () => {
+  const tokens = richTokens('Привет **жирный** _курсив_ ~~зачёркнутый~~ `моно` ||спойлер||');
+  assert.deepEqual(
+    tokens.filter(token => token.type !== 'text').map(token => [token.type, token.text]),
+    [['bold', 'жирный'], ['italic', 'курсив'], ['strike', 'зачёркнутый'], ['mono', 'моно'], ['spoiler', 'спойлер']],
+  );
+  assert.equal(plainText('**важно** и `код`'), 'важно и код');
+  assert.equal(plainText('<b>это не разметка</b>'), '<b>это не разметка</b>');
+  assert.equal(plainText('__под ним__ и ~старое~'), 'под ним и старое');
+  // Unterminated or empty markup stays literal text.
+  assert.deepEqual(richTokens('**без конца'), [{ type: 'text', text: '**без конца' }]);
+  const links = richTokens('открой https://example.com/page, там всё');
+  assert.deepEqual(links.filter(token => token.type === 'link').map(token => token.text), ['https://example.com/page']);
+  assert.deepEqual(hashtags('про #Работа и #работа, ещё #идея_2026'), ['#работа', '#идея_2026']);
+  assert.equal(previewText({ direction: 'out', text: '**важно** про ||тайну||' }), 'Вы: важно про тайну');
+  assert.equal(previewText({ direction: 'in', text: '', att: { kind: 'voice' } }), '🎤 Голосовое');
+  assert.equal(previewText(null), 'Начните с простого «привет»');
+});
+
+test('2.8.2 schedule presets resolve to absolute local times', () => {
+  const now = new Date(2026, 8, 22, 10, 0, 0).getTime();
+  assert.equal(scheduleAt('1m', now), now + 60_000);
+  assert.equal(scheduleAt('5m', now), now + 300_000);
+  assert.equal(scheduleAt('1h', now), now + 3_600_000);
+  assert.equal(scheduleAt('unknown', now), null);
+  const evening = new Date(scheduleAt('evening', now));
+  assert.equal(evening.getHours(), 19);
+  assert.equal(evening.getDate(), 22);
+  const afterEvening = new Date(2026, 8, 22, 23, 30).getTime();
+  assert.equal(new Date(scheduleAt('evening', afterEvening)).getDate(), 23);
+  const morning = new Date(scheduleAt('morning', now));
+  assert.equal(morning.getHours(), 9);
+  assert.equal(morning.getDate(), 23);
+  assert.equal(SCHEDULE_PRESETS.length, 5);
+});
+
+test('2.8.2 night theme window crosses midnight and ignores broken input', () => {
+  const at = (hours, minutes = 0) => new Date(2026, 8, 22, hours, minutes).getTime();
+  assert.equal(isNightNow(at(23), '22:00', '07:00'), true);
+  assert.equal(isNightNow(at(3), '22:00', '07:00'), true);
+  assert.equal(isNightNow(at(7), '22:00', '07:00'), false);
+  assert.equal(isNightNow(at(12), '22:00', '07:00'), false);
+  assert.equal(isNightNow(at(12), '09:00', '18:00'), true);
+  assert.equal(isNightNow(at(20), '09:00', '18:00'), false);
+  assert.equal(isNightNow(at(12), '12:00', '12:00'), false);
+  assert.equal(isNightNow(at(12), '25:00', '18:00'), false);
+});
+
+test('2.8.2 polls support quiz answers and multiple choices', () => {
+  const id = '01234567-89ab-cdef-0123-456789abcdef';
+  const quiz = validatePacket({ v: 1, type: 'message', id, text: '', at: 5, att: { kind: 'poll', q: '2+2?', opts: ['3', '4'], quiz: true, correct: 1 } });
+  assert.equal(quiz.att.quiz, true);
+  assert.equal(quiz.att.correct, 1);
+  assert.equal(validatePacket({ v: 1, type: 'message', id, text: '', at: 5, att: { kind: 'poll', q: '2+2?', opts: ['3', '4'], quiz: true, correct: 7 } }), null);
+  assert.equal(validatePacket({ v: 1, type: 'message', id, text: '', at: 5, att: { kind: 'poll', q: '2+2?', opts: ['3', '4'], quiz: true } }), null);
+  const multi = validatePacket({ v: 1, type: 'message', id, text: '', at: 5, att: { kind: 'poll', q: 'Что взять?', opts: ['Палатку', 'Спальник', 'Термос'], multi: true } });
+  assert.equal(multi.att.multi, true);
+  const votes = mergePollVote(multi.att.votes, 'mine', [0, 2]);
+  assert.deepEqual(votes.mine, [0, 2]);
+  assert.deepEqual(pollTally({ ...multi.att, votes }), [1, 0, 1]);
+  assert.equal(hasVoted(votes, 'mine', 2), true);
+  assert.equal(hasVoted(votes, 'mine', 1), false);
+  assert.deepEqual(votesOf(votes, 'mine'), [0, 2]);
+  assert.deepEqual(pollTally({ ...multi.att, votes: mergePollVote(votes, 'mine', []) }), [0, 0, 0]);
+  assert.deepEqual(validatePacket({ v: 1, type: 'pollvote', pid: id, opt: [2, 0] }).opt, [0, 2]);
+  assert.equal(validatePacket({ v: 1, type: 'pollvote', pid: id, opt: [0, 0] }), null);
+  assert.equal(validatePacket({ v: 1, type: 'pollvote', pid: id, opt: [9] }), null);
+  assert.equal(validatePacket({ v: 1, type: 'pollvote', pid: id, opt: [] }), null);
+});
+
+test('2.8.2 silent flag and quoted replies survive validation, schedule stays local', () => {
+  const id = '01234567-89ab-cdef-0123-456789abcdef';
+  const silent = validatePacket({ v: 1, type: 'message', id, text: 'тсс', at: 5, silent: true, admin: 'x' });
+  assert.equal(silent.silent, true);
+  assert.equal(silent.admin, undefined);
+  assert.equal(validatePacket({ v: 1, type: 'message', id, text: 'обычное', at: 5, silent: 'yes' }).silent, undefined);
+  const quoted = validatePacket({ v: 1, type: 'message', id, text: 'ответ', at: 5, reply: { name: 'Аня', text: 'Привет!', quote: '  Привет  ' } });
+  assert.equal(quoted.reply.quote, 'Привет');
+  assert.equal(validatePacket({ v: 1, type: 'message', id, text: 'ответ', at: 5, reply: { name: 'Аня', text: 'Привет!', quote: 'x'.repeat(401) } }), null);
+  const packet = toPacket({ id, text: 'тсс', at: 5, silent: true, scheduledAt: 123, status: 'scheduled' });
+  assert.equal(packet.silent, true);
+  assert.equal(packet.scheduledAt, undefined);
+  assert.ok(validatePacket(packet));
+});
+
+test('2.8.2 ships version 2.8.2, its APK link and fourteen advertised features', () => {
+  assert.equal(VERSION, '2.8.2');
+  assert.match(APK_URL, /refs\/tags\/v2\.8\.2\/downloads\/LIBO-2\.8\.2\.apk$/);
+  assert.equal(Object.keys(FEATURES).length, 14);
+  assert.equal(DEFAULT_REACTION, 'heart');
+  assert.ok(REACTIONS.includes(DEFAULT_REACTION));
+  for (const text of Object.values(FEATURES)) assert.ok(text.length > 20 && text.length < 200);
 });

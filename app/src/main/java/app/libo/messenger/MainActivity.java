@@ -14,6 +14,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -207,6 +208,16 @@ public final class MainActivity extends Activity {
                     pendingExport = null;
                     showToast("Нет приложения для сохранения файла.");
                 }
+            }});
+        }
+
+        // 2.8.2: screenshot protection. FLAG_SECURE also hides the app in the recent-tasks
+        // preview, so a chat cannot leak through the system screenshot UI.
+        @JavascriptInterface
+        public void setSecureScreen(final boolean secure) {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                if (secure) getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+                else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
             }});
         }
 

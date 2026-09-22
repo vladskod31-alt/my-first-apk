@@ -51,7 +51,7 @@ jobs:
           APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
           if [ -z "${LIBO_KEYSTORE_BASE64:-}" ] || [ -z "${LIBO_KEYSTORE_PASSWORD:-}" ]; then
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Секреты подписи не заданы: публикуется НЕПОДПИСАННЫЙ APK только как артефакт сборки."
+            echo "::warning::Секреты подписи не заданы: неподписанный APK останется только артефактом сборки."
             mv "$APK" libo-unsigned.apk
             exit 0
           fi
@@ -103,6 +103,13 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=${{ steps.names.outputs.version }}
+          SIGNED=${{ steps.sign.outputs.signed }}
+          if [ "$SIGNED" != true ]; then
+            # Неподписанный APK не публикуется как установочный файл: он перезаписал бы
+            # подписанный APK каталога downloads/ тега. Сборка остаётся артефактом CI.
+            echo "::warning::Секретов подписи нет: неподписанный APK не публикуется. Основная ссылка — downloads/LIBO-$VERSION.apk тега $RELEASE_TAG."
+            exit 0
+          fi
           for attempt in 1 2 3 4 5; do
             echo "Попытка загрузки $attempt"
             if gh release upload "$RELEASE_TAG" \
