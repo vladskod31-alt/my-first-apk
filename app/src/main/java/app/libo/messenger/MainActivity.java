@@ -11,6 +11,10 @@ import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
+import android.security.keystore.StrongBoxUnavailableException;
+import android.util.Base64;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -31,12 +35,24 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.Map;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 
 /** A small, offline-capable shell. Only bundled application code can access the native bridge. */
 public final class MainActivity extends Activity {
     private static final String ORIGIN = "https://appassets.androidplatform.net";
+    // Ключ шифрования локальных секретов живёт в Android Keystore и не извлекается из него.
+    private static final String KEYSTORE = "AndroidKeyStore";
+    private static final String SECRET_ALIAS = "libo.vault.v3";
+    private static final int GCM_TAG_BITS = 128;
+    private static final int MAX_SECRET_BYTES = 64 * 1024;
     private static final int PICK_PHOTO = 100;
     private static final int SAVE_EXPORT = 101;
     private static final String CSP = "default-src 'self'; script-src 'self'; "
@@ -170,6 +186,35 @@ public final class MainActivity extends Activity {
         return "application/octet-stream";
     }
 
+    // AES-256-GCM ключом из Android Keystore (StrongBox, когда доступен). Открытый текст
+    // секрета не покидает WebView: наружу уходят только шифротекст и одноразовый nonce.
+    private SecretKey keystoreKey() throws Exception {
+        KeyStore store = KeyStore.getInstance(KEYSTORE);
+        store.load(null);
+        if (store.containsAlias(SECRET_ALIAS)) return (SecretKey) store.getKey(SECRET_ALIAS, null);
+        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE);
+        KeyGenParameterSpec.Builder builder = new KeyGenParameterSpec.Builder(SECRET_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .setUserAuthenticationRequired(false);
+        // setIsStrongBoxBacked и StrongBoxUnavailableException появились в API 28:
+        // на более старых системах используется обычный аппаратный Keystore.
+        if (Build.VERSION.SDK_INT >= 28) {
+            try {
+                generator.init(builder.setIsStrongBoxBacked(true).build());
+                return generator.generateKey();
+            } catch (StrongBoxUnavailableException | java.security.InvalidAlgorithmParameterException unavailable) {
+                // Устройство без StrongBox: остаётся аппаратно защищённый Keystore устройства.
+                builder.setIsStrongBoxBacked(false);
+            }
+        }
+        generator.init(builder.build());
+        return generator.generateKey();
+    }
+
     private final class NativeBridge {
         @JavascriptInterface
         public void copyText(String text) {
@@ -209,6 +254,48 @@ public final class MainActivity extends Activity {
                     showToast("Нет приложения для сохранения файла.");
                 }
             }});
+        }
+
+        // 2.8.3: локальные секреты (мастер-ключ хранилища и приватные ключи идентичности)
+        // шифруются ключом из Android Keystore. Возвращается base64(iv || шифротекст).
+        @JavascriptInterface
+        public String sealLocalSecret(String plainBase64) {
+            if (plainBase64 == null || plainBase64.length() > MAX_SECRET_BYTES * 2) return null;
+            try {
+                byte[] plain = Base64.decode(plainBase64, Base64.NO_WRAP);
+                if (plain.length == 0 || plain.length > MAX_SECRET_BYTES) return null;
+                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+                cipher.init(Cipher.ENCRYPT_MODE, keystoreKey());
+                byte[] sealed = cipher.doFinal(plain);
+                byte[] nonce = cipher.getIV();
+                byte[] out = new byte[nonce.length + sealed.length];
+                System.arraycopy(nonce, 0, out, 0, nonce.length);
+                System.arraycopy(sealed, 0, out, nonce.length, sealed.length);
+                java.util.Arrays.fill(plain, (byte) 0);
+                return Base64.encodeToString(out, Base64.NO_WRAP);
+            } catch (Exception error) {
+                // Никаких деталей исключения в JS: только отказ.
+                return null;
+            }
+        }
+
+        @JavascriptInterface
+        public String openLocalSecret(String sealedBase64) {
+            if (sealedBase64 == null || sealedBase64.length() > MAX_SECRET_BYTES * 2) return null;
+            try {
+                byte[] sealed = Base64.decode(sealedBase64, Base64.NO_WRAP);
+                if (sealed.length < 13) return null;
+                byte[] nonce = new byte[12];
+                System.arraycopy(sealed, 0, nonce, 0, 12);
+                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+                cipher.init(Cipher.DECRYPT_MODE, keystoreKey(), new GCMParameterSpec(GCM_TAG_BITS, nonce));
+                byte[] plain = cipher.doFinal(sealed, 12, sealed.length - 12);
+                String out = Base64.encodeToString(plain, Base64.NO_WRAP);
+                java.util.Arrays.fill(plain, (byte) 0);
+                return out;
+            } catch (Exception error) {
+                return null;
+            }
         }
 
         // 2.8.2: screenshot protection. FLAG_SECURE also hides the app in the recent-tasks

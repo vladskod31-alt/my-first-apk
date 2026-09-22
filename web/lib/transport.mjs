@@ -1,13 +1,13 @@
 import Peer from 'peerjs';
 import { parseSignalingUrl, makeIceServers, validatePacket } from './core.mjs';
-import { MtSession } from './mtproto.mjs';
+import { SecureSession, SessionState, SecureLogger } from './security.mjs';
 
 export class Transport {
   constructor(events) {
     this.events = events;
     this.connections = new Map();
     this.attempts = new Map();
-    this.mtSessions = new Map();
+    this.secureSessions = new Map();
     this.timers = new Set();
     this.retryCount = 0;
   }
@@ -136,7 +136,7 @@ export class Transport {
           if (this.connections.get(id) !== connection || !connection.open) return;
           this.events.onContactState(id, 'online');
           this.events.onConnected(id);
-          void this.startMt(connection);
+          void this.startSecure(connection);
         } catch {
           connection.close();
           this.events.onStorageError();
@@ -160,60 +160,91 @@ export class Transport {
 
   isOpen(id) { const conn = this.connections.get(id); return !!(conn?.open && conn.liboHello); }
 
-  // MTProto-inspired layer: each side announces an ephemeral ECDH key once the chat is
-  // hello-ready; older peers simply never answer, and the channel stays DTLS-only.
-  // The MT session belongs to the peer, not to a single connection: WebRTC links can
-  // be replaced while the chat lives on, and a per-connection key would desynchronise
-  // the pair. A new public key from the peer starts a new generation for both sides.
-  async startMt(connection) {
+  // E2EE v3: каждая сторона объявляет эфемерный ключ X25519 и свою идентичность
+  // Ed25519 в подписанном приглашении. Сессия принадлежит собеседнику, а не отдельному
+  // WebRTC-соединению: ссылка может быть заменена, а ключи чата — нет.
+  async startSecure(connection) {
     const id = connection.peer;
     try {
-      let session = this.mtSessions.get(id);
-      if (!session) {
-        session = await MtSession.create();
-        this.mtSessions.set(id, session);
-      }
-      connection.mtSession = session;
-      if (connection.mtPubSent === session.pubB64) return;
-      connection.mtPubSent = session.pubB64;
-      connection.send({ v: 1, type: 'mt-hello', pub: session.pubB64 });
-    } catch { connection.mtSession = null; }
+      const session = await this.secureSession(id, connection);
+      if (!session) return;
+      connection.secureSession = session;
+      const hello = await session.hello();
+      if (connection.helloPub === hello.kxPub) return;
+      connection.helloPub = hello.kxPub;
+      connection.send({ ...hello, v: 1, type: 'sec-hello' });
+    } catch (error) {
+      SecureLogger.debug('transport: приглашение E2EE не отправлено', { reason: String(error && error.message) });
+      connection.secureSession = null;
+    }
   }
 
-  mtStatus(id) {
-    const session = this.connections.get(id)?.mtSession;
-    return session?.ready ? session.fingerprint : '';
+  // Сессия создаётся по требованию: идентичность берётся из vault, доверенный ключ
+  // собеседника — из карточки чата (закрепление TOFU из app.js).
+  async secureSession(id, connection) {
+    let session = this.secureSessions.get(id);
+    if (!session) {
+      if (!this.events.identity) return null;
+      session = new SecureSession({
+        identity: this.events.identity(),
+        conversationId: id,
+        selfId: this.profile?.id ?? null,
+        trusted: this.events.trustedKey?.(id) ?? null,
+      });
+      this.secureSessions.set(id, session);
+    }
+    if (!session.identity) session.identity = this.events.identity();
+    return session;
+  }
+
+  // Сброс E2EE-сессии: старые ключи стираются, следующее соединение начинает новое
+  // рукопожатие. Используется кнопкой «Сбросить сессию» и при отзыве устройств.
+  dropSession(id) {
+    const session = this.secureSessions.get(id);
+    if (!session) return false;
+    session.state.transition('REVOKED');
+    session.ratchet = null;
+    session.state = new SessionState('CONNECTING');
+    this.secureSessions.delete(id);
+    const connection = this.connections.get(id);
+    if (connection) { connection.secureSession = null; connection.secure = false; connection.helloPub = ''; }
+    return true;
+  }
+
+  secureStatus(id) {
+    const session = this.secureSessions.get(id);
+    return session ? session.describe() : null;
   }
 
   async dispatch(id, data, connection) {
-    if (data.type === 'mt-hello') {
+    if (data.type === 'sec-hello') {
       try {
-        let session = this.mtSessions.get(id);
-        if (!session) {
-          session = await MtSession.create();
-          this.mtSessions.set(id, session);
-        }
-        if (session.remotePub !== data.pub) await session.rekey(data.pub);
-        connection.mtSession = session;
-        connection.mt = session.ready;
-        void this.startMt(connection);
-        this.events.onSecurity?.(id);
-      } catch { connection.mtSession = null; }
+        const session = await this.secureSession(id, connection);
+        if (!session) return;
+        connection.secureSession = session;
+        const identity = await session.acceptHello(data, { trusted: this.events.trustedKey?.(id) ?? null });
+        connection.secure = session.established;
+        void this.startSecure(connection);
+        this.events.onSecurity?.(id, identity);
+      } catch (error) {
+        connection.secureSession = null;
+        connection.secure = false;
+        if (error && error.code === 'IDENTITY_CHANGED') this.events.onIdentityChange?.(id, error.identity);
+        else this.events.onSecureDrop?.(id, String(error && error.message));
+      }
       return;
     }
-    if (data.type === 'mt') {
-      const session = connection.mtSession;
-      if (!session?.ready) return;
-      const inner = await session.open(data);
-      if (!inner) {
-        this.events.onMtDrop?.(id);
+    if (data.type === 'envelope') {
+      const session = connection.secureSession ?? this.secureSessions.get(id);
+      if (!session?.established) return;
+      const opened = await session.open(data);
+      if (!opened.ok) {
+        this.events.onSecureDrop?.(id, opened.reason);
         return;
       }
-      const packet = validatePacket(inner);
+      const packet = validatePacket(opened.packet);
       if (!packet) return;
-      if (packet.type !== 'mt' && packet.type !== 'mt-hello' && packet.type !== 'hello') {
-        await this.dispatch(id, packet, connection);
-      }
+      if (!['envelope', 'sec-hello', 'hello'].includes(packet.type)) await this.dispatch(id, packet, connection);
       return;
     }
     if (data.type === 'message') await this.events.onMessage(id, data);
@@ -227,18 +258,24 @@ export class Transport {
     if (data.type === 'pollvote') await this.events.onPollVote?.(id, data.pid, data.opt);
   }
 
+  // Ни один пользовательский пакет не уходит открытым текстом: пока E2EE-сессия не
+  // установлена, send() возвращает false, а сообщение остаётся в очереди устройства.
   async send(id, data) {
     if (!this.isOpen(id)) return false;
     const connection = this.connections.get(id);
+    if (!connection) return false;
+    if (data?.type === 'sec-hello') { connection.send(data); return true; }
+    const session = connection.secureSession ?? this.secureSessions.get(id);
+    if (!session?.established) return false;
     try {
-      if (connection.mt && connection.mtSession?.ready && data.type !== 'mt-hello') {
-        connection.send(await connection.mtSession.seal(data));
-      } else connection.send(data);
+      connection.send(await session.seal(data));
       return true;
     }
-    catch { return false; }
+    catch (error) {
+      SecureLogger.debug('transport: отправка не удалась', { reason: String(error && error.message) });
+      return false;
+    }
   }
-
   updateProfile(profile) {
     this.profile = profile;
     for (const id of this.connections.keys()) {
@@ -247,7 +284,7 @@ export class Transport {
   }
 
   closeContact(id) {
-    this.mtSessions.delete(id);
+    this.secureSessions.delete(id);
     this.connections.get(id)?.close();
     this.attempts.get(id)?.close();
     this.connections.delete(id);
@@ -264,6 +301,6 @@ export class Transport {
     this.peer = null;
     this.connections.clear();
     this.attempts.clear();
-    this.mtSessions.clear();
+    this.secureSessions.clear();
   }
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MtSession } from '../web/lib/mtproto.mjs';
+import { SecureSession, Identity, ReplayGuard } from '../web/lib/security.mjs';
 import {
   normalizePeerCode, makePeerId, normalizeName, validatePacket, parseSignalingUrl,
   makeIceServers, textExport, MAX_TEXT, MAX_IMAGE_DATA, MAX_ATT_DATA, safeFilename, initials, toPacket, verificationCode,
@@ -156,25 +156,31 @@ test('attachments are bounded and mime-checked', () => {
   assert.equal(validatePacket(packet).editedAt, 2);
 });
 
-test('mt session seals, rejects replays and tampering, shares fingerprint', async () => {
-  const a = await MtSession.create();
-  const b = await MtSession.create();
-  await a.accept(await b.publicKey());
-  await b.accept(await a.publicKey());
-  assert.equal(a.fingerprint, b.fingerprint);
-  assert.match(a.fingerprint, /^[0-9a-f]{8}$/);
-  const inner = { v: 1, type: 'message', id: '01234567-89ab-cdef-0123-456789abcdef', text: 'секрет', at: 1, image: null, reply: null };
-  const envelope = await a.seal(inner);
-  assert.equal(envelope.type, 'mt');
-  assert.equal(validatePacket(envelope).type, 'mt');
-  const opened = await b.open(envelope);
-  assert.equal(opened.text, 'секрет');
-  assert.equal(await b.open(envelope), null, 'replay must be rejected');
-  const tampered = { ...envelope, ct: envelope.ct.slice(0, -4) + 'AAAA' };
-  assert.equal(await b.open(tampered), null, 'tampered ciphertext must be rejected');
-  assert.equal(await b.open({ ...envelope, mk: 'AAAA'.repeat(4) }), null);
+test('e2ee session seals, rejects replays and tampering, binds identities', async () => {
+  const a = Identity.create();
+  const b = Identity.create();
+  const sa = new SecureSession({ identity: a, conversationId: peerId });
+  const sb = new SecureSession({ identity: b, conversationId: peerId });
+  await sb.acceptHello(await sa.hello());
+  const peer = await sa.acceptHello(await sb.hello());
+  assert.equal(sa.peerKeyId, b.keyId);
+  assert.equal(sb.peerKeyId, a.keyId);
+  assert.equal(peer.securityCode, b.securityCode);
+  assert.match(peer.securityCode, /^([0-9A-F]{4} ){11}[0-9A-F]{4}$/);
+  const inner = { v: 1, type: 'message', id: '01234567-89ab-cdef-0123-456789abcdef', text: 'секрет', at: Date.now(), image: null, reply: null };
+  const envelope = await sa.seal(inner);
+  assert.equal(envelope.type, 'envelope');
+  assert.equal(envelope.version, 3);
+  // В сеть не уходит plaintext: ни текста, ни его частей в конверте нет.
+  assert.equal(JSON.stringify(envelope).includes('секрет'), false);
+  assert.ok(validatePacket(envelope));
+  const opened = await sb.open(envelope);
+  assert.equal(opened.ok, true);
+  assert.equal(opened.packet.text, 'секрет');
+  assert.equal((await sb.open(envelope)).reason, 'replay');
+  const tampered = { ...envelope, messageId: crypto.randomUUID(), ciphertext: `${envelope.ciphertext.slice(0, -4)}AAAA` };
+  assert.equal((await sb.open(tampered)).ok, false);
 });
-
 test('poll tally and vote merge are pure and bounded', () => {
   const att = { kind: 'poll', q: 'Куда идём?', opts: ['В парк', 'В кино', 'Домой'], votes: {} };
   assert.deepEqual(pollTally(att), [0, 0, 0]);
@@ -199,13 +205,29 @@ test('2.8.1 packets: poll message, ttl bounds, forward label, read marker', () =
   assert.equal(validatePacket({ v: 1, type: 'message', id, text: '', at: 5, att: { kind: 'poll', q: 'Чай?', opts: ['Один'] } }), null);
   const ttl = validatePacket({ v: 1, type: 'message', id, text: 'миг', at: 5, ttl: 60 });
   assert.equal(ttl.ttl, 60);
+  // Недопустимый TTL не попадает в пакет.
   assert.equal(validatePacket({ v: 1, type: 'message', id, text: 'миг', at: 5, ttl: 13 }).ttl, undefined);
   const fwd = validatePacket({ v: 1, type: 'message', id, text: 'привет', at: 5, fwd: { from: 'Аня' } });
   assert.equal(fwd.fwd.from, 'Аня');
   assert.equal(validatePacket({ v: 1, type: 'message', id, text: 'привет', at: 5, fwd: { from: '' } }), null);
   assert.equal(validatePacket({ v: 1, type: 'read', upTo: 123 }).upTo, 123);
   assert.equal(validatePacket({ v: 1, type: 'read', upTo: -1 }), null);
-  assert.equal(validatePacket({ v: 1, type: 'mt-hello', pub: 'AAAA' }).pub, 'AAAA');
+  // Транспортные кадры 2.8.3: подписанное приглашение E2EE и шифрованный конверт.
+  const hello = validatePacket({ v: 1, type: 'sec-hello', idPub: 'A'.repeat(44), kxPub: 'B'.repeat(44), sig: 'C'.repeat(88), keyId: 'abcdef0123456789' });
+  assert.equal(hello.type, 'sec-hello');
+  assert.equal(validatePacket({ v: 1, type: 'sec-hello', idPub: 'A', kxPub: 'B', sig: 'C', keyId: 'ZZZ' }), null);
+  const envelope = validatePacket({
+    v: 1, type: 'envelope', version: 3, messageId: id, conversationId: 'libo-0123456789abcdef0123456789abcdef',
+    senderKeyId: 'aaaa', recipientKeyId: 'bbbb', timestamp: 5, ratchet: { dh: 'DD', pn: 0, n: 3 },
+    nonce: 'nn', ciphertext: 'cc', authenticationTag: 'tt', signature: 'ss',
+  });
+  assert.equal(envelope.type, 'envelope');
+  assert.equal(envelope.ratchet.n, 3);
+  assert.equal(validatePacket({ v: 1, type: 'envelope', version: 2, messageId: id }), null);
+  assert.equal(validatePacket({
+    v: 1, type: 'envelope', version: 3, messageId: id, conversationId: 'x', senderKeyId: 'a', recipientKeyId: 'b',
+    timestamp: 5, ratchet: { dh: 'D', pn: 0, n: -1 }, nonce: 'n', ciphertext: 'c', authenticationTag: 't', signature: 's',
+  }), null);
 });
 
 test('2.8.2 markup is tokenized, spoilers hidden and markers stripped from previews', () => {
@@ -293,10 +315,10 @@ test('2.8.2 silent flag and quoted replies survive validation, schedule stays lo
   assert.ok(validatePacket(packet));
 });
 
-test('2.8.2 ships version 2.8.2, its APK link and fourteen advertised features', () => {
-  assert.equal(VERSION, '2.8.2');
-  assert.match(APK_URL, /refs\/tags\/v2\.8\.2\/downloads\/LIBO-2\.8\.2\.apk$/);
-  assert.equal(Object.keys(FEATURES).length, 14);
+test('2.8.3 ships its version, APK link and advertised features', () => {
+  assert.equal(VERSION, '2.8.3');
+  assert.match(APK_URL, /refs\/tags\/v2\.8\.3\/downloads\/LIBO-2\.8\.3\.apk$/);
+  assert.equal(Object.keys(FEATURES).length, 18);
   assert.equal(DEFAULT_REACTION, 'heart');
   assert.ok(REACTIONS.includes(DEFAULT_REACTION));
   for (const text of Object.values(FEATURES)) assert.ok(text.length > 20 && text.length < 200);

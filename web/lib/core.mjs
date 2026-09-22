@@ -1,5 +1,5 @@
-export const VERSION = '2.8.2';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.2/downloads/LIBO-2.8.2.apk';
+export const VERSION = '2.8.3';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.3/downloads/LIBO-2.8.3.apk';
 // 2.8.2: twelve Telegram-style features (text markup, spoilers, quoted replies,
 // hashtags, gestures, unread divider, pinned and archived chats, scheduled and silent
 // messages, quiz polls, chat media panel) plus two extras (scheduled dark theme and
@@ -19,6 +19,10 @@ export const FEATURES = {
   media: 'Медиа-панель чата: фотографии, файлы, голосовые и теги в одном окне.',
   night: 'Бонус: ночная тема включается по расписанию в настройках.',
   secure: 'Бонус: в APK — защита от скриншотов и предпросмотра в списке задач.',
+  e2ee: 'E2EE v3: X25519 и Ed25519 с ChaCha20-Poly1305, двойной ratchet и подписанный конверт сообщения.',
+  keyvault: 'Ключи устройства хранятся в зашифрованном vault (Android Keystore либо неизвлекаемый мастер-ключ).',
+  dblock: 'Локальная база шифруется отдельным ключом записей; пароль и PIN хранятся только как PBKDF2-хеш.',
+  verify: 'Код безопасности и отпечаток ключа собеседника с предупреждением о смене ключа.',
 };
 export const MAX_TEXT = 4000;
 export const MAX_IMAGE_DATA = 1_400_000;
@@ -314,15 +318,40 @@ export function validatePacket(value) {
     return Number.isSafeInteger(value.opt) && value.opt >= -1 && value.opt < MAX_POLL_OPTIONS
       ? { v: 1, type: 'pollvote', pid: value.pid, opt: value.opt } : null;
   }
-  if (value.type === 'mt-hello') {
-    return typeof value.pub === 'string' && value.pub.length <= 200 ? { v: 1, type: 'mt-hello', pub: value.pub } : null;
+  if (value.type === 'sec-hello') {
+    // Подписанное приглашение E2EE: только открытые ключи и подпись, без секретов.
+    if (value.v !== 1) return null;
+    for (const field of ['idPub', 'kxPub', 'sig']) {
+      if (typeof value[field] !== 'string' || value[field].length > 200) return null;
+    }
+    if (typeof value.keyId !== 'string' || !/^[a-f0-9]{8,32}$/.test(value.keyId)) return null;
+    return { v: 1, type: 'sec-hello', idPub: value.idPub, kxPub: value.kxPub, sig: value.sig, keyId: value.keyId };
   }
-  if (value.type === 'mt') {
-    if (!Number.isSafeInteger(value.msg_id)) return null;
-    if (typeof value.mk !== 'string' || value.mk.length > 44) return null;
-    if (typeof value.iv !== 'string' || value.iv.length > 44) return null;
-    if (typeof value.ct !== 'string' || value.ct.length > MAX_ATT_DATA + 400_000) return null;
-    return { v: 1, type: 'mt', msg_id: value.msg_id, mk: value.mk, iv: value.iv, ct: value.ct };
+  if (value.type === 'envelope') {
+    // Конверт E2EE: уходит в сеть вместо plaintext. Проверяем форму и границы, содержимое
+    // защищено AEAD и подписью (см. web/lib/security.mjs).
+    if (value.version !== 3) return null;
+    if (typeof value.messageId !== 'string' || value.messageId.length > 64) return null;
+    if (typeof value.conversationId !== 'string' || value.conversationId.length > 80) return null;
+    if (typeof value.senderKeyId !== 'string' || value.senderKeyId.length > 32) return null;
+    if (typeof value.recipientKeyId !== 'string' || value.recipientKeyId.length > 32) return null;
+    if (!Number.isSafeInteger(value.timestamp)) return null;
+    const header = value.ratchet;
+    if (!header || typeof header.dh !== 'string' || header.dh.length > 200) return null;
+    if (!Number.isSafeInteger(header.pn) || !Number.isSafeInteger(header.n) || header.n < 0) return null;
+    // Поколение цепочки: номер ротации ключей внутри сессии (0 — исходная цепочка).
+    const gen = header.gen ?? 0;
+    if (!Number.isSafeInteger(gen) || gen < 0 || gen > 4096) return null;
+    for (const field of ['nonce', 'ciphertext', 'authenticationTag', 'signature']) {
+      if (typeof value[field] !== 'string' || value[field].length > MAX_ATT_DATA + 400_000) return null;
+    }
+    return {
+      v: 1, type: 'envelope', version: 3, messageId: value.messageId, conversationId: value.conversationId,
+      senderKeyId: value.senderKeyId, recipientKeyId: value.recipientKeyId, timestamp: value.timestamp,
+      ratchet: { dh: header.dh, pn: header.pn, n: header.n, gen },
+      nonce: value.nonce, ciphertext: value.ciphertext,
+      authenticationTag: value.authenticationTag, signature: value.signature,
+    };
   }
   if (value.type !== 'message' || typeof value.id !== 'string' || !MESSAGE_ID.test(value.id)) return null;
   if (typeof value.text !== 'string' || value.text.length > MAX_TEXT) return null;

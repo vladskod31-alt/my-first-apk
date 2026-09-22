@@ -1,6 +1,10 @@
 import qrcode from 'qrcode-generator';
-import { Store } from './lib/storage.mjs';
+import { Store, loadOrCreateMasterKey, RecordCipher } from './lib/storage.mjs';
 import { Transport } from './lib/transport.mjs';
+import {
+  KeyVault, SecureLogger, RateLimiter, SessionState, sanitizeError, PairingToken,
+  ALGORITHMS, LIMITS, SESSION_STATES, securityCodeOf, fingerprintOf,
+} from './lib/security.mjs';
 import {
   APK_URL, VERSION, MAX_TEXT, MAX_IMAGE_DATA, MAX_MESSAGES, MAX_CHATS,
   FEATURES,
@@ -28,6 +32,21 @@ const state = {
   folderTab: '', selection: null, ttl: 0, highlight: null,
   // 2.8.2: silent sending, the archive shelf and the "unread" separator of the open chat.
   silent: false, showArchive: false, unreadDividerId: null,
+  // 2.8.3: identity, защищённое хранилище ключей и состояния E2EE-сессий.
+  identity: null, vault: null, sessionStates: new Map(), secureWarnings: new Set(),
+};
+
+// Ограничители попыток: вход в приложение и отправка сообщений (защита от перебора и флуда).
+const loginLimiter = new RateLimiter({ capacity: 5, refillMs: 60_000 });
+const sendLimiter = new RateLimiter({ capacity: 60, refillMs: 1_000 });
+
+const STATE_LABELS = {
+  CONNECTING: 'Устанавливается',
+  CONNECTED: 'Установлено',
+  RECONNECTING: 'Переподключение',
+  DISCONNECTED: 'Нет связи',
+  REVOKED: 'Отозвано',
+  COMPROMISED: 'Компрометация ключа',
 };
 const ttlTimers = new Map();
 const scheduleTimers = new Map();
@@ -50,6 +69,44 @@ const transport = new Transport({
     renderHeader();
   },
   onReady: retryConnections,
+  // Идентичность устройства для рукопожатия E2EE и закреплённый ключ собеседника.
+  identity: () => state.identity,
+  trustedKey: id => state.chats.find(chat => chat.id === id)?.security?.keyId ?? null,
+  onSecurity(id, identity) {
+    // Первый контакт закрепляет ключ собеседника (TOFU); при смене ключа предупреждаем.
+    const chat = state.chats.find(item => item.id === id);
+    if (chat && chat.security?.keyId && chat.security.keyId !== identity.keyId) {
+      state.secureWarnings.add(id);
+      void changeChat(id, next => { next.security = { ...next.security, changedAt: Date.now(), seenKeyId: identity.keyId }; });
+      notify('Ключ безопасности собеседника изменился. Откройте «Безопасность соединения».', true);
+      return;
+    }
+    if (chat && !chat.security) {
+      void changeChat(id, next => { next.security = { keyId: identity.keyId, code: identity.securityCode, firstSeenAt: Date.now() }; });
+    }
+    // Сессия установлена: сообщения, заблокированные до рукопожатия (открытым текстом
+    // они не уходят), уходят сразу, не дожидаясь таймера повтора.
+    void flushPending(id);
+    if (state.current === id && $('#security-dialog').open) void openSecurity();
+  },
+  onIdentityChange(id, identity) {
+    state.secureWarnings.add(id);
+    void changeChat(id, next => { next.security = { ...next.security, changedAt: Date.now(), seenKeyId: identity?.keyId ?? '' }; });
+    notify('Ключ собеседника не совпадает с сохранённым. Сессия остановлена.', true);
+    if (state.current === id && $('#security-dialog').open) void openSecurity();
+  },
+  onSecureDrop(id, reason) {
+    SecureLogger.debug('transport: конверт отклонён', { reason });
+    if (reason === 'signature' || reason === 'identity') {
+      state.secureWarnings.add(id);
+      notify('Сообщение не прошло проверку подписи и было отброшено.', true);
+    }
+    // Смена поколения ключей: очередь переотправляется сразу, а не по таймеру.
+    const chat = state.chats.find(item => item.id === id);
+    if (chat) for (const message of chat.messages) lastSent.delete(message.id);
+    void flushPending(id);
+    if (state.current === id && $('#security-dialog').open) void openSecurity();
+  },
   isAllowed: id => !!normalizePeerCode(id) && id !== state.profile?.id && !state.blocked.includes(id),
   async onHello(id, name) {
     await changeChat(id, chat => { chat.name = name; }, { request: true });
@@ -177,13 +234,6 @@ const transport = new Transport({
       chat.messages[index] = { ...chat.messages[index], att };
     });
     if (state.current === id) renderMessages(false);
-  },
-  onSecurity(id) { if (state.current === id && $('#security-dialog').open) void openSecurity(); },
-  onMtDrop(id) {
-    // A key generation change swallowed an envelope: let the queue retransmit at once.
-    const chat = state.chats.find(item => item.id === id);
-    if (chat) for (const message of chat.messages) lastSent.delete(message.id);
-    void flushPending(id);
   },
   onStorageError() { notify('Не удалось сохранить контакт. Проверьте свободное место.', true); },
 });
@@ -839,15 +889,82 @@ async function toggleStar() {
 async function openSecurity() {
   const chat = activeChat();
   if (!chat || chat.id === 'saved') return;
-  $('#sec-conn').textContent = transport.isOpen(chat.id) ? 'Прямое соединение активно, трафик шифрован DTLS (WebRTC)' : 'Соединение не активно: сообщения ждут в очереди на этом устройстве';
+  const session = transport.secureStatus(chat.id);
+  const warning = state.secureWarnings.has(chat.id) || (chat.security?.changedAt && chat.security.changedAt > (chat.security.verifiedAt ?? 0));
+  $('#sec-conn').textContent = transport.isOpen(chat.id)
+    ? 'Прямое соединение активно: транспорт WebRTC/DTLS'
+    : 'Соединение не активно: сообщения ждут в очереди на этом устройстве';
   $('#sec-code').textContent = await cachedVerify(state.profile.id, chat.id);
   $('#sec-seen').textContent = state.lastSeen.get(chat.id) ? new Date(state.lastSeen.get(chat.id)).toLocaleString('ru') : 'нет данных на этом устройстве';
   $('#sec-peer').textContent = `LIBO:${chat.id}`;
-  const fingerprint = transport.mtStatus(chat.id);
-  $('#sec-mt').textContent = fingerprint
-    ? `Активен: AES-256-GCM поверх DTLS, отпечаток ключа пары ${fingerprint}`
-    : 'Не установлен: у собеседника версия без MT-слоя, трафик защищён только DTLS';
+  $('#sec-e2ee').textContent = session?.established
+    ? `Активен: ${session.keyExchange} + ${session.algorithm}`
+    : 'Не установлен: собеседник ещё не ответил на приглашение E2EE';
+  $('#sec-state').textContent = STATE_LABELS[session?.state ?? 'DISCONNECTED'] ?? 'Нет связи';
+  $('#sec-msgs').textContent = session ? `${session.messages} сообщений в текущей цепочке (ротация ключей после ${LIMITS.MAX_CHAIN})` : '—';
+  // Отпечаток ключа идентичности собеседника: сравнивается голосом или при встрече.
+  if (session?.peerIdentityKey) {
+    $('#sec-fingerprint').textContent = await fingerprintOf(fromB64Safe(session.peerIdentityKey));
+  } else {
+    $('#sec-fingerprint').textContent = 'Ключ ещё не получен';
+  }
+  $('#sec-keyid').textContent = session?.peerKeyId || '—';
+  $('#sec-identity-warning').hidden = !warning;
+  $('#sec-verify').hidden = !session?.peerKeyId || !!chat.security?.verifiedAt;
+  $('#sec-storage').textContent = state.vault
+    ? `${state.vault.backend === 'android-keystore' ? 'Android Keystore' : 'Неизвлекаемый мастер-ключ устройства'}, записи базы шифруются AES-256-GCM`
+    : 'Недоступно';
   openDialog('security-dialog');
+}
+
+function fromB64Safe(text) {
+  try { return Uint8Array.from(atob(text), char => char.charCodeAt(0)); } catch { return new Uint8Array(); }
+}
+
+// Подтверждение ключа собеседника после сверки отпечатка (отмечает контакт проверенным).
+async function verifyContact() {
+  const chat = activeChat();
+  if (!chat) return;
+  const session = transport.secureStatus(chat.id);
+  if (!session?.peerKeyId) { notify('Ключ собеседника ещё не получен.', true); return; }
+  await changeChat(chat.id, next => {
+    next.security = { keyId: session.peerKeyId, code: session.peerCode, verifiedAt: Date.now(), firstSeenAt: next.security?.firstSeenAt ?? Date.now() };
+  });
+  state.secureWarnings.delete(chat.id);
+  notify('Ключ собеседника подтверждён.');
+  await openSecurity();
+}
+
+// Сброс сессии: старые ключи стираются, следующий контакт начнёт новое рукопожатие.
+async function resetSession() {
+  const chat = activeChat();
+  if (!chat) return;
+  transport.dropSession?.(chat.id);
+  await changeChat(chat.id, next => { delete next.security; });
+  state.secureWarnings.delete(chat.id);
+  notify('Сессия сброшена: ключи будут согласованы заново при следующем соединении.');
+  await openSecurity();
+}
+
+// Отзыв всех сессий и локальных секретов (выход): идентичность и ключи сессий стираются,
+// история на устройстве остаётся доступной, потому что ключ записей базы не удаляется.
+async function revokeAll() {
+  confirmDialog(
+    'Отозвать все сессии?',
+    'Ключи идентичности и сессий будут удалены с этого устройства. Собеседники увидят новый ключ при следующем контакте и должны будут подтвердить его заново. История на этом устройстве останется доступной.',
+    async () => {
+      transport.stop();
+      for (const chat of state.chats) if (chat.security) await changeChat(chat.id, next => { delete next.security; });
+      await store.deleteMeta('vault:identity');
+      await store.deleteKey('sessions');
+      state.identity = null;
+      state.identity = await state.vault.identity();
+      state.secureWarnings.clear();
+      notify('Все сессии отозваны, создан новый ключ устройства.');
+      transport.start(state.profile, state.settings);
+    },
+    'Отозвать',
+  );
 }
 
 // 2.8.1: ссылка «Безопасность соединения» в настройках открывает сводку по открытому
@@ -1002,6 +1119,9 @@ async function sendMessage(event) {
   const chat = activeChat();
   const text = $('#message-input').value.trim().slice(0, MAX_TEXT);
   if (!chat || chat.request || chat.archive || state.sending || (!text && !state.attachment)) return;
+  // Ограничение частоты отправки: защита от флуда и от лавины при сбое UI.
+  const gate = sendLimiter.allow(state.profile.id);
+  if (!gate.allowed) { notify(`Слишком часто: попробуйте снова через ${Math.ceil(gate.retryInMs / 1000)} с.`, true); return; }
   const id = chat.id;
   const message = buildOutgoing(id, text, state.attachment);
   state.sending = true; updateComposer();
@@ -1780,10 +1900,22 @@ async function toggleMute() {
 
 const LOCK_KEY = 'libo-lock';
 
+// PIN код-замка: PBKDF2-SHA-256 с индивидуальной солью. В localStorage попадает только
+// соль и хеш, сам PIN не сохраняется. Число итераций поднято до 310 000 (2.8.3).
+const LOCK_ITERATIONS = 310_000;
+
 async function hashPin(pin, salt) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 120_000, hash: 'SHA-256' }, key, 256);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: LOCK_ITERATIONS, hash: 'SHA-256' }, key, 256);
   return btoa(String.fromCharCode(...new Uint8Array(bits)));
+}
+
+// Сравнение PIN за постоянное время: длина и число совпавших символов не утекают.
+function pinEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let index = 0; index < a.length; index++) diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return diff === 0;
 }
 
 function lockState() {
@@ -1801,13 +1933,25 @@ async function tryUnlock() {
   const error = $('#lock-error');
   error.hidden = true;
   if (!stored) { unlockResolve?.(); return; }
+  // Ограничение попыток: защита от подбора PIN.
+  const gate = loginLimiter.allow('lock');
+  if (!gate.allowed) {
+    error.textContent = `Слишком много попыток. Подождите ${Math.ceil(gate.retryInMs / 1000)} с.`;
+    error.hidden = false;
+    return;
+  }
   const hash = await hashPin(pin, Uint8Array.from(atob(stored.salt), char => char.charCodeAt(0)));
-  if (hash !== stored.hash) {
-    error.textContent = 'Неверный код-замок. Данные останутся на устройстве.';
+  if (!pinEqual(hash, stored.hash)) {
+    loginLimiter.failure('lock');
+    const state5 = loginLimiter.state('lock');
+    error.textContent = state5.failures >= 3
+      ? 'Неверный код-замок. После нескольких ошибок попытки ограничены по времени.'
+      : 'Неверный код-замок. Данные останутся на устройстве.';
     error.hidden = false;
     $('#lock-input').value = '';
     return;
   }
+  loginLimiter.reset('lock');
   unlockResolve?.();
 }
 
@@ -2021,6 +2165,10 @@ function bindEvents() {
     if (id) void actOnMessage('pin', id);
   };
   $('#security-button').onclick = () => void openSecurity();
+  // 2.8.3: подтверждение ключа, сброс сессии и отзыв всех сессий.
+  $('#sec-verify').onclick = () => void verifyContact();
+  $('#sec-reset').onclick = () => void resetSession();
+  $('#sec-revoke').onclick = () => void revokeAll();
   $('#star-contact').onclick = () => void toggleStar();
   $('#mute-contact').onclick = () => void toggleMute();
   $('#select-mode').onclick = () => { closeChatMenu(); setSelection([]); };
@@ -2197,6 +2345,17 @@ function buildEmojiPicker() {
 
 async function main() {
   await store.open();
+  // Защищённое хранилище ключей: Android Keystore в APK, неизвлекаемый мастер-ключ
+  // в IndexedDB при работе в браузере. Приватные ключи на диск в открытом виде не пишутся.
+  state.vault = await new KeyVault({ store, bridge: globalThis.LiboAndroid ?? null }).open();
+  // Шифрование записей базы отдельным ключом (at rest).
+  store.setCipher(new RecordCipher(await loadOrCreateMasterKey(store)));
+  state.identity = await state.vault.identity();
+  // В release-сборке отладочный лог выключен, секреты вырезаются из любых сообщений.
+  SecureLogger.setRelease(!import.meta.env.DEV);
+  // Только в режиме разработки: события безопасности видны в консоли браузера.
+  if (import.meta.env.DEV) SecureLogger.setSink((level, message, details) => console.log(`[libo:${level}] ${message}`, details ?? ''));
+  SecureLogger.info('security: слой E2EE v3 готов', { backend: state.vault.backend, algorithms: ALGORITHMS });
   state.profile = await store.getMeta('profile');
   if (!state.profile || !normalizePeerCode(state.profile.id)) {
     state.profile = { id: makePeerId(), name: 'Пользователь LIBO' };

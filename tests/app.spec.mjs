@@ -43,12 +43,12 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   // 2.8.1: the UI must not mention open source, source code hosting or GitHub.
   await page.locator('.quiet-button').click();
   const about = await page.locator('#about-dialog').innerText();
-  expect(about).toContain('2.8.2');
+  expect(about).toContain('2.8.3');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
-  // 2.8.2 advertises twelve Telegram-style features plus two extras.
-  expect(await page.locator('#about-features li').count()).toBe(14);
-  expect(await page.locator('#about-version').innerText()).toBe('2.8.2');
+  // 2.8.3 advertises twelve Telegram-style features, two extras and the security layer.
+  expect(await page.locator('#about-features li').count()).toBe(18);
+  expect(await page.locator('#about-version').innerText()).toBe('2.8.3');
   expect(errors).toEqual([]);
 });
 
@@ -258,7 +258,7 @@ test('backup import becomes read-only archive and close contacts stay on top', a
   expect(order.indexOf('archive-' === order.find(id => id.startsWith('archive-')) ? order.find(id => id.startsWith('archive-')) : '')).toBeLessThan(order.indexOf('libo-abcdef0123456789abcdef0123456789'));
 });
 
-test('polls, forwarding, read receipts, MT layer and secret timer between two clients', async ({ page: alice, browser }) => {
+test('polls, forwarding, read receipts, E2EE layer and secret timer between two clients', async ({ page: alice, browser }) => {
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5173' });
   const bob = await context.newPage();
   const errors = [];
@@ -285,9 +285,12 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await expect(alice.locator('.att-poll .poll-option').first()).toContainText('· 1', { timeout: 20000 });
   // Bob has the chat open, so Alice must see read checks (✓✓) on delivered messages.
   await expect(alice.locator('.message-status.read').first()).toBeVisible({ timeout: 20000 });
-  // The MTProto-inspired layer must negotiate an AES-256-GCM auth key for the pair.
+  // Слой E2EE v3 обязан согласовать сессию X25519 + ChaCha20-Poly1305 для пары.
   await alice.locator('#security-button').click();
-  await expect(alice.locator('#sec-mt')).toContainText('AES-256-GCM');
+  await expect(alice.locator('#sec-e2ee')).toContainText('X25519 + ChaCha20-Poly1305', { timeout: 20000 });
+  await expect(alice.locator('#sec-state')).toContainText('Установлено');
+  // Приватные ключи не должны попадать в диалог: показываются только отпечаток и идентификатор.
+  await expect(alice.locator('#sec-storage')).toContainText('AES-256-GCM');
   await alice.locator('#security-dialog [data-close]').click();
   // Forwarding: Alice forwards her text to Saved with a «Переслано» label.
   await send(alice, 'перешли меня');
