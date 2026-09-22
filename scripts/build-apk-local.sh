@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Builds and signs the LIBO APK without Gradle, for environments where the Android
+# Builds and signs the Swamp Attack APK without Gradle, for environments where the Android
 # SDK / Gradle repositories are unreachable (see scripts/toolchain-sources.json for
 # the pinned external toolchain). GitHub Actions uses Gradle; see .github/workflows.
 #
-# LIBO_BUILD_TYPE=release (default): package app.libo.messenger, debuggable=false,
+# LIBO_BUILD_TYPE=release (default): package app.swampattack.game, debuggable=false,
 #   signed with the release keystore in LIBO_KEYSTORE (v1+v2+v3).
 # LIBO_BUILD_TYPE=debug: legacy beta behaviour (package suffix .beta, debuggable=true).
 set -euo pipefail
@@ -25,11 +25,11 @@ LIBO_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','ut
 export LIBO_VERSION_CODE
 LIBO_VERSION_CODE=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionCode\s+(\d+)/)[1]")
 if [ "$BUILD_TYPE" = release ]; then
-  PACKAGE='app.libo.messenger'
+  PACKAGE='app.swampattack.game'
   DEBUGGABLE='false'
   DEBUG_FLAG='false'
 else
-  PACKAGE='app.libo.messenger.beta'
+  PACKAGE='app.swampattack.game.beta'
   DEBUGGABLE='true'
   DEBUG_FLAG='true'
 fi
@@ -49,15 +49,15 @@ root.set('{'+ns+'}versionCode', os.environ['LIBO_VERSION_CODE'])
 root.set('{'+ns+'}versionName', os.environ['LIBO_VERSION'])
 app = root.find('application')
 app.set('{'+ns+'}debuggable', debuggable)
-app.find('activity').set('{'+ns+'}name', 'app.libo.messenger.MainActivity')
+app.find('activity').set('{'+ns+'}name', 'app.swampattack.game.MainActivity')
 tree.write('build/manual-apk/AndroidManifest.xml', encoding='utf-8', xml_declaration=True)
 Path('build/manual-apk/java/BuildConfig.java').write_text(
-    'package app.libo.messenger; public final class BuildConfig { public static final boolean DEBUG = ' + debug_flag + '; }\n')
+    'package app.swampattack.game; public final class BuildConfig { public static final boolean DEBUG = ' + debug_flag + '; }\n')
 PY
 "$LIBO_TOOLCHAIN/aapt2" compile --dir app/src/main/res -o "$WORK/resources.zip"
 "$LIBO_TOOLCHAIN/aapt2" link -o "$WORK/resources.apk" \
   --manifest "$WORK/AndroidManifest.xml" -I "$LIBO_TOOLCHAIN/android.jar" \
-  --min-sdk-version 26 --target-sdk-version 35 --custom-package app.libo.messenger \
+  --min-sdk-version 26 --target-sdk-version 35 --custom-package app.swampattack.game \
   --java "$WORK/java" -A dist "$WORK/resources.zip"
 # Android APIs used by the shell need no Java 17 language features. Compile Java 8
 # bytecode, then let D8 convert it to DEX for minSdk 26.
@@ -84,8 +84,8 @@ PY
 "$LIBO_TOOLCHAIN/zipalign" -f 4 "$WORK/resources.apk" "$WORK/aligned.apk"
 
 if [ "$BUILD_TYPE" = release ]; then
-  KEYSTORE="${LIBO_KEYSTORE:-$HOME/.local/share/libo/release.keystore}"
-  ALIAS="${LIBO_KEY_ALIAS:-libo-release}"
+  KEYSTORE="${LIBO_KEYSTORE:-$HOME/.local/share/swamp-attack/release.keystore}"
+  ALIAS="${LIBO_KEY_ALIAS:-swamp-attack-release}"
   PASSWORD_FILE="$KEYSTORE.password"
   if [ -f "$KEYSTORE" ] && [ -z "${LIBO_KEYSTORE_PASSWORD:-}" ]; then
     : "${LIBO_KEYSTORE_PASSWORD:=$(cat "$PASSWORD_FILE" 2>/dev/null || true)}"
@@ -104,26 +104,26 @@ if [ "$BUILD_TYPE" = release ]; then
     "$KEYTOOL" -genkeypair -keystore "$KEYSTORE" -alias "$ALIAS" \
       -storepass:env LIBO_KEYSTORE_PASSWORD -keypass:env LIBO_KEYSTORE_PASSWORD \
       -keyalg RSA -keysize 4096 -sigalg SHA256withRSA -validity 10950 \
-      -dname 'CN=LIBO Release, O=LIBO Messenger' -noprompt
+      -dname 'CN=Swamp Attack Release, O=Swamp Attack' -noprompt
     chmod 600 "$KEYSTORE"
   fi
   export LIBO_KEYSTORE_PASSWORD
   PASS_ENV=LIBO_KEYSTORE_PASSWORD
 else
-  KEYSTORE="${LIBO_KEYSTORE:-$HOME/.local/share/libo/debug.keystore}"
-  ALIAS=libo-beta
+  KEYSTORE="${LIBO_KEYSTORE:-$HOME/.local/share/swamp-attack/debug.keystore}"
+  ALIAS=swamp-attack-debug
   export LIBO_DEBUG_PASSWORD="${LIBO_DEBUG_PASSWORD:-android}"
   PASS_ENV=LIBO_DEBUG_PASSWORD
   if [ ! -f "$KEYSTORE" ]; then
     mkdir -p "$(dirname "$KEYSTORE")"
     "$KEYTOOL" -genkeypair -keystore "$KEYSTORE" -alias "$ALIAS" \
       -storepass:env LIBO_DEBUG_PASSWORD -keypass:env LIBO_DEBUG_PASSWORD \
-      -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=LIBO Beta,O=LIBO' -noprompt
+      -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Swamp Attack Debug,O=Swamp Attack' -noprompt
     chmod 600 "$KEYSTORE"
   fi
 fi
 
-APK="$ROOT/artifacts/LIBO-$LIBO_VERSION.apk"
+APK="$ROOT/artifacts/Swamp-Attack-$LIBO_VERSION.apk"
 "$JAVA" -jar "$LIBO_TOOLCHAIN/apksigner.jar" sign --ks "$KEYSTORE" --ks-key-alias "$ALIAS" \
   --ks-pass "env:$PASS_ENV" --key-pass "env:$PASS_ENV" \
   --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
@@ -131,5 +131,5 @@ APK="$ROOT/artifacts/LIBO-$LIBO_VERSION.apk"
 "$LIBO_TOOLCHAIN/zipalign" -c 4 "$APK"
 "$JAVA" -jar "$LIBO_TOOLCHAIN/apksigner.jar" verify --verbose --print-certs "$APK" | tee "$ROOT/artifacts/SIGNING.txt"
 "$LIBO_TOOLCHAIN/aapt2" dump badging "$APK" > "$ROOT/artifacts/APK-INFO.txt"
-(cd artifacts && sha256sum "LIBO-$LIBO_VERSION.apk" > SHA256SUMS.txt)
+(cd artifacts && sha256sum "Swamp-Attack-$LIBO_VERSION.apk" > SHA256SUMS.txt)
 echo "Verified $BUILD_TYPE APK: $APK"

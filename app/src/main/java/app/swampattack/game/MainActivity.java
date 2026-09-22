@@ -33,7 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-/** A small, offline-capable shell. Only bundled application code can access the native bridge. */
+/** Offline Android shell for the bundled Swamp Attack game. */
 public final class MainActivity extends Activity {
     private static final String ORIGIN = "https://appassets.androidplatform.net";
     private static final int PICK_PHOTO = 100;
@@ -52,7 +52,7 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         root = new FrameLayout(this);
-        root.setBackgroundColor(Color.rgb(247, 247, 251));
+        root.setBackgroundColor(Color.rgb(7, 31, 32));
         setContentView(root);
         installInsets();
 
@@ -72,7 +72,7 @@ public final class MainActivity extends Activity {
         settings.setSupportMultipleWindows(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setSafeBrowsingEnabled(true);
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
+        WebView.setWebContentsDebuggingEnabled(false);
         webView.addJavascriptInterface(new NativeBridge(), "LiboAndroid");
         webView.setWebViewClient(new LocalContentClient());
         webView.setWebChromeClient(new WebChromeClient() {
