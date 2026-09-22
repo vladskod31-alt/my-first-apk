@@ -1,4 +1,4 @@
-# Проверка LIBO 2.8.2
+# Проверка LIBO 2.8.3
 
 Дата прогона: 22 сентября 2026. Среда: Linux x64; Node.js 22.22.3; Chromium 143
 (пакет `@sparticuz/chromium@143.0.4` из npm, без внешних загрузок браузеров);
@@ -8,9 +8,9 @@ OpenJDK Temurin JRE 17.0.17+10 (из npm-пакета `@node-plantuml-2/jre-linu
 Android в этой среде недоступны (домены загрузок заблокированы), поэтому Gradle-сборка и
 lint выполняются в GitHub Actions, а не локально.
 
-## Модульные тесты: 30 из 30 (`npm test`)
+## Модульные тесты: 55 из 55 (`npm test`)
 
-Фреймворк `node:test`, файлы `tests/core.test.mjs`. Названия проверок:
+### `tests/core.test.mjs` — 30 тестов
 
 1. random peer identities are valid and distinct
 2. accepts full contact codes, case and harmless surrounding whitespace
@@ -33,22 +33,48 @@ lint выполняются в GitHub Actions, а не локально.
 19. verification code depends on both identities
 20. 2.5.0 control packets validate and reject malformed input (edit/delete/pin/react)
 21. attachments are bounded and mime-checked (voice/video/file, лимиты base64)
-22. mt session seals, rejects replays and tampering, shares fingerprint
+22. **2.8.3:** e2ee session seals, rejects replays and tampering, binds identities
 23. poll tally and vote merge are pure and bounded
-24. 2.8.0–2.8.1 packets: poll message, ttl bounds, forward label, read marker
+24. 2.8.1 packets: poll message, ttl bounds, forward label, read marker
 25. 2.8.2 markup is tokenized, spoilers hidden and markers stripped from previews
 26. 2.8.2 schedule presets resolve to absolute local times
 27. 2.8.2 night theme window crosses midnight and ignores broken input
 28. 2.8.2 polls support quiz answers and multiple choices
 29. 2.8.2 silent flag and quoted replies survive validation, schedule stays local
-30. 2.8.2 ships version 2.8.2, its APK link and fourteen advertised features
+30. **2.8.3:** ships its version, APK link and advertised features (18 пунктов, `2.8.3`)
 
-Проверки 25–30 новые: разбор разметки (`**жирный**`, `_курсив_`, `__подчёркнутый__`,
-`~~зачёркнутый~~`, `` `моно` ``, `||спойлер||`) и очистка превью, абсолютное время для
-пяти пресетов отложенной отправки, ночное окно 22:00 → 07:00 с переходом через полночь,
-квиз с правильным ответом и опрос с несколькими ответами (в том числе массив в
-`pollvote`), флаг `silent` и цитата в ответе, а также отсутствие `scheduledAt` в пакете,
-который уходит собеседнику.
+### `tests/security.test.mjs` — 25 тестов (только слой безопасности)
+
+1. primitives use OS CSPRNG and never repeat random output
+2. encryption and decryption roundtrip in both directions
+3. key exchange derives the same root without extra packets
+4. a third identity cannot join the conversation (MITM)
+5. invalid ciphertext and tags are rejected
+6. replay of a delivered envelope is refused
+7. stale and future timestamps are refused
+8. message keys are single use (no nonce or key reuse)
+9. out-of-order delivery works, excess skips are refused
+10. ratchet rotates the chain after the limit and keeps both sides in sync
+11. chain generation outside the allowed range is rejected
+12. forward secrecy — old keys cannot decrypt new messages
+13. identity change stops the session and reports the new key
+14. session states follow the documented transitions and revocation wins
+15. brute force protection limits attempts per key
+16. malformed and oversized envelopes are refused
+17. password storage uses PBKDF2 with per-record salt, never plaintext
+18. pairing tokens are single use, expire and keep secrets out of the QR
+19. secure logger redacts secrets and stays quiet in release
+20. user-facing errors never leak internals
+21. fingerprints and key labels are stable and do not reveal the key
+22. KDF is deterministic per input and domain-separated
+23. identity persists through the vault encoding
+24. concurrent sends never reuse a message key or nonce
+25. canonical pair id makes asymmetric chat ids interoperable
+
+Тесты 10, 11, 24 и 25 — регрессии на ошибки, найденные при разработке 2.8.3:
+расхождение цепочек ratchet после рекея, отсутствие границы поколений, повтор ключа
+сообщения при двух одновременных отправках и несовпадение кодов собеседников при
+рукопожатии. Соответствие требований и тестов — в `docs/SECURITY_EVIDENCE.md`.
 
 ## Браузерные сценарии: 11 из 11 (`npm run test:e2e`)
 
@@ -57,8 +83,8 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
 
 1. **real welcome, no invented contacts, valid QR and version; no open-source claims in UI** —
    пустой старт без вымышленных контактов, личный код формата `LIBO:libo-…`, валидный
-   SVG-QR, экран «О LIBO» без упоминаний открытого кода, версия 2.8.2, список из
-   четырнадцати возможностей, отсутствие ошибок страницы.
+   SVG-QR, экран «О LIBO» без упоминаний открытого кода, версия 2.8.3, список из
+   восемнадцати возможностей, отсутствие ошибок страницы.
 2. **saved messages, literal HTML, drafts, search, theme and reload** — «Избранное»,
    внедрённый `<img onerror>` остаётся текстом и не исполняется, черновики переживают
    перезагрузку, поиск, переключение темы.
@@ -69,18 +95,20 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
    содержит заметки, но не личный код профиля и не TURN-пароли.
 5. **two independent clients exchange text, delivery ACK, reply and real photo** — два
    изолированных браузерных контекста соединяются по настоящему WebRTC DataChannel через
-   локальный signaling: текст, статус «доставлено» после сохранения у получателя, ответ,
-   фотография в base64 декодируется в `img`, код сверки одинаков на обеих сторонах.
+   локальный signaling: **рукопожатие E2EE X25519 + ChaCha20-Poly1305**, текст, статус
+   «доставлено» после сохранения у получателя, ответ, фотография в base64 декодируется в
+   `img`, код сверки одинаков на обеих сторонах.
 6. **offline queue survives sender reload and is delivered exactly once after reconnect** —
    сообщение, написанное при закрытом получателе, переживает перезагрузку отправителя и
    доставляется ровно один раз после возвращения получателя.
 7. **backup import becomes read-only archive and close contacts stay on top** — импорт
    JSON-копии создаёт архив только для чтения с плашкой, звезда поднимает контакт выше
    обычных чатов.
-8. **polls, forwarding, read receipts, MT layer and secret timer between two clients** —
+8. **polls, forwarding, read receipts, E2EE layer and secret timer between two clients** —
    опрос с голосованием и живым итогом, пересылка в «Избранное» с пометкой, галочки
-   прочтения ✓✓, активный MT-слой AES-256-GCM в диалоге безопасности и исчезновение
-   секретного сообщения по таймеру на обоих устройствах.
+   прочтения ✓✓, активная E2EE-сессия (`X25519 + ChaCha20-Poly1305`, состояние
+   «Установлено») в диалоге безопасности и исчезновение секретного сообщения по таймеру на
+   обоих устройствах.
 9. **2.8.2 markup, spoilers, hashtags, quiet mode, scheduling, quiz and media panel** —
    панель «Aa» оборачивает выделенный фрагмент в `**…**`, в пузыре появляется `.rich-bold`,
    спойлер `||…||` скрыт и раскрывается нажатием, `#тег` открывает поиск по тегу, тихое
@@ -96,41 +124,41 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
     тихое сообщение приходит с меткой «без звука», двойной тап оставляет реакцию, и та
     доходит до собеседника — значит, канал жив.
 
+Общее время прогона: около 2,5 минут.
+
 ## Проверки APK
 
 - Сборка: `npm run build` → `scripts/build-apk-local.sh` (AAPT2 → ECJ → D8 → zipalign →
   подпись).
 - `apksigner verify --verbose --print-certs`: схемы v2 и v3 подтверждены, v1 включена для
   совместимости (minSdk 26 её не требует); сертификат `CN=LIBO Release, O=LIBO Messenger`,
-  RSA-4096; SHA-256 сертификата
-  `d6bc33ca85e16d1365fa7bea1d56fd1497ca48ed54390dd897bc08136457678e`. Полный вывод
-  сохраняется в `artifacts/SIGNING.txt`.
+  RSA-4096. Полный вывод сохраняется в `artifacts/SIGNING.txt`.
 - `zipalign -c 4` проходит; целостность ZIP и состав APK проверены разбором архива.
 - `aapt2 dump badging` (вывод в `artifacts/APK-INFO.txt`): пакет `app.libo.messenger`,
-  versionCode 20802, versionName 2.8.2, minSdk 26, targetSdk 35, единственное разрешение
-  `android.permission.INTERNET`, запускаемая активность `app.libo.messenger.MainActivity`,
-  иконка `mipmap-anydpi-v26/ic_launcher.xml` во всех плотностях, в assets входят
-  `index.html`, JS/CSS-бандл, шрифты WOFF2, `icon.svg`, `icon-192.png`, `icon-512.png` и
-  `third-party-notices.txt`.
+  versionCode **20803**, versionName **2.8.3**, minSdk 26, targetSdk 35, единственное
+  разрешение `android.permission.INTERNET`, запускаемая активность
+  `app.libo.messenger.MainActivity`, иконка `mipmap-anydpi-v26/ic_launcher.xml` во всех
+  плотностях, в assets входят `index.html`, JS/CSS-бандл, шрифты WOFF2, `icon.svg`,
+  `icon-192.png`, `icon-512.png` и `third-party-notices.txt`.
 - Контрольная сумма APK: `artifacts/SHA256SUMS.txt` и `downloads/SHA256SUMS.txt`
-  (значения совпадают):
-  `594a2dbc5814baebc2152929283b7f2eb1761423960bc63da28209e56cb4c279`.
-- Подпись 2.8.2: релизный кейстор владельца в эту среду не передавался, поэтому APK из
+  (значения совпадают) — см. `downloads/SHA256SUMS.txt` и `RELEASE_NOTES.md`.
+- Подпись 2.8.3: релизный кейстор владельца в эту среду не передавался, поэтому APK из
   каталога `downloads/` подписан временным тестовым ключом песочницы (RSA-4096, схемы
-  v2+v3, отпечаток выше). Он не совпадает ни с ключом 2.8.0 (`f4e4b3e5…dba4`), ни с
-  зеркальным ключом 2.8.1 (`d5e09a20…5e9a`): для перехода на 2.8.2 нужен экспорт копии,
-  удаление прежней версии и импорт. APK из CI (`release.yml`) подписывается ключом
-  владельца и ставится поверх без потери истории.
-- Иконки 2.8.2: плоский дуотон 1:1 (набор 2.8.0 сохранён; legacy PNG во всех плотностях,
-  адаптивные слои, монохромный слой).
+  v2+v3). Он не совпадает ни с ключом 2.8.0, ни с зеркальными ключами 2.8.1/2.8.2: для
+  перехода нужен экспорт копии, удаление прежней версии и импорт. APK из CI (`release.yml`)
+  подписывается ключом владельца и ставится поверх без потери истории.
+- Новое в 2.8.3: `MainActivity` содержит методы моста `sealLocalSecret`/`openLocalSecret`
+  (AES-256-GCM ключом Android Keystore, StrongBox при наличии) — см. «Что не подтверждено».
 
 ## Что не подтверждено
 
 - APK не запускался на физическом Android-телефоне и эмуляторе: в среде сборки нет SDK и
   системного образа Android. Проверены подпись, упаковка, состав и содержимое APK, а
   веб-часть проверена браузерными сценариями.
-- `FLAG_SECURE` (защита от скриншотов) проверяется только на устройстве: в песочнице
-  видно лишь то, что переключатель вызывает метод `setSecureScreen` моста Android.
+- Работа Android Keystore (`sealLocalSecret`/`openLocalSecret`), StrongBox, `FLAG_SECURE` и
+  будущей биометрии проверяется только на устройстве: в песочнице подтверждено лишь то,
+  что веб-слой выбирает бэкенд `android-keystore` при наличии моста и что код моста
+  компилируется.
 - Отложенная отправка проверяется без реального ожидания срока: тест смотрит на чип
   времени и на отправку по кнопке «Отправить сейчас», а абсолютное время пресетов
   покрыто модульными тестами.
@@ -139,8 +167,9 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
 - Публичный signaling `0.peerjs.com` и сценарии между разными мобильными операторами не
   тестировались: браузерные сценарии используют локальный signaling и реальные
   WebRTC-каналы на одном хосте.
-- Не заявляются: аудит безопасности, нагрузочное тестирование, фоновые push-уведомления,
-  автоматическая криптографическая проверка личности собеседника.
+- Не заявляются: внешний аудит безопасности, нагрузочное тестирование, фоновые
+  push-уведомления, серверная аутентификация, Tor-транспорт, автоматическая
+  криптографическая проверка личности собеседника.
 
 ## Как повторить локально
 

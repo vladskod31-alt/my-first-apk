@@ -11,13 +11,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Тег релиза, например v2.8.2'
+        description: 'Тег релиза, например v2.8.3'
         required: true
-        default: 'v2.8.2'
+        default: 'v2.8.3'
       file:
         description: 'Файл в репозитории для загрузки'
         required: true
-        default: 'downloads/LIBO-2.8.2.apk'
+        default: 'downloads/LIBO-2.8.3.apk'
       checksums:
         description: 'Файл с контрольными суммами'
         required: true
@@ -31,8 +31,8 @@ jobs:
     name: Загрузить APK и контрольные суммы в релиз
     runs-on: ubuntu-latest
     env:
-      RELEASE_TAG: ${{ github.event.inputs.tag || 'v2.8.2' }}
-      ASSET: ${{ github.event.inputs.file || 'downloads/LIBO-2.8.2.apk' }}
+      RELEASE_TAG: ${{ github.event.inputs.tag || 'v2.8.3' }}
+      ASSET: ${{ github.event.inputs.file || 'downloads/LIBO-2.8.3.apk' }}
       SUMS: ${{ github.event.inputs.checksums || 'downloads/SHA256SUMS.txt' }}
     steps:
       - uses: actions/checkout@v4
