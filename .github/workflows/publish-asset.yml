@@ -1,0 +1,60 @@
+name: Publish release asset
+
+# Загружает уже собранный APK из каталога downloads/ в файлы выбранного релиза.
+# Нужен потому, что из среды сборки uploads.github.com недоступен, а из GitHub Actions
+# он обычно доступен: так файл релиза появляется и по ссылке releases/download/....
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-asset.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег релиза, например v2.8.2'
+        required: true
+        default: 'v2.8.2'
+      file:
+        description: 'Файл в репозитории для загрузки'
+        required: true
+        default: 'downloads/LIBO-2.8.2.apk'
+      checksums:
+        description: 'Файл с контрольными суммами'
+        required: true
+        default: 'downloads/SHA256SUMS.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    name: Загрузить APK и контрольные суммы в релиз
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || 'v2.8.2' }}
+      ASSET: ${{ github.event.inputs.file || 'downloads/LIBO-2.8.2.apk' }}
+      SUMS: ${{ github.event.inputs.checksums || 'downloads/SHA256SUMS.txt' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Проверка файлов и подписи
+        run: |
+          set -euo pipefail
+          ls -l "$ASSET" "$SUMS"
+          sha256sum "$ASSET"
+          grep "$(basename "$ASSET")" "$SUMS"
+      - name: Загрузка в релиз с повторами
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            echo "Попытка загрузки $attempt"
+            if gh release upload "$RELEASE_TAG" "$ASSET" "$SUMS" --clobber; then
+              echo "Файлы релиза загружены."
+              gh release view "$RELEASE_TAG" --json assets \
+                -q '.assets[] | "\(.name) \(.size) Б"'
+              exit 0
+            fi
+            sleep $((attempt * 20))
+          done
+          echo "::warning::uploads.github.com недоступен и из CI: файл остаётся в каталоге downloads/ тега $RELEASE_TAG."
