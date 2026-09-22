@@ -1,16 +1,16 @@
 plugins { id 'com.android.application' }
 
 android {
-    namespace 'app.libo.messenger'
+    namespace 'app.swampattack.game'
     compileSdk 35
     buildToolsVersion '35.0.0'
 
     defaultConfig {
-        applicationId 'app.libo.messenger'
+        applicationId 'app.swampattack.game'
         minSdk 26
         targetSdk 35
-        versionCode 20801
-        versionName '2.8.1'
+        versionCode 10000
+        versionName '1.0.0'
     }
     buildFeatures { buildConfig true }
     buildTypes {

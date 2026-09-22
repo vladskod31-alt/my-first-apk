@@ -5,6 +5,11 @@ import { ExpressPeerServer } from 'peer';
 
 const app = express();
 const httpServer = http.createServer(app);
+const apkPath = new URL('../downloads/Swamp-Attack-1.0.0.apk', import.meta.url).pathname;
+app.get('/Swamp-Attack-1.0.0.apk', (_request, response) => {
+  response.set('Cache-Control', 'public, max-age=3600');
+  response.download(apkPath, 'Swamp-Attack-1.0.0.apk');
+});
 // A non-listening HTTP emitter isolates PeerJS's websocket handler. PeerJS would
 // otherwise reject Vite's HMR upgrades with HTTP 400 on the shared preview port.
 const signalingTransport = http.createServer();
