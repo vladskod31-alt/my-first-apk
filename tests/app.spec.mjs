@@ -43,11 +43,11 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   // 2.8.1: the UI must not mention open source, source code hosting or GitHub.
   await page.locator('.quiet-button').click();
   const about = await page.locator('#about-dialog').innerText();
-  expect(about).toContain('2.8.1');
+  expect(about).toContain('2.8.2');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
-  expect(await page.locator('#about-features li').count()).toBe(10);
-  expect(await page.locator('#about-version').innerText()).toBe('2.8.1');
+  expect(await page.locator('#about-features li').count()).toBe(31);
+  expect(await page.locator('#about-version').innerText()).toBe('2.8.2');
   expect(errors).toEqual([]);
 });
 
@@ -284,10 +284,18 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await expect(alice.locator('.att-poll .poll-option').first()).toContainText('· 1', { timeout: 20000 });
   // Bob has the chat open, so Alice must see read checks (✓✓) on delivered messages.
   await expect(alice.locator('.message-status.read').first()).toBeVisible({ timeout: 20000 });
-  // The MTProto-inspired layer must negotiate an AES-256-GCM auth key for the pair.
+  // 2.8.2: the pair must run the Double Ratchet session and agree on the safety number.
   await alice.locator('#security-button').click();
-  await expect(alice.locator('#sec-mt')).toContainText('AES-256-GCM');
+  await expect(alice.locator('#sec-e2')).toContainText('Double Ratchet');
+  const aliceNumber = await alice.locator('#sec-number').innerText();
+  expect(aliceNumber).toMatch(/^(\d{5} ){11}\d{5}$/);
+  await alice.locator('#sec-verify').click();
+  await expect(alice.locator('#sec-verified')).toContainText('Подтверждён');
   await alice.locator('#security-dialog [data-close]').click();
+  await expect(alice.locator('#e2-badge')).toHaveClass(/verified/);
+  await bob.locator('#security-button').click();
+  expect(await bob.locator('#sec-number').innerText()).toBe(aliceNumber);
+  await bob.locator('#security-dialog [data-close]').click();
   // Forwarding: Alice forwards her text to Saved with a «Переслано» label.
   await send(alice, 'перешли меня');
   await expect(bob.locator('.message-text').filter({ hasText: 'перешли меня' })).toBeVisible();
@@ -304,5 +312,80 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await expect(bob.locator('.ttl-chip').first()).toBeVisible({ timeout: 20000 });
   await expect(alice.locator('.message-text').filter({ hasText: 'миг' })).toBeHidden({ timeout: 25000 });
   await expect(bob.locator('.message-deleted').first()).toBeVisible({ timeout: 20000 });
+  expect(errors).toEqual([]);
+});
+
+test('2.8.2 features: formatting, spoilers, silent send, nickname, pin/archive, schedule, stickers, sessions', async ({ browser }) => {
+  const errors = [];
+  const alice = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  for (const page of [alice, bob]) page.on('pageerror', error => errors.push(error.message));
+  await ready(alice); await ready(bob);
+  await profile(alice, 'Аня'); await profile(bob, 'Боря');
+  const bobCode = await code(bob);
+  await add(alice, bobCode);
+  await expect(bob.locator('.chat-row').filter({ hasText: 'Аня' })).toBeVisible({ timeout: 30000 });
+  await bob.locator('.chat-row').filter({ hasText: 'Аня' }).click();
+  await bob.locator('#accept-request').click();
+  await expect(alice.locator('#chat-presence')).toContainText('сквозное шифрование', { timeout: 30000 });
+  // Formatting and text spoiler.
+  await alice.locator('#send-options-button').click();
+  await alice.locator('#opt-silent').check({ force: true });
+  await alice.locator('#send-options-close').click();
+  await alice.locator('#message-input').fill('жирный **текст** и ||тайна||');
+  await alice.locator('#send-button').click();
+  await expect(alice.locator('#messages .fmt-bold')).toHaveText('текст');
+  const bubble = bob.locator('.message-text').filter({ hasText: 'жирный' });
+  await expect(bubble.locator('.fmt-bold')).toHaveText('текст');
+  await expect(bubble.locator('.fmt-spoiler')).not.toHaveClass(/revealed/);
+  await bubble.locator('.fmt-spoiler').click();
+  await expect(bubble.locator('.fmt-spoiler')).toHaveClass(/revealed/);
+  await expect(bob.locator('.silent-mark')).toHaveCount(1);
+  // Nickname is local only; pin and archive are chat flags.
+  await bob.locator('#chat-more').click();
+  await bob.locator('#rename-contact').click();
+  await bob.locator('#rename-input').fill('Анюта');
+  await bob.locator('#rename-save').click();
+  await expect(bob.locator('#chat-title')).toHaveText('Анюта');
+  await bob.locator('#chat-more').click();
+  await bob.locator('#pin-chat').click();
+  await expect(bob.locator('.chat-row').filter({ hasText: 'Анюта' }).locator('.star-mark[title="Закреплённый чат"]')).toHaveCount(1);
+  await bob.locator('#chat-more').click();
+  await bob.locator('#archive-chat').click();
+  await expect(bob.locator('.chat-row').filter({ hasText: 'Анюта' })).toHaveCount(0);
+  await bob.locator('.folder-tab[data-folder="archived"]').click();
+  await expect(bob.locator('.chat-row').filter({ hasText: 'Анюта' })).toHaveCount(1);
+  await bob.locator('.folder-tab[data-folder=""]').click();
+  // Scheduled message waits, then «send now» releases it.
+  await alice.locator('#send-options-button').click();
+  const future = new Date(Date.now() + 3_600_000);
+  const pad = value => String(value).padStart(2, '0');
+  await alice.locator('#opt-schedule').fill(`${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}T${pad(future.getHours())}:${pad(future.getMinutes())}`);
+  await alice.locator('#send-options-close').click();
+  await send(alice, 'потом');
+  await expect(alice.locator('.message-status[data-status="scheduled"]')).toHaveCount(1);
+  await alice.locator('.message-row.outgoing [data-actions]').last().click();
+  await alice.locator('#message-actions [data-act="sendnow"]').click();
+  await expect(bob.locator('.message-text').filter({ hasText: 'потом' })).toBeVisible({ timeout: 20000 });
+  // Stickers travel as attachments.
+  await alice.locator('#emoji-button').click();
+  await alice.locator('.sticker-pick').first().click();
+  await expect(bob.locator('.att-sticker')).toHaveCount(1, { timeout: 20000 });
+  // Delete for me removes only the local copy.
+  await bob.locator('.message-row').first().hover();
+  await bob.locator('.message-row [data-actions]').first().click();
+  await bob.locator('#message-actions [data-act="deleteme"]').click();
+  await expect(bob.locator('.message-text').filter({ hasText: 'жирный' })).toHaveCount(0);
+  await expect(alice.locator('.message-text').filter({ hasText: 'жирный' })).toHaveCount(1);
+  // Sessions screen lists the live channel; revoking it re-establishes a fresh one.
+  await alice.locator('#profile-button').click();
+  await alice.locator('#open-sessions').click();
+  await expect(alice.locator('#sessions-identity')).toHaveText(/^([0-9a-f]{4} ){7}[0-9a-f]{4}$/);
+  await expect(alice.locator('.session-row')).toHaveCount(1);
+  await alice.locator('.session-row button').click();
+  await alice.locator('#sessions-dialog [data-close]').click();
+  await expect(alice.locator('#chat-presence')).toContainText('сквозное шифрование', { timeout: 30000 });
+  await send(alice, 'после ротации');
+  await expect(bob.locator('.message-text').filter({ hasText: 'после ротации' })).toBeVisible({ timeout: 20000 });
   expect(errors).toEqual([]);
 });

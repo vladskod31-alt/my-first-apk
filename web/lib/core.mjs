@@ -1,5 +1,5 @@
-export const VERSION = '2.8.1';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.1/downloads/LIBO-2.8.1.apk';
+export const VERSION = '2.8.2';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.2/downloads/LIBO-2.8.2.apk';
 // 2.8.1: the in-app interface no longer mentions code hosting; the About screen
 // describes the product, its version and its feature set instead.
 export const FEATURES = {
@@ -13,7 +13,35 @@ export const FEATURES = {
   multiselect: 'Мультивыбор: пакетное удаление для обоих и пересылка нескольких сообщений.',
   search: 'Глобальный поиск по чатам и сообщениям с переходом к найденному.',
   mute: 'Без звука для отдельного контакта — значок в списке чатов.',
+  // 2.8.2: E2EE architecture and twenty Telegram-style additions.
+  e2ee: 'Сквозное шифрование: X25519 + Ed25519, Double Ratchet, ChaCha20-Poly1305; номер безопасности и контроль смены ключа.',
+  vault: 'Зашифрованное хранилище: история и ключи устройства под AES-256-GCM, ключ — в Android Keystore.',
+  format: 'Форматирование текста: **жирный**, __курсив__, `моно`, ~~зачёркнутый~~.',
+  spoiler: 'Спойлеры: ||скрытый текст|| и размытые фото до нажатия.',
+  schedule: 'Отложенные сообщения: уйдут в выбранное время, когда собеседник в сети.',
+  silent: 'Отправка без звука — собеседник получит сообщение тихо.',
+  autodelete: 'Автоудаление по умолчанию для чата: таймер применяется ко всем новым сообщениям.',
+  archive: 'Архив чатов: скрытые диалоги в отдельной вкладке.',
+  pinchat: 'Закрепление чатов вверху списка.',
+  nickname: 'Своё имя контакта — видно только вам.',
+  chatcolor: 'Цвет чата: акцент пузырей и шапки для каждого собеседника.',
+  speed: 'Скорость голосовых: 1×, 1,5×, 2×.',
+  swipe: 'Свайп по сообщению — быстрый ответ.',
+  unreadbar: 'Разделитель «Непрочитанные» и кнопка вниз со счётчиком.',
+  deleteme: 'Удалить у себя и очистить историю локально.',
+  privacy: 'Приватность: скрыть «был(а) в сети», галочки прочтения и «печатает…».',
+  bio: 'О себе — короткий статус в профиле, виден собеседнику.',
+  fontsize: 'Размер шрифта: маленький, обычный, крупный.',
+  autolock: 'Автоблокировка через 30 с, 1 мин или 5 мин без активности; биометрия на Android.',
+  sessions: 'Активные сессии: список защищённых каналов, отзыв сессии и ротация ключей.',
+  stickers: 'Стикеры LIBO — набор векторных стикеров без шрифтов и загрузок.',
 };
+export const MAX_BIO = 70;
+export const FONT_SIZES = ['small', 'normal', 'large'];
+export const AUTOLOCK_OPTIONS = [0, 30, 60, 300];
+export const CHAT_COLORS = ['', 'violet', 'mint', 'rose', 'peach', 'blue'];
+export const STICKERS = ['wave', 'love', 'party', 'sleep', 'coffee', 'rocket', 'ok', 'cry'];
+export const PLAYBACK_RATES = [1, 1.5, 2];
 export const MAX_TEXT = 4000;
 export const MAX_IMAGE_DATA = 1_400_000;
 export const MAX_ATT_DATA = 2_000_000;
@@ -47,6 +75,10 @@ export function normalizeName(value) {
   return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40) : '';
 }
 
+export function normalizeBio(value) {
+  return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_BIO) : '';
+}
+
 export function initials(name) {
   const parts = String(name || 'Л').trim().split(/\s+/);
   return parts.slice(0, 2).map(part => [...part][0] || '').join('').toUpperCase();
@@ -61,7 +93,9 @@ export function avatarColor(id) {
 export function previewText(message) {
   if (!message) return 'Начните с простого «привет»';
   const prefix = message.direction === 'out' ? 'Вы: ' : '';
-  return prefix + (message.text || (message.image ? '📷 Фотография' : 'Сообщение'));
+  if (message.att?.kind === 'sticker') return `${prefix}Стикер`;
+  if (message.status === 'scheduled') return `${prefix}⏰ ${plainText(message.text) || 'Отложенное сообщение'}`;
+  return prefix + (plainText(message.text) || (message.image ? '📷 Фотография' : 'Сообщение'));
 }
 
 export function safeFilename(name) {
@@ -117,6 +151,7 @@ function validateAttachment(value) {
     if (opts.some(opt => !opt)) return null;
     return { kind: 'poll', q: value.q.trim().slice(0, 300), opts, votes: {} };
   }
+  if (value.kind === 'sticker') return STICKERS.includes(value.key) ? { kind: 'sticker', key: value.key } : null;
   const kind = ['voice', 'video', 'file'].includes(value.kind) ? value.kind : null;
   if (!kind) return null;
   if (typeof value.data !== 'string' || value.data.length > MAX_ATT_DATA) return null;
@@ -139,7 +174,32 @@ export function validatePacket(value) {
   if (value.type === 'hello') {
     const name = normalizeName(value.name);
     if (!PEER_ID.test(value.id) || !name || typeof value.name !== 'string' || value.name.length > 80) return null;
-    return { v: 1, type: 'hello', id: value.id, name };
+    const packet = { v: 1, type: 'hello', id: value.id, name };
+    if (typeof value.bio === 'string' && value.bio.length <= 200) packet.bio = normalizeBio(value.bio);
+    if (value.hideSeen === true) packet.hideSeen = true;
+    return packet;
+  }
+  if (value.type === 'profile') {
+    const name = normalizeName(value.name);
+    if (!name || typeof value.name !== 'string' || value.name.length > 80) return null;
+    const packet = { v: 1, type: 'profile', name };
+    if (typeof value.bio === 'string' && value.bio.length <= 200) packet.bio = normalizeBio(value.bio);
+    if (value.hideSeen === true) packet.hideSeen = true;
+    return packet;
+  }
+  if (value.type === 'ping') return { v: 1, type: 'ping' };
+  if (value.type === 'e2-hello') {
+    if (value.ver !== 1) return null;
+    for (const key of ['ik', 'sk', 'ek']) if (typeof value[key] !== 'string' || value[key].length !== 44) return null;
+    if (typeof value.sig !== 'string' || value.sig.length !== 88) return null;
+    const packet = { v: 1, type: 'e2-hello', ver: 1, ik: value.ik, sk: value.sk, ek: value.ek, sig: value.sig };
+    if (typeof value.tok === 'string' && /^[A-Za-z0-9_-]{20,24}$/.test(value.tok)) packet.tok = value.tok;
+    return packet;
+  }
+  if (value.type === 'e2') {
+    if (typeof value.h !== 'string' || value.h.length !== 56) return null;
+    if (typeof value.c !== 'string' || value.c.length > MAX_ATT_DATA + 400_000) return null;
+    return { v: 1, type: 'e2', h: value.h, c: value.c };
   }
   if (value.type === 'ack') {
     return typeof value.id === 'string' && MESSAGE_ID.test(value.id) ? { v: 1, type: 'ack', id: value.id } : null;
@@ -214,6 +274,8 @@ export function validatePacket(value) {
   if (Number.isSafeInteger(value.editedAt) && value.editedAt >= value.at && value.editedAt <= 8_640_000_000_000_000) {
     packet.editedAt = value.editedAt;
   }
+  if (value.silent === true) packet.silent = true;
+  if (value.spoiler === true && image) packet.spoiler = true;
   return packet;
 }
 
@@ -248,7 +310,40 @@ export function toPacket(message) {
   if (message.editedAt) packet.editedAt = message.editedAt;
   if (message.ttl) packet.ttl = message.ttl;
   if (message.fwd) packet.fwd = message.fwd;
+  if (message.silent) packet.silent = true;
+  if (message.spoiler) packet.spoiler = true;
   return packet;
+}
+
+// 2.8.2 text formatting (Telegram-style markdown subset) rendered to a safe DOM
+// fragment: **bold**, __italic__, `mono`, ~~strike~~, ||spoiler||. Nothing is parsed
+// as HTML; every literal chunk becomes a text node.
+const FORMAT_RE = /(\*\*(.+?)\*\*|__(.+?)__|`([^`]+?)`|~~(.+?)~~|\|\|(.+?)\|\|)/gs;
+
+export function formatRuns(text) {
+  const runs = [];
+  let last = 0;
+  for (const match of String(text).matchAll(FORMAT_RE)) {
+    if (match.index > last) runs.push({ kind: 'text', text: text.slice(last, match.index) });
+    const [, , bold, italic, mono, strike, spoiler] = match;
+    if (bold != null) runs.push({ kind: 'bold', text: bold });
+    else if (italic != null) runs.push({ kind: 'italic', text: italic });
+    else if (mono != null) runs.push({ kind: 'mono', text: mono });
+    else if (strike != null) runs.push({ kind: 'strike', text: strike });
+    else runs.push({ kind: 'spoiler', text: spoiler });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) runs.push({ kind: 'text', text: text.slice(last) });
+  return runs;
+}
+
+export function plainText(text) {
+  return formatRuns(String(text || '')).map(run => run.kind === 'spoiler' ? '▒'.repeat(Math.min(run.text.length, 12)) : run.text).join('');
+}
+
+// Scheduled messages: a due message becomes an ordinary queued message.
+export function dueScheduled(chat, now = Date.now()) {
+  return chat.messages.filter(m => m.direction === 'out' && m.status === 'scheduled' && m.sendAt && m.sendAt <= now);
 }
 
 export function makeReadPacket(upTo) {

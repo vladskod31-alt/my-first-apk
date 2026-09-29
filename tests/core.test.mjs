@@ -204,3 +204,21 @@ test('2.8.1 packets: poll message, ttl bounds, forward label, read marker', () =
   assert.equal(validatePacket({ v: 1, type: 'read', upTo: -1 }), null);
   assert.equal(validatePacket({ v: 1, type: 'mt-hello', pub: 'AAAA' }).pub, 'AAAA');
 });
+
+test('2.8.2 packets: e2 envelopes, hello bio, stickers, silent and spoiler flags', () => {
+  const hello = { v: 1, type: 'e2-hello', ver: 1, ik: 'a'.repeat(44), sk: 'b'.repeat(44), ek: 'c'.repeat(44), sig: 'd'.repeat(88), tok: 'x'.repeat(22), extra: 1 };
+  assert.deepEqual(validatePacket(hello), { v: 1, type: 'e2-hello', ver: 1, ik: hello.ik, sk: hello.sk, ek: hello.ek, sig: hello.sig, tok: hello.tok });
+  assert.equal(validatePacket({ ...hello, ver: 2 }), null);
+  assert.equal(validatePacket({ ...hello, ik: 'short' }), null);
+  assert.equal(validatePacket({ ...hello, tok: '<script>' }).tok, undefined);
+  assert.deepEqual(validatePacket({ v: 1, type: 'e2', h: 'h'.repeat(56), c: 'cc' }), { v: 1, type: 'e2', h: 'h'.repeat(56), c: 'cc' });
+  assert.equal(validatePacket({ v: 1, type: 'e2', h: 'h'.repeat(55), c: 'cc' }), null);
+  assert.equal(validatePacket({ v: 1, type: 'hello', id: peerId, name: 'Аня', bio: 'x'.repeat(200) }).bio.length, 70);
+  assert.equal(validatePacket({ v: 1, type: 'profile', name: 'Аня', hideSeen: true }).hideSeen, true);
+  assert.deepEqual(validatePacket({ ...message, text: '', att: { kind: 'sticker', key: 'wave' } }).att, { kind: 'sticker', key: 'wave' });
+  assert.equal(validatePacket({ ...message, text: '', att: { kind: 'sticker', key: '<svg>' } }), null);
+  assert.equal(validatePacket({ ...message, silent: true }).silent, true);
+  assert.equal(validatePacket({ ...message, spoiler: true }).spoiler, undefined, 'spoiler only applies to photos');
+  assert.equal(validatePacket({ ...message, text: '', spoiler: true, image: { data: 'data:image/png;base64,aGVsbG8=', name: 'p.png' } }).spoiler, true);
+  assert.deepEqual(validatePacket({ v: 1, type: 'ping' }), { v: 1, type: 'ping' });
+});
