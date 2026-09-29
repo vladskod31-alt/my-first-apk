@@ -1,22 +1,22 @@
-# LIBO 2.8.2 для Android
+# LIBO 2.8.4 для Android
 
-Тег релиза: `v2.8.2` · тестовая версия · пакет `app.libo.messenger` · Android 8.0 (API 26) и новее
+Тег релиза: `v2.8.4` · тестовая версия · пакет `app.libo.messenger` · Android 8.0 (API 26) и новее
 
 ## Скачать
 
 | Файл | Ссылка | Формат |
 |---|---|---|
-| Установочный APK (основная ссылка) | [`downloads/LIBO-2.8.2.apk`](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.2/downloads/LIBO-2.8.2.apk) | ~311 КБ |
-| Контрольная сумма | [`downloads/SHA256SUMS.txt`](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.2/downloads/SHA256SUMS.txt) | текст |
+| Установочный APK (основная ссылка) | [`downloads/LIBO-2.8.4.apk`](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.4/downloads/LIBO-2.8.4.apk) | ~311 КБ |
+| Контрольная сумма | [`downloads/SHA256SUMS.txt`](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.4/downloads/SHA256SUMS.txt) | текст |
 
 ```text
-951054ae866d95fdc241463bde4094832d248f7c6fecb3221ab97a114afa617e  LIBO-2.8.2.apk
+710ef066530033f7eb60cb360fa60ae7820dc4697cfedbe4b30ca40b081985c6  LIBO-2.8.4.apk
 ```
 
 Проверка:
 
 ```bash
-curl -fsSL https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.2/downloads/SHA256SUMS.txt | sha256sum -c -
+curl -fsSL https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.4/downloads/SHA256SUMS.txt | sha256sum -c -
 ```
 
 ## Подпись
@@ -29,13 +29,17 @@ Signer #1 certificate SHA-256 digest: 26e33f79cafc8ee1ab3fb32d272bf08bdf8736280c
 Owner: CN=LIBO Release, O=LIBO Messenger
 ```
 
-Это не ключ 2.8.0 (`f4e4b3e5…dba4`) и не временный ключ 2.8.1 (`d5e09a20…`), поэтому
+Это не ключ 2.8.0 (`f4e4b3e5…dba4`) и не временные ключи 2.8.1–2.8.3, поэтому
 поверх уже установленной версии этот файл не встанет: сделайте Настройки → «Резервная
-копия: экспорт текста», удалите прежнюю версию, установите 2.8.2 и импортируйте копию.
+копия: экспорт текста», удалите прежнюю версию, установите 2.8.4 и импортируйте копию.
 APK, подписанный релизным ключом владельца, публикуется из CI (`release.yml`) при
 наличии секретов подписи — тогда обновление с 2.8.0/2.8.1 ставится поверх.
 
-## Что нового в 2.8.2 — 🔐 LIBO SECURITY
+> Почему 2.8.4: теги `v2.8.2` и `v2.8.3` уже заняты другой веткой разработки (двенадцать
+> функций в стиле Telegram). Эта ветка выросла из 2.8.1 и публикуется под следующим
+> свободным номером; конфликтующие релизы не изменялись.
+
+## Что нового в 2.8.4 — 🔐 LIBO SECURITY
 
 Полное описание архитектуры и того, что именно реализовано, — в
 [docs/SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md).
@@ -92,7 +96,7 @@ APK, подписанный релизным ключом владельца, п
 
 ## Установка и обновление
 
-1. Скачайте `LIBO-2.8.2.apk` из каталога `downloads/` тега `v2.8.2` и проверьте SHA-256.
+1. Скачайте `LIBO-2.8.4.apk` из каталога `downloads/` тега `v2.8.4` и проверьте SHA-256.
 2. Разрешите установку из браузера или файлового менеджера (Android 8–13), либо откройте
    файл напрямую (Android 14+).
 3. Откройте LIBO на обоих устройствах, покажите QR или отправьте приглашение.
@@ -105,12 +109,12 @@ APK, подписанный релизным ключом владельца, п
 `npm test` (33 модульных теста, включая 9 тестов E2EE: подписи, рэтчет, порядок,
 повторы, подделка, MITM, уникальность nonce, лимит пропусков, обнуление ключей) и
 `npm run test:e2e` (9 браузерных сценариев с двумя независимыми клиентами, включая
-совпадение номера безопасности и отзыв сессии) проходят. Манифест: код 20802, minSdk 26,
+совпадение номера безопасности и отзыв сессии) проходят. Манифест: код 20804, minSdk 26,
 targetSdk 35, единственное разрешение `INTERNET`, `debuggable=false`, `FLAG_SECURE`.
 
 ## English summary
 
-LIBO 2.8.2 introduces the LIBO SECURITY architecture: X25519 + Ed25519 identities, a
+LIBO 2.8.4 introduces the LIBO SECURITY architecture: X25519 + Ed25519 identities, a
 Signal-style Double Ratchet with ChaCha20-Poly1305 (audited `@noble` primitives, no
 home-grown crypto), identity pinning with safety numbers and key-change warnings, QR
 invitations carrying only public keys plus a one-time pairing token, an AES-256-GCM

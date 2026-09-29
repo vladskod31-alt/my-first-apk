@@ -43,11 +43,11 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   // 2.8.1: the UI must not mention open source, source code hosting or GitHub.
   await page.locator('.quiet-button').click();
   const about = await page.locator('#about-dialog').innerText();
-  expect(about).toContain('2.8.2');
+  expect(about).toContain('2.8.4');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
   expect(await page.locator('#about-features li').count()).toBe(31);
-  expect(await page.locator('#about-version').innerText()).toBe('2.8.2');
+  expect(await page.locator('#about-version').innerText()).toBe('2.8.4');
   expect(errors).toEqual([]);
 });
 
@@ -284,7 +284,7 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await expect(alice.locator('.att-poll .poll-option').first()).toContainText('· 1', { timeout: 20000 });
   // Bob has the chat open, so Alice must see read checks (✓✓) on delivered messages.
   await expect(alice.locator('.message-status.read').first()).toBeVisible({ timeout: 20000 });
-  // 2.8.2: the pair must run the Double Ratchet session and agree on the safety number.
+  // 2.8.4: the pair must run the Double Ratchet session and agree on the safety number.
   await alice.locator('#security-button').click();
   await expect(alice.locator('#sec-e2')).toContainText('Double Ratchet');
   const aliceNumber = await alice.locator('#sec-number').innerText();
@@ -315,7 +315,7 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   expect(errors).toEqual([]);
 });
 
-test('2.8.2 features: formatting, spoilers, silent send, nickname, pin/archive, schedule, stickers, sessions', async ({ browser }) => {
+test('2.8.4 features: formatting, spoilers, silent send, nickname, pin/archive, schedule, stickers, sessions', async ({ browser }) => {
   const errors = [];
   const alice = await (await browser.newContext()).newPage();
   const bob = await (await browser.newContext()).newPage();

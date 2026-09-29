@@ -5,7 +5,7 @@ const VAULT_META = 'vault';
 const b64 = bytes => btoa(String.fromCharCode(...bytes));
 const unb64 = text => Uint8Array.from(atob(text), char => char.charCodeAt(0));
 
-// 2.8.2: chat records and the device identity are stored encrypted (AES-256-GCM).
+// 2.8.4: chat records and the device identity are stored encrypted (AES-256-GCM).
 // The vault key never exists in plaintext inside IndexedDB:
 //   * in the Android app the raw key is wrapped by an AES key that lives in Android
 //     Keystore (hardware-backed where the device supports it) via the native bridge;

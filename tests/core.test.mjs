@@ -205,7 +205,7 @@ test('2.8.1 packets: poll message, ttl bounds, forward label, read marker', () =
   assert.equal(validatePacket({ v: 1, type: 'mt-hello', pub: 'AAAA' }).pub, 'AAAA');
 });
 
-test('2.8.2 packets: e2 envelopes, hello bio, stickers, silent and spoiler flags', () => {
+test('2.8.4 packets: e2 envelopes, hello bio, stickers, silent and spoiler flags', () => {
   const hello = { v: 1, type: 'e2-hello', ver: 1, ik: 'a'.repeat(44), sk: 'b'.repeat(44), ek: 'c'.repeat(44), sig: 'd'.repeat(88), tok: 'x'.repeat(22), extra: 1 };
   assert.deepEqual(validatePacket(hello), { v: 1, type: 'e2-hello', ver: 1, ik: hello.ik, sk: hello.sk, ek: hello.ek, sig: hello.sig, tok: hello.tok });
   assert.equal(validatePacket({ ...hello, ver: 2 }), null);

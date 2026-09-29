@@ -28,7 +28,7 @@ const state = {
   typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
   lastSeen: new Map(), recording: null, archiveNotice: false,
   folderTab: '', selection: null, ttl: 0, highlight: null,
-  // 2.8.2
+  // 2.8.4
   identity: null, pairToken: null, scheduleAt: 0, silent: false, spoiler: false,
   unreadFrom: null, newBelow: 0, voiceRate: 1, lastActivity: Date.now(), locked: false,
 };
