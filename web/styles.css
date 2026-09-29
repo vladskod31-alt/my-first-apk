@@ -580,3 +580,134 @@ code.fmt-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 #conversation[data-color='blue'] { --chat-accent: #2f6fe4; }
 #conversation[data-color]:not([data-color='']) .outgoing .message-bubble { background: var(--chat-accent); color: #fff; }
 #conversation[data-color]:not([data-color='']) .chat-header { box-shadow: inset 0 -2px 0 var(--chat-accent); }
+
+/* ===================================================================== */
+/* 2.8.5 — motion, buttons, performance, wide device support             */
+/* ===================================================================== */
+:root { --ease: cubic-bezier(.2, .8, .2, 1); --spring: cubic-bezier(.34, 1.4, .64, 1); }
+@keyframes libo-pop { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes libo-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes libo-menu { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes libo-toast { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes libo-dialog { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes libo-pulse { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 40% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); } }
+@keyframes libo-dot { 0%, 80%, 100% { transform: translateY(0); opacity: .4; } 40% { transform: translateY(-3px); opacity: 1; } }
+@keyframes libo-slide-in { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes libo-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* Buttons: consistent press/hover feedback, softer primary with gradient sheen. */
+button, .primary-button, .secondary-button, .icon-button, .send-button, .chat-row, .rail-button, .filter, .folder-tab, .settings-action {
+  transition: background-color .18s var(--ease), color .18s var(--ease), transform .16s var(--ease), box-shadow .2s var(--ease), opacity .18s var(--ease), border-color .18s var(--ease);
+}
+button:not(:disabled):active, .settings-action:active, .chat-row:active { transform: scale(.965); }
+.primary-button { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 88%, #fff) 0%, var(--accent) 60%, var(--accent-hover) 100%); background-size: 160% 160%; box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 28%, transparent); }
+.primary-button:hover:not(:disabled) { background-position: 100% 0; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 38%, transparent); transform: translateY(-1px); }
+.secondary-button:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.send-button { transition: transform .18s var(--spring), background-color .18s var(--ease), box-shadow .2s var(--ease); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 30%, transparent); }
+.send-button:not(:disabled):hover { transform: scale(1.06) rotate(-8deg); }
+.send-button:not(:disabled):active { transform: scale(.92); }
+.icon-button:hover svg { transform: scale(1.08); }
+.icon-button svg { transition: transform .18s var(--spring); }
+.rail-button.active:after { transition: top .25s var(--ease); }
+.unread-badge { animation: libo-pop .3s var(--spring); }
+.avatar { transition: transform .2s var(--spring); }
+.chat-row:hover .avatar { transform: scale(1.04); }
+.chat-row { position: relative; overflow: hidden; }
+.chat-row.selected:before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); animation: libo-fade .25s; }
+
+/* Messages: entrance animation only for genuinely new rows; layout containment for long chats. */
+.message-row { contain: layout style; content-visibility: auto; contain-intrinsic-size: auto 64px; }
+.message-row.pop-in { animation: libo-pop .32s var(--spring) both; }
+.message-row.outgoing.pop-in { transform-origin: bottom right; }
+.message-row.incoming.pop-in { transform-origin: bottom left; }
+.message-row.pulse .message-bubble { animation: libo-pulse 1.2s var(--ease) 2; }
+.message-bubble { transition: box-shadow .2s var(--ease), transform .2s var(--ease); }
+.message-row:hover .message-bubble { box-shadow: 0 6px 20px #2a1f4a12; }
+.reaction-chip, .reaction-pick { transition: transform .18s var(--spring), background-color .18s; }
+.reaction-chip:hover, .reaction-pick:hover { transform: scale(1.15); }
+.reaction-chip.mine { animation: libo-pop .3s var(--spring); }
+.message-status { transition: color .3s var(--ease); }
+.message-status.read { animation: libo-pop .3s var(--spring); }
+.typing-dots { display: inline-flex; gap: 2px; margin-left: 3px; vertical-align: baseline; }
+.typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: libo-dot 1.1s infinite var(--ease); }
+.typing-dots i:nth-child(2) { animation-delay: .15s; }
+.typing-dots i:nth-child(3) { animation-delay: .3s; }
+.day-separator span, .unread-divider { animation: libo-fade .3s; }
+.message-photo img { transition: transform .35s var(--ease), filter .35s var(--ease); }
+.message-photo:not(.spoiler-photo):hover img { transform: scale(1.015); }
+.spoiler-photo img { transition: filter .4s var(--ease); }
+.att-sticker svg { transition: transform .25s var(--spring); }
+.att-sticker:hover svg { transform: scale(1.08) rotate(-3deg); }
+.sticker-pick { transition: transform .18s var(--spring), background-color .18s; }
+.sticker-pick:hover { transform: scale(1.12); }
+
+/* Overlays. */
+.dropdown-menu, .message-actions, .emoji-picker, .send-options, .scroll-bottom { animation: libo-menu .2s var(--ease) both; }
+.dropdown-menu button, .message-actions button { transition: background-color .15s, padding-left .15s var(--ease); }
+.dropdown-menu button:hover, .message-actions button:hover { padding-left: 14px; }
+.dialog[open] { animation: libo-dialog .28s var(--ease) both; }
+.dialog[open]::backdrop { animation: libo-fade .25s both; }
+.toast { animation: libo-toast .3s var(--spring) both; border-radius: 14px; }
+.scroll-bottom { transition: transform .18s var(--spring); }
+.scroll-bottom:hover { transform: translateY(-2px) scale(1.04); }
+.pinned-bar, .request-bar, .keychange-bar, .reply-bar, .attachment-preview, .selection-bar { animation: libo-fade .25s; }
+.lock-card { animation: libo-dialog .35s var(--ease) both; }
+.network-status { transition: background-color .3s, color .3s; }
+.e2-badge { animation: libo-pop .35s var(--spring) both; }
+.e2-badge.verified { box-shadow: 0 0 0 3px color-mix(in srgb, #0f766e 18%, transparent); }
+.brand-mark { background: linear-gradient(135deg, #7c3aed, #4c1d95); box-shadow: 0 6px 16px #5b21b640; }
+.modal-icon { transition: transform .3s var(--spring); }
+.dialog:hover .modal-icon { transform: rotate(-6deg) scale(1.05); }
+
+/* Text fields. */
+.text-field, textarea { transition: border-color .18s var(--ease), box-shadow .18s var(--ease), background-color .18s; }
+.text-field:focus, #message-input:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.switch { transition: background-color .2s var(--ease); }
+.switch:after, .switch:before { transition: transform .2s var(--spring), background-color .2s; }
+
+/* Mobile: slide the conversation in, keep the composer above the keyboard. */
+@media (max-width: 760px) {
+  .shell.chat-open .main-pane { animation: libo-slide-in .26s var(--ease) both; }
+  .composer-zone { padding-bottom: max(7px, env(safe-area-inset-bottom)); }
+  .sidebar { padding-top: env(safe-area-inset-top); }
+  .messages { padding-left: 12px; padding-right: 12px; }
+  .scroll-bottom { right: 12px; bottom: 90px; }
+  .send-options { right: 8px; left: 8px; width: auto; }
+}
+/* Landscape phones and short screens. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .shell { grid-template-rows: minmax(0, 1fr) 52px; }
+  .rail { padding-top: 3px; padding-bottom: 3px; }
+  .rail-button { width: 38px; height: 38px; }
+  .messages { padding-top: 10px; padding-bottom: 10px; }
+  .chat-header { padding-top: 6px; padding-bottom: 6px; }
+}
+/* Tablets and foldables (portrait): two columns without the rail crowding. */
+@media (min-width: 761px) and (max-width: 1000px) and (orientation: portrait) {
+  .shell { grid-template-columns: 66px 260px minmax(0, 1fr); }
+}
+/* Very wide desktop/TV: cap line lengths for readability. */
+@media (min-width: 1920px) { .message-bubble { max-width: min(70%, 640px); } }
+/* Coarse pointers (phones, tablets, TV remotes): larger targets, no hover-only affordances. */
+@media (pointer: coarse) {
+  .icon-button, .rail-button, .filter, .folder-tab { min-width: 44px; min-height: 44px; }
+  .dropdown-menu button, .message-actions button { padding-top: 14px; padding-bottom: 14px; }
+  .message-actions-button { opacity: 1 !important; }
+  .reaction-chip { min-height: 30px; }
+}
+/* Keyboard / high-contrast users. */
+@media (forced-colors: active) {
+  .primary-button, .send-button, .unread-badge { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .message-bubble { border: 1px solid CanvasText; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .message-row.pop-in, .dialog[open], .dropdown-menu, .message-actions, .emoji-picker, .send-options, .toast, .shell.chat-open .main-pane { animation: none !important; }
+  .typing-dots i { animation: none; opacity: 1; }
+}
+/* Without color-mix support (old WebView < 111) the shadows simply fall back. */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .primary-button { background: var(--accent); box-shadow: 0 6px 18px #7850df40; }
+  .send-button { box-shadow: 0 4px 14px #7850df40; }
+  .text-field:focus, #message-input:focus { box-shadow: 0 0 0 3px #7850df2e; }
+  .lock-screen { background: var(--bg); }
+}

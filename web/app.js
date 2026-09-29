@@ -28,7 +28,7 @@ const state = {
   typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
   lastSeen: new Map(), recording: null, archiveNotice: false,
   folderTab: '', selection: null, ttl: 0, highlight: null,
-  // 2.8.4
+  // 2.8.5
   identity: null, pairToken: null, scheduleAt: 0, silent: false, spoiler: false,
   unreadFrom: null, newBelow: 0, voiceRate: 1, lastActivity: Date.now(), locked: false,
 };
@@ -275,7 +275,27 @@ function renderNetwork() {
   el.title = state.networkDetail || 'Наличие связи с сигнальным сервером. Статус собеседника показан внутри чата.';
 }
 
-function renderSidebar() {
+// Render coalescing: bursts of events (typing, ACKs, read receipts, ratchet pings)
+// used to rebuild the DOM several times per frame. Each renderer now runs at most
+// once per animation frame; explicit *Now variants exist for code that must read
+// the DOM straight after painting.
+const renderQueue = { sidebar: false, messages: null, header: false };
+let renderFrame = 0;
+function flushRenders() {
+  renderFrame = 0;
+  if (renderQueue.sidebar) { renderQueue.sidebar = false; renderSidebarNow(); }
+  if (renderQueue.header) { renderQueue.header = false; renderHeaderNow(); }
+  if (renderQueue.messages) { const scroll = renderQueue.messages.scroll; renderQueue.messages = null; renderMessagesNow(scroll); }
+}
+function queueRender() { if (!renderFrame) renderFrame = requestAnimationFrame(flushRenders); }
+function renderSidebar() { renderQueue.sidebar = true; queueRender(); }
+function renderHeader() { renderQueue.header = true; queueRender(); }
+function renderMessages(scroll = true) {
+  renderQueue.messages = { scroll: scroll || !!renderQueue.messages?.scroll };
+  queueRender();
+}
+
+function renderSidebarNow() {
   if (!state.profile) return;
   const query = $('#chat-search').value.trim().toLocaleLowerCase('ru');
   const chats = [...state.chats].sort((a, b) => a.id === 'saved' ? -1 : b.id === 'saved' ? 1 : (b.pinnedChat ? 1 : 0) - (a.pinnedChat ? 1 : 0) || (b.starred ? 1 : 0) - (a.starred ? 1 : 0) || b.updatedAt - a.updatedAt);
@@ -391,7 +411,7 @@ function dayLabel(at) {
   return date.toDateString() === today.toDateString() ? 'Вчера' : dateFormat.format(date);
 }
 
-function renderHeader() {
+function renderHeaderNow() {
   const chat = activeChat();
   if (!chat) return;
   const avatar = $('#chat-avatar');
@@ -404,7 +424,7 @@ function renderHeader() {
   presence.classList.toggle('is-online', transport.isOpen(chat.id));
   const seenAllowed = state.settings.privacy?.lastSeen !== false && !chat.hideSeen;
   if (chat.id === 'saved') presence.textContent = 'Личное пространство · только на этом устройстве';
-  else if (state.typing.get(chat.id) > Date.now()) presence.textContent = 'печатает…';
+  else if (state.typing.get(chat.id) > Date.now()) { presence.innerHTML = 'печатает<span class="typing-dots"><i></i><i></i><i></i></span>'; }
   else if (chat.request) presence.textContent = 'Новый запрос на общение';
   else if (transport.isOpen(chat.id)) presence.textContent = e2 ? 'В сети · сквозное шифрование' : 'В сети · прямое соединение';
   else if (state.contactStates.get(chat.id) === 'connecting') presence.textContent = 'Ищем собеседника…';
@@ -446,7 +466,7 @@ async function showVerifyCode() {
   openDialog('verify-dialog');
 }
 
-function renderMessages(scroll = true) {
+function renderMessagesNow(scroll = true) {
   const chat = activeChat();
   if (!chat) return;
   const box = $('#messages');
@@ -464,6 +484,7 @@ function renderMessages(scroll = true) {
     box.appendChild(empty);
     return;
   }
+  if (renderedIds.chat !== chat.id) { renderedIds.chat = chat.id; renderedIds.ids = new Set(chat.messages.map(m => m.id)); }
   let previousDay = '';
   let unreadShown = false;
   for (const message of messages) {
@@ -479,7 +500,8 @@ function renderMessages(scroll = true) {
       separator.appendChild(label); box.appendChild(separator); previousDay = day;
     }
     const row = document.createElement('div');
-    row.className = `message-row ${message.direction === 'out' ? 'outgoing' : 'incoming'}${message.deleted ? ' deleted-row' : ''}${state.selection?.has(message.id) ? ' in-selection' : ''}${state.highlight === message.id ? ' highlight' : ''}`;
+    const fresh = renderedIds.chat === chat.id && !renderedIds.ids.has(message.id);
+    row.className = `message-row ${message.direction === 'out' ? 'outgoing' : 'incoming'}${fresh ? ' pop-in' : ''}${message.deleted ? ' deleted-row' : ''}${state.selection?.has(message.id) ? ' in-selection' : ''}${state.highlight === message.id ? ' highlight' : ''}`;
     row.dataset.messageId = message.id;
     const bubble = document.createElement('div'); bubble.className = 'message-bubble';
     if (message.deleted) {
@@ -507,7 +529,7 @@ function renderMessages(scroll = true) {
     if (message.image) {
       const photo = document.createElement('button'); photo.className = 'message-photo'; photo.dataset.photo = message.id;
       photo.setAttribute('aria-label', 'Открыть фотографию');
-      const img = document.createElement('img'); img.src = message.image.data; img.alt = message.image.name || 'Фотография'; img.loading = 'lazy';
+      const img = document.createElement('img'); img.src = message.image.data; img.alt = message.image.name || 'Фотография'; img.loading = 'lazy'; img.decoding = 'async';
       img.onload = () => { if (scroll && nearBottom) box.scrollTop = box.scrollHeight; };
       if (message.spoiler && !revealed.has(message.id)) { photo.classList.add('spoiler-photo'); photo.dataset.revealPhoto = message.id; delete photo.dataset.photo; photo.setAttribute('aria-label', 'Показать скрытую фотографию'); }
       photo.appendChild(img); bubble.appendChild(photo);
@@ -581,10 +603,12 @@ function renderMessages(scroll = true) {
     actions.innerHTML = svg('more'); actions.title = 'Действия с сообщением'; actions.setAttribute('aria-label', 'Действия с сообщением');
     row.append(bubble, actions); box.appendChild(row);
   }
+  for (const message of messages) renderedIds.ids.add(message.id);
   if (scroll && nearBottom) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
   else box.scrollTop = previousTop;
   updateScrollButton();
 }
+const renderedIds = { chat: null, ids: new Set() };
 
 const revealed = new Set();
 
@@ -984,7 +1008,7 @@ async function openChat(id) {
   resetComposerExtras();
   $('#message-input').value = state.drafts[id] || '';
   updateComposer();
-  renderHeader(); renderMessages(); renderSidebar();
+  renderHeaderNow(); renderMessagesNow(); renderSidebar();
   requestAnimationFrame(() => { $('#messages').scrollTop = $('#messages').scrollHeight; });
   if (id !== 'saved') transport.connect(id);
   sendReadReceipt(id);
@@ -1699,6 +1723,7 @@ function bindEvents() {
     state.highlight = messageId;
     void openChat(chatId).then(() => {
       const row = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (row) row.classList.add('pulse');
       if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
       setTimeout(() => { state.highlight = null; }, 2400);
     });

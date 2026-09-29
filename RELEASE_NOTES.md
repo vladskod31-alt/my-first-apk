@@ -1,22 +1,22 @@
-# LIBO 2.8.4 для Android
+# LIBO 2.8.5 для Android
 
-Тег релиза: `v2.8.4` · тестовая версия · пакет `app.libo.messenger` · Android 8.0 (API 26) и новее
+Тег релиза: `v2.8.5` · тестовая версия · пакет `app.libo.messenger` · Android 8.0 (API 26) и новее
 
 ## Скачать
 
 | Файл | Ссылка | Формат |
 |---|---|---|
-| Установочный APK (основная ссылка) | [`downloads/LIBO-2.8.4.apk`](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.4/downloads/LIBO-2.8.4.apk) | ~311 КБ |
-| Контрольная сумма | [`downloads/SHA256SUMS.txt`](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.4/downloads/SHA256SUMS.txt) | текст |
+| Установочный APK (основная ссылка) | [`downloads/LIBO-2.8.5.apk`](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.5/downloads/LIBO-2.8.5.apk) | ~710 КБ |
+| Контрольная сумма | [`downloads/SHA256SUMS.txt`](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.5/downloads/SHA256SUMS.txt) | текст |
 
 ```text
-710ef066530033f7eb60cb360fa60ae7820dc4697cfedbe4b30ca40b081985c6  LIBO-2.8.4.apk
+ed26aabb1409f67ce73713a510da35cef0f3c1d83cf5c153c96fd7a67c35bd44  LIBO-2.8.5.apk
 ```
 
 Проверка:
 
 ```bash
-curl -fsSL https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.4/downloads/SHA256SUMS.txt | sha256sum -c -
+curl -fsSL https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.5/downloads/SHA256SUMS.txt | sha256sum -c -
 ```
 
 ## Подпись
@@ -29,15 +29,39 @@ Signer #1 certificate SHA-256 digest: 26e33f79cafc8ee1ab3fb32d272bf08bdf8736280c
 Owner: CN=LIBO Release, O=LIBO Messenger
 ```
 
-Это не ключ 2.8.0 (`f4e4b3e5…dba4`) и не временные ключи 2.8.1–2.8.3, поэтому
+Это не ключ 2.8.0 (`f4e4b3e5…dba4`) и не временные ключи 2.8.1–2.8.4, поэтому
 поверх уже установленной версии этот файл не встанет: сделайте Настройки → «Резервная
-копия: экспорт текста», удалите прежнюю версию, установите 2.8.4 и импортируйте копию.
+копия: экспорт текста», удалите прежнюю версию, установите 2.8.5 и импортируйте копию.
 APK, подписанный релизным ключом владельца, публикуется из CI (`release.yml`) при
 наличии секретов подписи — тогда обновление с 2.8.0/2.8.1 ставится поверх.
 
-> Почему 2.8.4: теги `v2.8.2` и `v2.8.3` уже заняты другой веткой разработки (двенадцать
-> функций в стиле Telegram). Эта ветка выросла из 2.8.1 и публикуется под следующим
-> свободным номером; конфликтующие релизы не изменялись.
+> Почему нумерация 2.8.4/2.8.5: теги `v2.8.2` и `v2.8.3` уже заняты другой веткой разработки (двенадцать
+> функций в стиле Telegram). Эта ветка выросла из 2.8.1 и публикуется под следующими
+> свободными номерами; конфликтующие релизы не изменялись.
+
+## Что нового в 2.8.5 — интерфейс, анимации, производительность, новая иконка
+
+- **Новая иконка LIBO.** Белый «пузырь» сообщения с фиолетовой надписью *libo* и лаймовым
+  замком вместо точки над i — намёк на E2EE. Перегенерированы все плотности (`mipmap-*`,
+  adaptive foreground/background, round), фавикон `icon.svg`, PWA-иконки 192/512.
+- **Анимации.** Появление новых сообщений (pop-in только для действительно новых строк),
+  «печатает…» с бегущими точками, подсветка сообщения при переходе к ответу/закреплённому,
+  пружинистые кнопки (hover/press), анимированные меню, диалоги с затемнением, тосты, слайд
+  экрана чата на телефоне, реакции и статусы прочтения. Всё отключается при
+  `prefers-reduced-motion`.
+- **Кнопки.** Единая обратная связь на нажатие, градиентная основная кнопка, цели касания
+  ≥ 44 px на сенсорных экранах, кнопка действий сообщения всегда видна на тач-устройствах.
+- **Производительность.** Перерисовки списка чатов, шапки и сообщений объединяются в один
+  кадр (`requestAnimationFrame`), `content-visibility: auto` и `contain` для длинных
+  переписок, `decoding="async"` для фото; убраны каскадные перерисовки при событиях
+  транспорта.
+- **Поддержка устройств (кроме iOS).** Android 8.0+: телефоны, планшеты, складные,
+  Chromebook (`resizeableActivity`, `supports-screens`, опциональные `telephony`/
+  `touchscreen`), ландшафт и короткие экраны, широкие мониторы, `forced-colors`,
+  safe-area. Веб-версия: Chrome/Edge/Opera 87+, Firefox 78+, устанавливается как PWA
+  (manifest + иконки). iOS/Safari намеренно не поддерживаются.
+- Версия `2.8.5` / `versionCode 20805`. Изменения безопасности отсутствуют — криптография
+  и протокол те же, что в 2.8.4.
 
 ## Что нового в 2.8.4 — 🔐 LIBO SECURITY
 
@@ -96,7 +120,7 @@ APK, подписанный релизным ключом владельца, п
 
 ## Установка и обновление
 
-1. Скачайте `LIBO-2.8.4.apk` из каталога `downloads/` тега `v2.8.4` и проверьте SHA-256.
+1. Скачайте `LIBO-2.8.5.apk` из каталога `downloads/` тега `v2.8.5` и проверьте SHA-256.
 2. Разрешите установку из браузера или файлового менеджера (Android 8–13), либо откройте
    файл напрямую (Android 14+).
 3. Откройте LIBO на обоих устройствах, покажите QR или отправьте приглашение.
@@ -109,12 +133,12 @@ APK, подписанный релизным ключом владельца, п
 `npm test` (33 модульных теста, включая 9 тестов E2EE: подписи, рэтчет, порядок,
 повторы, подделка, MITM, уникальность nonce, лимит пропусков, обнуление ключей) и
 `npm run test:e2e` (9 браузерных сценариев с двумя независимыми клиентами, включая
-совпадение номера безопасности и отзыв сессии) проходят. Манифест: код 20804, minSdk 26,
+совпадение номера безопасности и отзыв сессии) проходят. Манифест: код 20805, minSdk 26,
 targetSdk 35, единственное разрешение `INTERNET`, `debuggable=false`, `FLAG_SECURE`.
 
 ## English summary
 
-LIBO 2.8.4 introduces the LIBO SECURITY architecture: X25519 + Ed25519 identities, a
+LIBO 2.8.5 introduces the LIBO SECURITY architecture: X25519 + Ed25519 identities, a
 Signal-style Double Ratchet with ChaCha20-Poly1305 (audited `@noble` primitives, no
 home-grown crypto), identity pinning with safety numbers and key-change warnings, QR
 invitations carrying only public keys plus a one-time pairing token, an AES-256-GCM

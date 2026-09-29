@@ -204,7 +204,7 @@ export class Transport {
     return packet;
   }
 
-  // 2.8.4 E2EE: one Double Ratchet session per WebRTC connection. Both sides send a
+  // 2.8.5 E2EE: one Double Ratchet session per WebRTC connection. Both sides send a
   // signed hello with a fresh X25519 ephemeral key; the identity keys are pinned by
   // the app (trust on first use, QR pinning when the contact came from an invitation).
   startE2(connection) {
