@@ -1,6 +1,6 @@
-# Проверка LIBO 2.8.1
+# Проверка LIBO 2.8.7
 
-Дата прогона: 12 сентября 2026. Среда: Linux x64; Node.js 22.22.3; Chromium 143
+Дата прогона: 2 октября 2026. Среда: Linux x64; Node.js 22.22.3; Chromium 143
 (пакет `@sparticuz/chromium@143.0.4` из npm, без внешних загрузок браузеров);
 OpenJDK Temurin JRE 17.0.17+10 (из npm-пакета `@node-plantuml-2/jre-linux-x64@1.1.8`);
 инструменты Android (`aapt2`, `ecj`, `d8`, `apksigner`, `zipalign`, `android.jar` 35) из
@@ -8,102 +8,83 @@ OpenJDK Temurin JRE 17.0.17+10 (из npm-пакета `@node-plantuml-2/jre-linu
 Android в этой среде недоступны (домены загрузок заблокированы), поэтому Gradle-сборка и
 lint выполняются в GitHub Actions, а не локально.
 
-## Модульные тесты: 24 из 24 (`npm test`)
+## Модульные тесты: 28 из 28 (`npm test`)
 
-Фреймворк `node:test`, файлы `tests/core.test.mjs`. Названия проверок:
+Фреймворк `node:test`, файлы `tests/core.test.mjs`. Проверки 1–24 прежних версий
+(идентичности, коды контактов, границы пакетов, фото, ACK, signaling/TURN, экспорт,
+код сверки, контрольные пакеты 2.5.0, вложения, MT-сессия, опросы, пакеты 2.8.1) плюс
+новые проверки 2.8.7:
 
-1. random peer identities are valid and distinct
-2. accepts full contact codes, case and harmless surrounding whitespace
-3. rejects partial, URL, HTML, self-invoking or overlong codes
-4. names and file names are bounded
-5. validates and copies message packets without arbitrary fields
-6. rejects invalid packet types and protocol versions
-7. message IDs, text, timestamps and limits are mandatory
-8. allows bounded raster photos; rejects remote images and SVG
-9. replies are copied and bounded
-10. ACKs only acknowledge well-formed message IDs
-11. hello must identify a LIBO peer, typing must be boolean
-12. outgoing serialization excludes local state
-13. HTTPS signaling uses the correct host, port and path
-14. rejects insecure signaling, embedded secrets and URL injection
-15. HTTP only allowed for same-origin local development
-16. TURN needs a valid URL and credentials
-17. text exports never leak identity, TURN credentials or photo bytes
-18. verification code is stable, symmetric and unambiguous (новое в 2.3.0)
-19. verification code depends on both identities
-20. 2.5.0 control packets validate and reject malformed input (edit/delete/pin/react)
-21. attachments are bounded and mime-checked (voice/video/file, лимиты base64)
-22. mt session seals, rejects replays and tampering, shares fingerprint
-23. poll tally and vote merge are pure and bounded
-24. 2.8.1 packets: poll message, ttl bounds, forward label, read marker
+25. **notification policy — background, other chat, open chat, mute, off** — чистая
+    функция `notificationTarget`: фон → системное сповіщення, другой открытый чат →
+    банер, открытый чат/мут/выключено → ничего; `shouldSignal` учитывает мут и звук.
+26. **notifier picks native first, falls back to system, counts a badge** — порядок
+    каналов нативный → системный → банер, счётчик непрочитанного и сброс.
+27. **bluetooth helpers validate addresses, signal bars and labels** — нормализация
+    MAC-адреса, шкала RSSI, подписи устройств, короткий идентификатор из личного кода.
+28. **BluetoothLink without a bridge is unsupported and BtConnection frames packets** —
+    деградация без моста, кадр JSON уходит в `btSendTo` с токеном сокета, события
+    оболочки разбираются в пакеты протокола, битый JSON игнорируется без падения.
 
-## Браузерные сценарии: 8 из 8 (`npm run test:e2e`)
+## Браузерные сценарии: 11 из 11 (`npm run test:e2e`)
 
 Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signaling `peer` на том же
-порту разработки. Сценарии:
+порту разработки. Сценарии 1–8 прежних версий (пустой старт и QR, «Избранное» и
+безопасность HTML, мобильная навигация, экспорт, обмен между двумя клиентами по
+настоящему WebRTC, офлайн-очередь, импорт копии, опросы/пересылка/MT/таймер) плюс:
 
-1. **real welcome, no invented contacts, valid QR and version; no open-source claims in UI** —
-   пустой старт без вымышленных контактов, личный код формата `LIBO:libo-…`, валидный
-   SVG-QR, экран «О LIBO» без упоминаний открытого кода, версия 2.8.1, список из десяти
-   возможностей, отсутствие ошибок страницы.
-2. **saved messages, literal HTML, drafts, search, theme and reload** — «Избранное»,
-   внедрённый `<img onerror>` остаётся текстом и не исполняется, черновики переживают
-   перезагрузку, поиск, переключение темы. В 2.3.0 дополнительно: в «Избранном» пункт
-   «Код сверки» скрыт.
-3. **mobile navigation, input validation, profile and no horizontal overflow** — экран
-   360 px, навигация назад, отклонение некорректного кода контакта, отсутствие
-   горизонтальной прокрутки.
-4. **text export contains notes but never private contact identity** — скачанный JSON
-   содержит заметки, но не личный код профиля и не TURN-пароли.
-5. **two independent clients exchange text, delivery ACK, reply and real photo** — два
-   изолированных браузерных контекста соединяются по настоящему WebRTC DataChannel через
-   локальный signaling: текст, статус «доставлено» после сохранения у получателя, ответ с
-   цитатой, фотография в base64 декодируется в `img`. В 2.3.0 дополнительно: код сверки
-   одинаков на обеих сторонах и соответствует формату `XXXX XXXX XXXX`.
-6. **offline queue survives sender reload and is delivered exactly once after reconnect** —
-   сообщение, написанное при закрытом получателе, переживает перезагрузку отправителя и
-   доставляется ровно один раз после возвращения получателя.
-7. **backup import becomes read-only archive and close contacts stay on top** — импорт
-   JSON-копии создаёт архив только для чтения с плашкой, звезда поднимает контакт выше
-   обычных чатов. Сценарий 5 дополнительно проверяет реакции, закреп с панелью с обеих
-   сторон, правку с отметкой «изменено», удаление для обоих и доставку файла с именем.
-8. **polls, forwarding, read receipts, MT layer and secret timer between two clients** —
-   опрос с голосованием и живым итогом, пересылка в «Избранное» с пометкой, галочки
-   прочтения ✓✓, активный MT-слой AES-256-GCM в диалоге безопасности и исчезновение
-   секретного сообщения по таймеру на обоих устройствах.
+9. **notification banner for a message in a chat that is not open** — Алиса уходит из
+   чата, сообщение Богдана поднимает банер с именем и текстом; тап по банеру открывает
+   нужный чат и очищает стек; в открытом чате новое сообщение остаётся без банера.
+10. **Bluetooth P2P dialog opens and degrades honestly outside the APK** — чип «BT»
+    открывает диалог, статус честно объясняет недоступность радиомодуля в браузере,
+    кнопки управления скрыты, список пуст, вход из настроек работает.
+11. **motion layer is present but reduced-motion users get none of it** — скругления
+    композера 26 px на месте, при `prefers-reduced-motion` правила волны и появлений
+    отключены.
 
 ## Проверки APK
 
 - Сборка: `npm run build` → `scripts/build-apk-local.sh` (AAPT2 → ECJ → D8 → zipalign →
   подпись).
-- `apksigner verify --verbose --print-certs`: схемы v2 и v3 подтверждены, v1 не требуется
-  для minSdk 26; сертификат `CN=LIBO Release, O=LIBO Messenger`, RSA-4096; SHA-256
-  сертификата `3bb3878c0b3dd9ec3a31905da3a22fd7730a72ca83cf9421e582f70b527510e0`.
-  Полный вывод сохраняется в `artifacts/SIGNING.txt`.
+- `apksigner verify --verbose --print-certs`: схемы v1 + v2 + v3 подтверждены (v1 нужна
+  для Android 8.0–8.1); сертификат `CN=LIBO Release, O=LIBO Messenger`, RSA-4096; SHA-256
+  сертификата `91937ef538f670dae176559ab69b6dc3b54e4245e4a1d67783127bf0658e6bca`
+  (временный ключ песочницы, см. RELEASE_NOTES.md). Полный вывод — `artifacts/SIGNING.txt`.
 - `zipalign -c 4` проходит; целостность ZIP и состав APK проверены разбором архива.
 - `aapt2 dump badging` (вывод в `artifacts/APK-INFO.txt`): пакет `app.libo.messenger`,
-  versionCode 20801, versionName 2.8.1, minSdk 26, targetSdk 35, единственное разрешение
-  `android.permission.INTERNET`, запускаемая активность
-  `app.libo.messenger.MainActivity`, иконка `mipmap-anydpi-v26/ic_launcher.xml` во всех
-  плотностях, в assets входят `index.html`, JS/CSS-бандл, шрифты WOFF2, `icon.svg`,
-  `icon-192.png`, `icon-512.png` и `third-party-notices.txt`.
+  versionCode 20807, versionName 2.8.7, minSdk 26, targetSdk 35; разрешения INTERNET,
+  POST_NOTIFICATIONS, VIBRATE, FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC и набор
+  Bluetooth (BLUETOOTH/ADMIN до API 30, ACCESS_FINE_LOCATION до API 30, CONNECT/SCAN/
+  ADVERTISE с флагом neverForLocation); запускаемая активность
+  `app.libo.messenger.MainActivity` в теме `AppLaunchTheme`; служба
+  `app.libo.messenger.ConnectionService` с `foregroundServiceType=dataSync`.
+- Иконки и заставка 2.8.7 (`scripts/make-icons-287.py`): legacy PNG 48–192 px во всех
+  плотностях; адаптивные слои фона и переднего плана сгенерированы **по плотностям**
+  (108/162/216/324/432 px) вместо ошибочного `mipmap-anydpi-v26` в 2.8.1; логотип уложен
+  в безопасную зону 66 dp; `ic_launcher_monochrome.xml`, `ic_notification.xml` и
+  `ic_splash_logo.xml` пересобраны из той же геометрии; `splash_window.xml` и атрибуты
+  `windowSplashScreen*` в `values-v31`/`values-night-v31` убирают чёрный экран запуска;
+  контактный лист вариантов — `art/icon-287-preview.png`.
 - Контрольная сумма APK: `artifacts/SHA256SUMS.txt` и `downloads/SHA256SUMS.txt`
-  (значения совпадают): `0f4adca0189137df77e76683e7d6db2638e8bda384b117523cdbb789c57e3cfa`.
-- Иконки 2.8.1: плоский дуотон 1:1 (набор 2.8.0 сохранён; legacy PNG во всех плотностях, адаптивные слои, монохромный слой)
-- Подпись 2.8.1: тот же релизный ключ RSA-4096, что и у 2.8.0 (ротация выполнена в 2.8.0), сертификат `f4e4b3e5e1cb0c102ca27273f86126b976149ea8850be3396e80c6549992dba4`
-  в APK; веб-фавикон и `icon-512.png` входят в assets.
+  (значения совпадают): `a58bcaf6dbdaab7d335862c146114cbb93312775d12c6b03f5fe7b3558827546`.
 
 ## Что не подтверждено
 
 - APK не запускался на физическом Android-телефоне и эмуляторе: в среде сборки нет SDK и
   системного образа Android. Проверены подпись, упаковка, состав и содержимое APK, а
   веб-часть проверена браузерными сценариями.
+- Bluetooth P2P не проверен на реальной паре устройств (нет радиомодуля в среде):
+  контракт моста покрыт юнит-тестами и сценарием деградации, нативный код проходит
+  компиляцию с проверками компилятора.
+- Поведение foreground-службы на оболочках с агрессивным энергосбережением (MIUI,
+  OneUI и т. п.) не проверялось; известны ограничения Android 12+/14+ (см. KNOWN_ISSUES.md).
 - Gradle-сборка и Android lint локально не выполнялись (домены SDK недоступны из этой
   среды); в GitHub Actions они выполняются на каждый push.
 - Публичный signaling `0.peerjs.com` и сценарии между разными мобильными операторами не
   тестировались: браузерные сценарии используют локальный signaling и реальные
   WebRTC-каналы на одном хосте.
-- Не заявляются: аудит безопасности, нагрузочное тестирование, фоновые push-уведомления,
+- Не заявляются: аудит безопасности, нагрузочное тестирование, облачная история,
   автоматическая криптографическая проверка личности собеседника.
 
 ## Как повторить локально
@@ -116,6 +97,7 @@ npm run build
 node scripts/bootstrap-toolchain.mjs   # Linux x64; нужны gh, tar, Node 22
 # export JAVA_HOME=<путь из вывода>, LIBO_TOOLCHAIN=<путь из вывода>
 ./scripts/build-apk-local.sh
+python3 scripts/make-icons-287.py      # пересборка иконок и контактного листа
 python3 scripts/scan-secrets.py
 ```
 

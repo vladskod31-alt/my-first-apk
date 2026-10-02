@@ -1,6 +1,7 @@
 import Peer from 'peerjs';
 import { parseSignalingUrl, makeIceServers, validatePacket } from './core.mjs';
 import { MtSession } from './mtproto.mjs';
+import { BtConnection } from './bluetooth.mjs';
 
 export class Transport {
   constructor(events) {
@@ -159,6 +160,100 @@ export class Transport {
   }
 
   isOpen(id) { const conn = this.connections.get(id); return !!(conn?.open && conn.liboHello); }
+
+  // ---------------------------------------------------------------- Bluetooth --
+  // 2.8.7: Bluetooth P2P sockets join the same connection map as WebRTC links. The
+  // native side knows nothing about personal codes, so a fresh socket waits here until
+  // the remote hello reveals who is on the other end; from that moment on, messages,
+  // the MT layer and delivery acks behave exactly like on WebRTC. Sockets are tracked
+  // by their native token: when both devices dial each other, two sockets to the same
+  // address exist for a moment and the tie-break below closes the loser.
+  attachBluetooth(link) {
+    this.bt = link;
+    this.btPending = new Map();
+    link.on('connected', event => {
+      const connection = new BtConnection(link, event.address, !!event.incoming, event.socket ?? null);
+      this.btPending.set(connection.socket ?? connection, connection);
+      const timeout = this.later(() => {
+        if (this.btPending?.get(connection.socket ?? connection) === connection) connection.close();
+      }, 15_000);
+      connection.on('close', () => {
+        clearTimeout(timeout);
+        this.timers.delete(timeout);
+        this.dropBluetooth(connection.socket, connection.address);
+      });
+      // Announce ourselves at once: the peer adopts the socket only after a hello.
+      link.send(event.address, { v: 1, type: 'hello', id: this.profile.id, name: this.profile.name }, event.socket ?? null);
+    });
+    link.on('data', (event, packet) => void this.bluetoothData({ ...event, packet }));
+    link.on('disconnected', event => this.dropBluetooth(event.socket, event.address));
+  }
+
+  dropBluetooth(socket, address) {
+    const key = socket ?? address;
+    const pending = this.btPending?.get(key);
+    if (pending) { this.btPending.delete(key); pending.open = false; }
+    for (const [id, connection] of [...this.connections]) {
+      const same = socket != null ? connection.socket === socket : connection.address === address;
+      if (connection.kind !== 'bt' || !same) continue;
+      this.connections.delete(id);
+      this.mtSessions.delete(id);
+      connection.open = false;
+      this.events.onContactState(id, 'offline');
+    }
+  }
+
+  async bluetoothData(event) {
+    const packet = validatePacket(event && event.packet ? event.packet : event);
+    const key = event.socket ?? event.address;
+    const connection = this.btPending?.get(key) || this.findBluetoothSocket(event.socket);
+    if (!connection || !connection.open || !packet) return;
+    if (connection.liboHello) {
+      await this.dispatch(connection.peer, packet, connection);
+      return;
+    }
+    const hello = packet;
+    if (hello.type !== 'hello' || !this.events.isAllowed(hello.id)) { connection.close(); return; }
+    const id = hello.id;
+    // Both devices may dial each other at the same time: keep the socket opened by
+    // the smaller personal code, exactly like the WebRTC tie-break in bind().
+    const existing = this.connections.get(id);
+    const keepIncoming = this.profile.id > id;
+    if (existing && existing.open && existing.liboHello) {
+      if (connection.incoming !== keepIncoming) { connection.close(); return; }
+      existing.close();
+    }
+    this.btPending.delete(key);
+    connection.peer = id;
+    connection.liboHello = true;
+    this.connections.set(id, connection);
+    this.events.onContactState(id, 'connecting');
+    connection.liboReady = Promise.resolve(this.events.onHello(id, hello.name));
+    try {
+      await connection.liboReady;
+      if (this.connections.get(id) !== connection || !connection.open) return;
+      this.events.onContactState(id, 'online');
+      this.events.onConnected(id);
+      void this.startMt(connection);
+    } catch {
+      connection.close();
+      this.events.onStorageError();
+    }
+  }
+
+  findBluetoothSocket(socket) {
+    for (const connection of this.connections.values()) {
+      if (connection.kind === 'bt' && connection.socket === socket) return connection;
+    }
+    return null;
+  }
+
+  /** Address of the live Bluetooth link for a personal code, for the UI badge. */
+  bluetoothAddress(id) {
+    const connection = this.connections.get(id);
+    return connection?.kind === 'bt' && connection.open ? connection.address : '';
+  }
+
 
   // MTProto-inspired layer: each side announces an ephemeral ECDH key once the chat is
   // hello-ready; older peers simply never answer, and the channel stays DTLS-only.

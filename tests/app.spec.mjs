@@ -43,11 +43,11 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   // 2.8.1: the UI must not mention open source, source code hosting or GitHub.
   await page.locator('.quiet-button').click();
   const about = await page.locator('#about-dialog').innerText();
-  expect(about).toContain('2.8.1');
+  expect(about).toContain('2.8.7');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
-  expect(await page.locator('#about-features li').count()).toBe(10);
-  expect(await page.locator('#about-version').innerText()).toBe('2.8.1');
+  expect(await page.locator('#about-features li').count()).toBe(13);
+  expect(await page.locator('#about-version').innerText()).toBe('2.8.7');
   expect(errors).toEqual([]);
 });
 
@@ -305,4 +305,71 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await expect(alice.locator('.message-text').filter({ hasText: 'миг' })).toBeHidden({ timeout: 25000 });
   await expect(bob.locator('.message-deleted').first()).toBeVisible({ timeout: 20000 });
   expect(errors).toEqual([]);
+});
+
+test('2.8.7: notification banner for a message in a chat that is not open', async ({ page: alice, browser }) => {
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5173' });
+  const bob = await context.newPage();
+  await ready(alice);
+  await ready(bob);
+  await profile(alice, 'Аня');
+  await profile(bob, 'Богдан');
+  await add(alice, await code(bob));
+  await expect(alice.locator('#chat-presence')).toContainText('В сети');
+  await bob.locator('.chat-row').filter({ hasText: 'Аня' }).click();
+  await bob.locator('#accept-request').click();
+  // Alice walks away to the chat list: the incoming message must raise a banner.
+  await alice.locator('#nav-chats').click();
+  await send(bob, 'Ти тут? Це сповіщення');
+  const card = alice.locator('#notify-stack .notify-card');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('Богдан');
+  await expect(card).toContainText('Ти тут? Це сповіщення');
+  // Tapping the banner opens exactly that chat.
+  await card.click();
+  await expect(alice.locator('#chat-title')).toHaveText('Богдан');
+  await expect(alice.locator('#notify-stack .notify-card')).toHaveCount(0);
+  // While the chat is open, new messages stay quiet: no banner at all.
+  await send(bob, 'І ще одне, вже без банера');
+  await expect(alice.locator('.message-text').filter({ hasText: 'І ще одне, вже без банера' })).toBeVisible();
+  await expect(alice.locator('#notify-stack .notify-card')).toHaveCount(0);
+});
+
+test('2.8.7: Bluetooth P2P dialog opens and degrades honestly outside the APK', async ({ page }) => {
+  await ready(page);
+  await expect(page.locator('#bt-chip')).toBeVisible();
+  await page.locator('#bt-chip').click();
+  await expect(page.locator('#bt-dialog')).toBeVisible();
+  await expect(page.locator('#bt-status')).toContainText('APK');
+  // Without the Android bridge there is no radio: controls stay hidden, no errors.
+  await expect(page.locator('#bt-enable')).toBeHidden();
+  await expect(page.locator('#bt-listen')).toBeHidden();
+  await expect(page.locator('#bt-peers .bt-empty')).toBeVisible();
+  await page.locator('#bt-dialog [data-close]').click();
+  await expect(page.locator('#bt-dialog')).not.toBeVisible();
+  // The settings entry point opens the same dialog.
+  await page.locator('#profile-button').click();
+  await page.locator('#bt-open').click();
+  await expect(page.locator('#bt-dialog')).toBeVisible();
+});
+
+test('2.8.7: motion layer is present but reduced-motion users get none of it', async ({ page }) => {
+  await ready(page);
+  // The rounding/motion stylesheet is live: composer and bubbles are much rounder.
+  expect(await page.locator('#composer').evaluate(el => getComputedStyle(el).borderRadius)).toBe('26px');
+  expect(await page.locator('.chat-row').first().evaluate(el => getComputedStyle(el).borderRadius)).toBe('18px');
+  // Ambient pulse runs normally…
+  const normal = await page.locator('#network-status i').evaluate(el => parseFloat(getComputedStyle(el).animationDuration));
+  expect(normal).toBeGreaterThan(0.5);
+  // …and collapses for reduced-motion users, together with the ripple layer.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const reduced = await page.locator('#network-status i').evaluate(el => parseFloat(getComputedStyle(el).animationDuration));
+  expect(reduced).toBeLessThan(0.001);
+  const rippleDisabled = await page.evaluate(() => {
+    const rules = [...document.styleSheets].flatMap(sheet => {
+      try { return [...sheet.cssRules].flatMap(rule => (rule.cssRules ? [...rule.cssRules] : [rule])); } catch { return []; }
+    });
+    return rules.some(rule => rule.selectorText === '.ripple, .primary-button::after' && rule.style.display === 'none');
+  });
+  expect(rippleDisabled).toBe(true);
 });

@@ -1,7 +1,8 @@
-export const VERSION = '2.8.1';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.1/downloads/LIBO-2.8.1.apk';
+export const VERSION = '2.8.7';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.7/downloads/LIBO-2.8.7.apk';
 // 2.8.1: the in-app interface no longer mentions code hosting; the About screen
 // describes the product, its version and its feature set instead.
+// 2.8.7 adds the Bluetooth P2P transport, system notifications and the motion pass.
 export const FEATURES = {
   delivered: 'Двойные галочки: ✓ — сохранено у собеседника, ✓✓ — прочитано.',
   folders: 'Папки чатов: «Личные» и «Работа» — свои вкладки в списке чатов.',
@@ -13,6 +14,9 @@ export const FEATURES = {
   multiselect: 'Мультивыбор: пакетное удаление для обоих и пересылка нескольких сообщений.',
   search: 'Глобальный поиск по чатам и сообщениям с переходом к найденному.',
   mute: 'Без звука для отдельного контакта — значок в списке чатов.',
+  bluetooth: 'Bluetooth P2P: личные сообщения напрямую между устройствами рядом — без интернета и серверов.',
+  notify: 'Сповіщення: системні сповіщення про повідомлення у фоні та анімований банер у додатку.',
+  motion: 'Анімації 2.8.7: пружинні кнопки з хвилями, м’якші форми, ефекти появи повідомлень і заставка.',
 };
 export const MAX_TEXT = 4000;
 export const MAX_IMAGE_DATA = 1_400_000;

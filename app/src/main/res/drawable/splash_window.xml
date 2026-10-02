@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pre-Android 12 launch window: brand field + signal ring + centred logo.
+     Layered colours only, so the very first frame of the process is never the
+     default black window (2.8.1 showed exactly that while WebView warmed up). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <color android:color="@color/splash_field" />
+    </item>
+    <item
+        android:gravity="center"
+        android:width="220dp"
+        android:height="220dp">
+        <shape android:shape="oval">
+            <solid android:color="@color/splash_disc" />
+        </shape>
+    </item>
+    <item
+        android:gravity="center"
+        android:width="284dp"
+        android:height="284dp">
+        <shape android:shape="oval">
+            <stroke android:width="1dp" android:color="@color/splash_ring" />
+        </shape>
+    </item>
+    <item
+        android:drawable="@drawable/ic_splash_logo"
+        android:gravity="center"
+        android:width="172dp"
+        android:height="172dp" />
+</layer-list>

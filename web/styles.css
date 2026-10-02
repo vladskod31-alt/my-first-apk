@@ -525,3 +525,183 @@ h1, h2, h3, p { margin: 0; }
 html[data-wall="dusk"] .messages { background: linear-gradient(160deg, color-mix(in srgb, var(--accent-soft) 70%, transparent), transparent 60%), var(--bg); }
 html[data-wall="mint"] .messages { background: radial-gradient(120% 90% at 85% -10%, color-mix(in srgb, #a5dacc 26%, transparent), transparent 60%), var(--bg); }
 html[data-wall="mono"] .messages { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--muted) 7%, transparent) 0 12px, transparent 12px 24px), var(--bg); }
+
+/* ================================================================
+   LIBO 2.8.7 — «потужна» версія: м'якші форми, пружинні кнопки,
+   хвилі від дотику, ефекти появи, Bluetooth P2P та сповіщення.
+   Усі правила нижче перевизначають базові; prefers-reduced-motion
+   вимикає анімації в кінці файлу.
+   ================================================================ */
+:root {
+  --r-sm: 14px; --r-md: 18px; --r-lg: 24px; --r-xl: 30px; --r-pill: 999px;
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-soft: cubic-bezier(.22, .9, .28, 1);
+  --shadow-pop: 0 10px 30px #4c1d9522, 0 2px 6px #4c1d9514;
+}
+
+/* --- більш заокруглений інтерфейс ------------------------------------------- */
+.dialog { border-radius: var(--r-xl); padding: 30px; }
+.message-bubble { border-radius: 22px 22px 22px 8px; }
+.outgoing .message-bubble { border-radius: 22px 22px 8px 22px; }
+.composer { border-radius: 26px; padding: 9px; }
+.send-button { border-radius: 18px; }
+.chat-row { border-radius: var(--r-md); }
+.avatar { border-radius: var(--r-md); }
+.chat-header .avatar { border-radius: 16px; }
+.avatar.large { border-radius: 22px; }
+.icon-button { border-radius: 14px; }
+.search-box { border-radius: var(--r-sm); }
+.text-field { border-radius: var(--r-sm); }
+.primary-button, .secondary-button { border-radius: var(--r-md); }
+.dropdown-menu, .message-actions { border-radius: var(--r-md); }
+.dropdown-menu button, .message-actions button { border-radius: 12px; }
+.emoji-picker { border-radius: var(--r-md); }
+.emoji-picker button { border-radius: 12px; }
+.attachment-preview { border-radius: var(--r-md); }
+.qr-card { border-radius: 26px; }
+.lock-card { border-radius: 28px; }
+.toast { border-radius: var(--r-pill); }
+.notice { border-radius: var(--r-sm); }
+.invite-card { border-radius: var(--r-md); }
+.invite-icon { border-radius: 12px; }
+.settings-action { border-radius: var(--r-md); }
+.brand-mark { border-radius: 17px; }
+.new-chat-button { border-radius: 13px; }
+.rail-button { border-radius: 16px; }
+.filter { border-radius: 10px; }
+.theme-options button { border-radius: 13px; }
+.modal-icon { border-radius: 18px; }
+.day-separator span { border-radius: 10px; }
+.reaction-chip { border-radius: var(--r-pill); }
+.att-file { border-radius: 14px; }
+.poll-option { border-radius: 14px; }
+.forward-row { border-radius: 16px; }
+.global-result { border-radius: 13px; }
+.message-photo { border-radius: 14px; }
+.message-video { border-radius: 16px; }
+
+/* --- хвиля від дотику (ripple) ---------------------------------------------- */
+.primary-button, .secondary-button, .icon-button, .send-button, .chat-row,
+.rail-button, .filter, .folder-tab, .theme-options button, .settings-action,
+.invite-card, .poll-option, .reaction-pick, .forward-row, .emoji-picker button,
+.global-result, .notify-card, .bt-chip, .bt-row button { position: relative; overflow: hidden; }
+.ripple {
+  position: absolute; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, currentColor 0%, transparent 62%);
+  opacity: .16; transform: scale(0); animation: libo-ripple .62s var(--ease-soft) forwards;
+}
+@keyframes libo-ripple { to { transform: scale(1); opacity: 0; } }
+
+/* --- пружинне натискання кнопок --------------------------------------------- */
+button:active:not(:disabled) { transform: scale(.94); transition: transform .12s var(--ease-spring); }
+.primary-button, .secondary-button { transition: transform .18s var(--ease-spring), background .16s, box-shadow .22s, color .16s; }
+.primary-button { box-shadow: var(--shadow-pop); overflow: hidden; }
+.primary-button::after {
+  content: ''; position: absolute; inset: 0 auto 0 0; width: 38%;
+  background: linear-gradient(105deg, transparent, #ffffff55, transparent);
+  transform: translateX(-160%) skewX(-14deg);
+}
+.primary-button:hover:not(:disabled)::after { animation: libo-shine .8s var(--ease-soft); }
+@keyframes libo-shine { to { transform: translateX(420%) skewX(-14deg); } }
+.secondary-button:hover { transform: translateY(-1px); }
+.secondary-button.active { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+
+/* --- список чатів: підйом і м'яке виділення ---------------------------------- */
+.chat-row { transition: background .18s, transform .18s var(--ease-spring), box-shadow .22s; }
+.chat-row:hover { transform: translateY(-1px); box-shadow: 0 6px 18px #3320500d; }
+.chat-row.selected { box-shadow: inset 0 0 0 1px #a994d855; }
+.unread-badge { border-radius: var(--r-pill); animation: libo-pop .34s var(--ease-spring); }
+@keyframes libo-pop { from { transform: scale(.4); opacity: 0; } }
+
+/* --- повідомлення: поява, реакції, друк ------------------------------------- */
+.message-row.enter { animation: libo-msg-in .38s var(--ease-spring); }
+@keyframes libo-msg-in { from { opacity: 0; transform: translateY(14px) scale(.96); } }
+.reaction-chip.burst { animation: libo-burst .42s var(--ease-spring); }
+@keyframes libo-burst { 35% { transform: scale(1.22) rotate(-4deg); } 70% { transform: scale(.96); } }
+.typing-dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: 1px; }
+.typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: libo-typing 1.1s infinite; }
+.typing-dots i:nth-child(2) { animation-delay: .15s; }
+.typing-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes libo-typing { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+.avatar.online:after { animation: libo-online 2.4s ease-out infinite; }
+@keyframes libo-online { 0% { box-shadow: 0 0 0 0 #79b69966; } 70% { box-shadow: 0 0 0 7px #79b69900; } 100% { box-shadow: 0 0 0 0 #79b69900; } }
+.network-status i { animation: libo-net 2s ease-in-out infinite; }
+@keyframes libo-net { 50% { opacity: .45; } }
+.rail-button.active:after { animation: libo-rail .3s var(--ease-spring); }
+@keyframes libo-rail { from { transform: scaleY(.3); opacity: 0; } }
+
+/* --- діалоги: пружина та мобільний аркуш ------------------------------------ */
+.dialog[open] { animation: libo-dialog-in .34s var(--ease-spring); }
+@keyframes libo-dialog-in { from { opacity: 0; transform: translateY(26px) scale(.94); } }
+.dialog::backdrop { animation: libo-fade .24s ease-out; }
+@keyframes libo-fade { from { opacity: 0; } }
+@media (max-width: 760px) {
+  .dialog { border-radius: 28px 28px 0 0; max-height: 92dvh; margin: auto 0 0; width: 100%; }
+  .dialog[open] { animation: libo-sheet-in .38s var(--ease-soft); }
+  @keyframes libo-sheet-in { from { transform: translateY(100%); } }
+  .dialog::before { content: ''; display: block; width: 42px; height: 5px; border-radius: 3px; background: var(--line); margin: -14px auto 16px; }
+}
+
+/* --- амбієнтне тло вітального екрана ---------------------------------------- */
+.welcome-content { position: relative; }
+.welcome-content::before, .welcome-content::after {
+  content: ''; position: absolute; border-radius: 50%; pointer-events: none; z-index: -1;
+  filter: blur(46px); opacity: .5;
+}
+.welcome-content::before { width: 260px; height: 260px; left: -40px; top: 30px; background: #a78bfa40; animation: libo-float 11s ease-in-out infinite; }
+.welcome-content::after { width: 210px; height: 210px; right: -30px; top: 150px; background: #84cc1626; animation: libo-float 13s ease-in-out infinite reverse; }
+@keyframes libo-float { 50% { transform: translate3d(18px, -22px, 0) scale(1.08); } }
+.brand-logo { width: 27px; height: 27px; }
+.brand-mark { box-shadow: 0 6px 16px #784ee333; transition: transform .2s var(--ease-spring); }
+.brand-mark:hover { transform: rotate(-4deg) scale(1.05); }
+
+/* --- сповіщення: стек банерів ------------------------------------------------ */
+.notify-stack { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 80; display: flex; flex-direction: column; gap: 10px; width: min(420px, calc(100vw - 24px)); pointer-events: none; }
+.notify-card {
+  pointer-events: auto; display: flex; align-items: center; gap: 12px; width: 100%;
+  text-align: left; padding: 13px 15px; border-radius: 22px; cursor: pointer;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border: 1px solid var(--line); box-shadow: 0 18px 50px #18122238;
+  backdrop-filter: blur(14px); color: var(--text);
+  animation: libo-notify-in .42s var(--ease-spring);
+}
+.notify-card.leaving { animation: libo-notify-out .24s ease-in forwards; }
+@keyframes libo-notify-in { from { opacity: 0; transform: translateY(-26px) scale(.92); } }
+@keyframes libo-notify-out { to { opacity: 0; transform: translateY(-18px) scale(.94); } }
+.notify-avatar { width: 38px; height: 38px; border-radius: 14px; background: var(--accent-soft); color: var(--accent-text); display: grid; place-items: center; font-weight: 800; font-size: 13px; flex-shrink: 0; }
+.notify-body { flex: 1; min-width: 0; }
+.notify-body strong { display: block; font-size: 12px; font-weight: 750; }
+.notify-body small { display: block; font-size: 10.5px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notify-card > svg { width: 17px; height: 17px; color: var(--accent-text); }
+
+/* --- Bluetooth P2P ----------------------------------------------------------- */
+.bt-chip {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: auto;
+  font-size: 8px; font-weight: 800; letter-spacing: .6px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: var(--r-pill); padding: 4px 8px;
+}
+.bt-chip svg { width: 12px; height: 12px; }
+.bt-chip.on { color: var(--accent-text); border-color: #a994d870; background: var(--accent-soft); }
+.bt-chip.linked { color: #3f6212; border-color: #84cc1680; background: #ecfccb; animation: libo-pop .34s var(--ease-spring); }
+:root[data-theme='dark'] .bt-chip.linked { color: #bef264; background: #1a2e05; }
+.connection-bar .beta-badge { margin-left: 6px; }
+.bt-status { display: flex; gap: 9px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-sm); background: var(--surface); color: var(--secondary); font-size: 10.5px; line-height: 1.7; margin-bottom: 14px; }
+.bt-status i { width: 7px; height: 7px; border-radius: 50%; background: #c4ab76; margin-top: 5px; flex-shrink: 0; animation: libo-net 2s ease-in-out infinite; }
+.bt-status.ok i { background: #80ae98; }
+.bt-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+.bt-actions .secondary-button { flex: 1; padding: 11px 10px; font-size: 10.5px; }
+.bt-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 6px; }
+@media (max-width: 560px) { .bt-columns { grid-template-columns: 1fr; } }
+.bt-list { display: flex; flex-direction: column; gap: 7px; min-height: 46px; }
+.bt-empty { font-size: 10px; color: var(--muted); line-height: 1.7; padding: 10px; border: 1px dashed var(--line); border-radius: var(--r-sm); }
+.bt-row { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); animation: libo-msg-in .3s var(--ease-spring); }
+.bt-peer-name { flex: 1; min-width: 0; font-size: 10.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt-signal { font-size: 9px; color: var(--green); letter-spacing: 1px; white-space: nowrap; }
+.bt-row .secondary-button { padding: 7px 10px; font-size: 10px; border-radius: 12px; }
+.bt-open-button { margin-top: 12px; }
+
+/* --- посилена повага до prefers-reduced-motion ------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .ripple, .primary-button::after { display: none !important; }
+  .message-row.enter, .notify-card, .dialog[open], .reaction-chip.burst, .unread-badge { animation: none !important; }
+}
