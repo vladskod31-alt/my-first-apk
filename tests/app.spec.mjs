@@ -46,7 +46,7 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   expect(about).toContain('2.8.7');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
-  expect(await page.locator('#about-features li').count()).toBe(13);
+  expect(await page.locator('#about-features li').count()).toBe(31);
   expect(await page.locator('#about-version').innerText()).toBe('2.8.7');
   expect(errors).toEqual([]);
 });
@@ -284,10 +284,18 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await expect(alice.locator('.att-poll .poll-option').first()).toContainText('· 1', { timeout: 20000 });
   // Bob has the chat open, so Alice must see read checks (✓✓) on delivered messages.
   await expect(alice.locator('.message-status.read').first()).toBeVisible({ timeout: 20000 });
-  // The MTProto-inspired layer must negotiate an AES-256-GCM auth key for the pair.
+  // 2.8.7: the pair must run the Double Ratchet session and agree on the safety number.
   await alice.locator('#security-button').click();
-  await expect(alice.locator('#sec-mt')).toContainText('AES-256-GCM');
+  await expect(alice.locator('#sec-e2')).toContainText('Double Ratchet');
+  const aliceNumber = await alice.locator('#sec-number').innerText();
+  expect(aliceNumber).toMatch(/^(\d{5} ){11}\d{5}$/);
+  await alice.locator('#sec-verify').click();
+  await expect(alice.locator('#sec-verified')).toContainText('Подтверждён');
   await alice.locator('#security-dialog [data-close]').click();
+  await expect(alice.locator('#e2-badge')).toHaveClass(/verified/);
+  await bob.locator('#security-button').click();
+  expect(await bob.locator('#sec-number').innerText()).toBe(aliceNumber);
+  await bob.locator('#security-dialog [data-close]').click();
   // Forwarding: Alice forwards her text to Saved with a «Переслано» label.
   await send(alice, 'перешли меня');
   await expect(bob.locator('.message-text').filter({ hasText: 'перешли меня' })).toBeVisible();
@@ -307,69 +315,77 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   expect(errors).toEqual([]);
 });
 
-test('2.8.7: notification banner for a message in a chat that is not open', async ({ page: alice, browser }) => {
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5173' });
-  const bob = await context.newPage();
-  await ready(alice);
-  await ready(bob);
-  await profile(alice, 'Аня');
-  await profile(bob, 'Богдан');
-  await add(alice, await code(bob));
-  await expect(alice.locator('#chat-presence')).toContainText('В сети');
+test('2.8.7 features: formatting, spoilers, silent send, nickname, pin/archive, schedule, stickers, sessions', async ({ browser }) => {
+  const errors = [];
+  const alice = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  for (const page of [alice, bob]) page.on('pageerror', error => errors.push(error.message));
+  await ready(alice); await ready(bob);
+  await profile(alice, 'Аня'); await profile(bob, 'Боря');
+  const bobCode = await code(bob);
+  await add(alice, bobCode);
+  await expect(bob.locator('.chat-row').filter({ hasText: 'Аня' })).toBeVisible({ timeout: 30000 });
   await bob.locator('.chat-row').filter({ hasText: 'Аня' }).click();
   await bob.locator('#accept-request').click();
-  // Alice walks away to the chat list: the incoming message must raise a banner.
-  await alice.locator('#nav-chats').click();
-  await send(bob, 'Ти тут? Це сповіщення');
-  const card = alice.locator('#notify-stack .notify-card');
-  await expect(card).toBeVisible();
-  await expect(card).toContainText('Богдан');
-  await expect(card).toContainText('Ти тут? Це сповіщення');
-  // Tapping the banner opens exactly that chat.
-  await card.click();
-  await expect(alice.locator('#chat-title')).toHaveText('Богдан');
-  await expect(alice.locator('#notify-stack .notify-card')).toHaveCount(0);
-  // While the chat is open, new messages stay quiet: no banner at all.
-  await send(bob, 'І ще одне, вже без банера');
-  await expect(alice.locator('.message-text').filter({ hasText: 'І ще одне, вже без банера' })).toBeVisible();
-  await expect(alice.locator('#notify-stack .notify-card')).toHaveCount(0);
-});
-
-test('2.8.7: Bluetooth P2P dialog opens and degrades honestly outside the APK', async ({ page }) => {
-  await ready(page);
-  await expect(page.locator('#bt-chip')).toBeVisible();
-  await page.locator('#bt-chip').click();
-  await expect(page.locator('#bt-dialog')).toBeVisible();
-  await expect(page.locator('#bt-status')).toContainText('APK');
-  // Without the Android bridge there is no radio: controls stay hidden, no errors.
-  await expect(page.locator('#bt-enable')).toBeHidden();
-  await expect(page.locator('#bt-listen')).toBeHidden();
-  await expect(page.locator('#bt-peers .bt-empty')).toBeVisible();
-  await page.locator('#bt-dialog [data-close]').click();
-  await expect(page.locator('#bt-dialog')).not.toBeVisible();
-  // The settings entry point opens the same dialog.
-  await page.locator('#profile-button').click();
-  await page.locator('#bt-open').click();
-  await expect(page.locator('#bt-dialog')).toBeVisible();
-});
-
-test('2.8.7: motion layer is present but reduced-motion users get none of it', async ({ page }) => {
-  await ready(page);
-  // The rounding/motion stylesheet is live: composer and bubbles are much rounder.
-  expect(await page.locator('#composer').evaluate(el => getComputedStyle(el).borderRadius)).toBe('26px');
-  expect(await page.locator('.chat-row').first().evaluate(el => getComputedStyle(el).borderRadius)).toBe('18px');
-  // Ambient pulse runs normally…
-  const normal = await page.locator('#network-status i').evaluate(el => parseFloat(getComputedStyle(el).animationDuration));
-  expect(normal).toBeGreaterThan(0.5);
-  // …and collapses for reduced-motion users, together with the ripple layer.
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  const reduced = await page.locator('#network-status i').evaluate(el => parseFloat(getComputedStyle(el).animationDuration));
-  expect(reduced).toBeLessThan(0.001);
-  const rippleDisabled = await page.evaluate(() => {
-    const rules = [...document.styleSheets].flatMap(sheet => {
-      try { return [...sheet.cssRules].flatMap(rule => (rule.cssRules ? [...rule.cssRules] : [rule])); } catch { return []; }
-    });
-    return rules.some(rule => rule.selectorText === '.ripple, .primary-button::after' && rule.style.display === 'none');
-  });
-  expect(rippleDisabled).toBe(true);
+  await expect(alice.locator('#chat-presence')).toContainText('сквозное шифрование', { timeout: 30000 });
+  // Formatting and text spoiler.
+  await alice.locator('#send-options-button').click();
+  await alice.locator('#opt-silent').check({ force: true });
+  await alice.locator('#send-options-close').click();
+  await alice.locator('#message-input').fill('жирный **текст** и ||тайна||');
+  await alice.locator('#send-button').click();
+  await expect(alice.locator('#messages .fmt-bold')).toHaveText('текст');
+  const bubble = bob.locator('.message-text').filter({ hasText: 'жирный' });
+  await expect(bubble.locator('.fmt-bold')).toHaveText('текст');
+  await expect(bubble.locator('.fmt-spoiler')).not.toHaveClass(/revealed/);
+  await bubble.locator('.fmt-spoiler').click();
+  await expect(bubble.locator('.fmt-spoiler')).toHaveClass(/revealed/);
+  await expect(bob.locator('.silent-mark')).toHaveCount(1);
+  // Nickname is local only; pin and archive are chat flags.
+  await bob.locator('#chat-more').click();
+  await bob.locator('#rename-contact').click();
+  await bob.locator('#rename-input').fill('Анюта');
+  await bob.locator('#rename-save').click();
+  await expect(bob.locator('#chat-title')).toHaveText('Анюта');
+  await bob.locator('#chat-more').click();
+  await bob.locator('#pin-chat').click();
+  await expect(bob.locator('.chat-row').filter({ hasText: 'Анюта' }).locator('.star-mark[title="Закреплённый чат"]')).toHaveCount(1);
+  await bob.locator('#chat-more').click();
+  await bob.locator('#archive-chat').click();
+  await expect(bob.locator('.chat-row').filter({ hasText: 'Анюта' })).toHaveCount(0);
+  await bob.locator('.folder-tab[data-folder="archived"]').click();
+  await expect(bob.locator('.chat-row').filter({ hasText: 'Анюта' })).toHaveCount(1);
+  await bob.locator('.folder-tab[data-folder=""]').click();
+  // Scheduled message waits, then «send now» releases it.
+  await alice.locator('#send-options-button').click();
+  const future = new Date(Date.now() + 3_600_000);
+  const pad = value => String(value).padStart(2, '0');
+  await alice.locator('#opt-schedule').fill(`${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}T${pad(future.getHours())}:${pad(future.getMinutes())}`);
+  await alice.locator('#send-options-close').click();
+  await send(alice, 'потом');
+  await expect(alice.locator('.message-status[data-status="scheduled"]')).toHaveCount(1);
+  await alice.locator('.message-row.outgoing [data-actions]').last().click();
+  await alice.locator('#message-actions [data-act="sendnow"]').click();
+  await expect(bob.locator('.message-text').filter({ hasText: 'потом' })).toBeVisible({ timeout: 20000 });
+  // Stickers travel as attachments.
+  await alice.locator('#emoji-button').click();
+  await alice.locator('.sticker-pick').first().click();
+  await expect(bob.locator('.att-sticker')).toHaveCount(1, { timeout: 20000 });
+  // Delete for me removes only the local copy.
+  await bob.locator('.message-row').first().hover();
+  await bob.locator('.message-row [data-actions]').first().click();
+  await bob.locator('#message-actions [data-act="deleteme"]').click();
+  await expect(bob.locator('.message-text').filter({ hasText: 'жирный' })).toHaveCount(0);
+  await expect(alice.locator('.message-text').filter({ hasText: 'жирный' })).toHaveCount(1);
+  // Sessions screen lists the live channel; revoking it re-establishes a fresh one.
+  await alice.locator('#profile-button').click();
+  await alice.locator('#open-sessions').click();
+  await expect(alice.locator('#sessions-identity')).toHaveText(/^([0-9a-f]{4} ){7}[0-9a-f]{4}$/);
+  await expect(alice.locator('.session-row')).toHaveCount(1);
+  await alice.locator('.session-row button').click();
+  await alice.locator('#sessions-dialog [data-close]').click();
+  await expect(alice.locator('#chat-presence')).toContainText('сквозное шифрование', { timeout: 30000 });
+  await send(alice, 'после ротации');
+  await expect(bob.locator('.message-text').filter({ hasText: 'после ротации' })).toBeVisible({ timeout: 20000 });
+  expect(errors).toEqual([]);
 });

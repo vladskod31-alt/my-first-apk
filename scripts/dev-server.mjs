@@ -5,6 +5,19 @@ import { ExpressPeerServer } from 'peer';
 
 const app = express();
 const httpServer = http.createServer(app);
+// Signaling rate limit (per client IP, sliding minute). The server only relays
+// SDP/ICE; it never sees keys or plaintext, but it should not be a free amplifier.
+const hits = new Map();
+app.use('/peerjs', (request, response, next) => {
+  const ip = request.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const recent = (hits.get(ip) || []).filter(at => now - at < 60_000);
+  recent.push(now);
+  hits.set(ip, recent);
+  if (recent.length > 120) { response.status(429).end('Too Many Requests'); return; }
+  next();
+});
+setInterval(() => { const now = Date.now(); for (const [ip, list] of hits) if (!list.some(at => now - at < 60_000)) hits.delete(ip); }, 60_000).unref();
 // A non-listening HTTP emitter isolates PeerJS's websocket handler. PeerJS would
 // otherwise reject Vite's HMR upgrades with HTTP 400 on the shared preview port.
 const signalingTransport = http.createServer();

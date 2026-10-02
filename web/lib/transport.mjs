@@ -1,7 +1,7 @@
 import Peer from 'peerjs';
 import { parseSignalingUrl, makeIceServers, validatePacket } from './core.mjs';
 import { MtSession } from './mtproto.mjs';
-import { BtConnection } from './bluetooth.mjs';
+import { makeHello, verifyHello, Session, encodeText, decodeText, b64 } from './e2ee.mjs';
 
 export class Transport {
   constructor(events) {
@@ -18,6 +18,8 @@ export class Transport {
     this.timers.add(timer);
     return timer;
   }
+
+  updateSettings(settings) { this.settings = settings; }
 
   start(profile, settings) {
     this.stop();
@@ -114,15 +116,21 @@ export class Transport {
     }, 15_000);
     connection.on('open', () => {
       if (this.stopped) { connection.close(); return; }
-      connection.send({ v: 1, type: 'hello', id: this.profile.id, name: this.profile.name });
+      connection.send(this.helloPacket());
     });
     let count = 0;
     let startedAt = Date.now();
-    connection.on('data', async raw => {
+    // Packets are processed strictly in arrival order: the E2EE handshake persists
+    // identity state asynchronously, and a ratchet message must never overtake it.
+    let queue = Promise.resolve();
+    connection.on('data', raw => {
       if (Date.now() - startedAt > 10_000) { count = 0; startedAt = Date.now(); }
       if (++count > 160) { connection.close(); return; }
       const data = validatePacket(raw);
       if (!data) { connection.close(); return; }
+      queue = queue.then(() => handle(data)).catch(() => {});
+    });
+    const handle = async data => {
       if (data.type === 'hello') {
         if (data.id !== id) { connection.close(); return; }
         clearTimeout(timeout);
@@ -131,12 +139,13 @@ export class Transport {
         this.attempts.delete(id);
         this.connections.set(id, connection);
         // Do not process messages until the contact record has been persisted.
-        connection.liboReady = Promise.resolve(this.events.onHello(id, data.name));
+        connection.liboReady = Promise.resolve(this.events.onHello(id, data.name, data));
         try {
           await connection.liboReady;
           if (this.connections.get(id) !== connection || !connection.open) return;
           this.events.onContactState(id, 'online');
           this.events.onConnected(id);
+          this.startE2(connection);
           void this.startMt(connection);
         } catch {
           connection.close();
@@ -147,8 +156,10 @@ export class Transport {
       if (!connection.liboHello) { connection.close(); return; }
       try { await connection.liboReady; } catch { return; }
       await this.dispatch(id, data, connection);
-    });
+    };
     const close = () => {
+      connection.e2Session?.close();
+      connection.e2Hello?.ephemeral?.sk?.fill(0);
       clearTimeout(timeout);
       this.timers.delete(timeout);
       if (this.attempts.get(id) === connection) this.attempts.delete(id);
@@ -160,100 +171,7 @@ export class Transport {
   }
 
   isOpen(id) { const conn = this.connections.get(id); return !!(conn?.open && conn.liboHello); }
-
-  // ---------------------------------------------------------------- Bluetooth --
-  // 2.8.7: Bluetooth P2P sockets join the same connection map as WebRTC links. The
-  // native side knows nothing about personal codes, so a fresh socket waits here until
-  // the remote hello reveals who is on the other end; from that moment on, messages,
-  // the MT layer and delivery acks behave exactly like on WebRTC. Sockets are tracked
-  // by their native token: when both devices dial each other, two sockets to the same
-  // address exist for a moment and the tie-break below closes the loser.
-  attachBluetooth(link) {
-    this.bt = link;
-    this.btPending = new Map();
-    link.on('connected', event => {
-      const connection = new BtConnection(link, event.address, !!event.incoming, event.socket ?? null);
-      this.btPending.set(connection.socket ?? connection, connection);
-      const timeout = this.later(() => {
-        if (this.btPending?.get(connection.socket ?? connection) === connection) connection.close();
-      }, 15_000);
-      connection.on('close', () => {
-        clearTimeout(timeout);
-        this.timers.delete(timeout);
-        this.dropBluetooth(connection.socket, connection.address);
-      });
-      // Announce ourselves at once: the peer adopts the socket only after a hello.
-      link.send(event.address, { v: 1, type: 'hello', id: this.profile.id, name: this.profile.name }, event.socket ?? null);
-    });
-    link.on('data', (event, packet) => void this.bluetoothData({ ...event, packet }));
-    link.on('disconnected', event => this.dropBluetooth(event.socket, event.address));
-  }
-
-  dropBluetooth(socket, address) {
-    const key = socket ?? address;
-    const pending = this.btPending?.get(key);
-    if (pending) { this.btPending.delete(key); pending.open = false; }
-    for (const [id, connection] of [...this.connections]) {
-      const same = socket != null ? connection.socket === socket : connection.address === address;
-      if (connection.kind !== 'bt' || !same) continue;
-      this.connections.delete(id);
-      this.mtSessions.delete(id);
-      connection.open = false;
-      this.events.onContactState(id, 'offline');
-    }
-  }
-
-  async bluetoothData(event) {
-    const packet = validatePacket(event && event.packet ? event.packet : event);
-    const key = event.socket ?? event.address;
-    const connection = this.btPending?.get(key) || this.findBluetoothSocket(event.socket);
-    if (!connection || !connection.open || !packet) return;
-    if (connection.liboHello) {
-      await this.dispatch(connection.peer, packet, connection);
-      return;
-    }
-    const hello = packet;
-    if (hello.type !== 'hello' || !this.events.isAllowed(hello.id)) { connection.close(); return; }
-    const id = hello.id;
-    // Both devices may dial each other at the same time: keep the socket opened by
-    // the smaller personal code, exactly like the WebRTC tie-break in bind().
-    const existing = this.connections.get(id);
-    const keepIncoming = this.profile.id > id;
-    if (existing && existing.open && existing.liboHello) {
-      if (connection.incoming !== keepIncoming) { connection.close(); return; }
-      existing.close();
-    }
-    this.btPending.delete(key);
-    connection.peer = id;
-    connection.liboHello = true;
-    this.connections.set(id, connection);
-    this.events.onContactState(id, 'connecting');
-    connection.liboReady = Promise.resolve(this.events.onHello(id, hello.name));
-    try {
-      await connection.liboReady;
-      if (this.connections.get(id) !== connection || !connection.open) return;
-      this.events.onContactState(id, 'online');
-      this.events.onConnected(id);
-      void this.startMt(connection);
-    } catch {
-      connection.close();
-      this.events.onStorageError();
-    }
-  }
-
-  findBluetoothSocket(socket) {
-    for (const connection of this.connections.values()) {
-      if (connection.kind === 'bt' && connection.socket === socket) return connection;
-    }
-    return null;
-  }
-
-  /** Address of the live Bluetooth link for a personal code, for the UI badge. */
-  bluetoothAddress(id) {
-    const connection = this.connections.get(id);
-    return connection?.kind === 'bt' && connection.open ? connection.address : '';
-  }
-
+  channel(id) { const conn = this.connections.get(id); return conn?.bluetooth ? 'bluetooth' : conn ? 'webrtc' : null; }
 
   // MTProto-inspired layer: each side announces an ephemeral ECDH key once the chat is
   // hello-ready; older peers simply never answer, and the channel stays DTLS-only.
@@ -280,7 +198,83 @@ export class Transport {
     return session?.ready ? session.fingerprint : '';
   }
 
-  async dispatch(id, data, connection) {
+  helloPacket() {
+    const packet = { v: 1, type: 'hello', id: this.profile.id, name: this.profile.name };
+    if (this.profile.bio) packet.bio = this.profile.bio;
+    if (this.settings?.privacy?.lastSeen === false) packet.hideSeen = true;
+    return packet;
+  }
+
+  // 2.8.7 E2EE: one Double Ratchet session per WebRTC connection. Both sides send a
+  // signed hello with a fresh X25519 ephemeral key; the identity keys are pinned by
+  // the app (trust on first use, QR pinning when the contact came from an invitation).
+  startE2(connection) {
+    const id = connection.peer;
+    const identity = this.events.identity?.();
+    if (!identity || connection.e2Hello) return;
+    try {
+      const hello = makeHello(identity, this.profile.id, id, this.events.pairTokenFor?.(id) || null);
+      connection.e2Hello = hello;
+      connection.send(hello.packet);
+      void this.finishE2(connection);
+    } catch { connection.e2Hello = null; }
+  }
+
+  async finishE2(connection) {
+    if (!connection.e2Hello || !connection.e2Remote || connection.e2Session) return;
+    const id = connection.peer;
+    const identity = this.events.identity?.();
+    try {
+      const allowed = await this.events.onIdentity?.(id, { signPk: b64(connection.e2Remote.sk), dhPk: b64(connection.e2Remote.ik), token: connection.e2Token || null });
+      if (allowed === false) { connection.e2Rejected = true; connection.close(); return; }
+      const session = Session.establish({
+        identity, ephemeral: connection.e2Hello.ephemeral, remote: connection.e2Remote,
+        myId: this.profile.id, peerId: id, initiator: this.profile.id < id,
+      });
+      connection.e2Session = session;
+      connection.e2Hello.ephemeral.sk.fill(0);
+      if (session.initiator) connection.send(session.encrypt(encodeText(JSON.stringify({ v: 1, type: 'ping' }))));
+      this.events.onSecurity?.(id);
+      this.events.onE2Ready?.(id);
+    } catch { connection.e2Session = null; }
+  }
+
+  e2Status(id) {
+    const connection = this.connections.get(id);
+    const session = connection?.e2Session;
+    if (!session?.ready) return null;
+    return { fingerprint: session.fingerprint, signPk: session.remoteSignPk, canSend: session.canSend, createdAt: session.createdAt, sent: session.sentSinceRatchet, hardware: false, bluetooth: !!connection.bluetooth };
+  }
+
+  async dispatch(id, data, connection, decrypted = false) {
+    if (data.type === 'e2-hello') {
+      if (connection.e2Remote) return;                      // one handshake per connection
+      const remote = verifyHello(data, id, this.profile.id);
+      if (!remote) { connection.close(); return; }          // unsigned or mis-bound identity
+      connection.e2Remote = remote;
+      connection.e2Token = data.tok || null;
+      connection.e2Seen = true;
+      this.startE2(connection);
+      await this.finishE2(connection);
+      return;
+    }
+    if (data.type === 'e2') {
+      const session = connection.e2Session;
+      if (!session?.ready) return;
+      const plain = session.decrypt(data);
+      if (!plain) { this.events.onMtDrop?.(id); return; }
+      let inner;
+      try { inner = JSON.parse(decodeText(plain)); } catch { return; }
+      plain.fill(0);
+      const packet = validatePacket(inner);
+      if (!packet || ['e2', 'e2-hello', 'mt', 'mt-hello', 'hello'].includes(packet.type)) return;
+      if (packet.type === 'ping') { this.events.onSecurity?.(id); this.events.onE2Ready?.(id); return; }
+      await this.dispatch(id, packet, connection, true);
+      return;
+    }
+    // Downgrade protection: once the peer proved E2EE support, plaintext application
+    // packets from that connection are ignored.
+    if (connection.e2Seen && !decrypted && !['mt', 'mt-hello', 'ping'].includes(data.type)) return;
     if (data.type === 'mt-hello') {
       try {
         let session = this.mtSessions.get(id);
@@ -311,6 +305,7 @@ export class Transport {
       }
       return;
     }
+    if (data.type === 'profile') await this.events.onHello(id, data.name, data);
     if (data.type === 'message') await this.events.onMessage(id, data);
     if (data.type === 'ack') await this.events.onAck(id, data.id);
     if (data.type === 'typing') this.events.onTyping(id, data.active);
@@ -326,6 +321,14 @@ export class Transport {
     if (!this.isOpen(id)) return false;
     const connection = this.connections.get(id);
     try {
+      if (data.type === 'e2-hello' || data.type === 'hello') { connection.send(data); return true; }
+      const session = connection.e2Session;
+      if (session?.ready) {
+        if (!session.canSend) return false;                 // responder waits for the first ratchet step
+        connection.send(session.encrypt(encodeText(JSON.stringify(data))));
+        return true;
+      }
+      if (connection.e2Seen) return false;                  // never fall back to plaintext after E2EE was offered
       if (connection.mt && connection.mtSession?.ready && data.type !== 'mt-hello') {
         connection.send(await connection.mtSession.seal(data));
       } else connection.send(data);
@@ -336,13 +339,16 @@ export class Transport {
 
   updateProfile(profile) {
     this.profile = profile;
-    for (const id of this.connections.keys()) {
-      this.send(id, { v: 1, type: 'hello', id: profile.id, name: profile.name });
-    }
+    for (const id of this.connections.keys()) this.send(id, { ...this.helloPacket(), type: 'profile' });
   }
+
+  // Session revocation: drop the live channel and its keys; the next connection runs a
+  // fresh handshake (new ephemeral keys, new ratchet).
+  revoke(id) { this.closeContact(id); }
 
   closeContact(id) {
     this.mtSessions.delete(id);
+    this.connections.get(id)?.e2Session?.close();
     this.connections.get(id)?.close();
     this.attempts.get(id)?.close();
     this.connections.delete(id);
@@ -357,8 +363,10 @@ export class Transport {
     this.retryCount = 0;
     this.peer?.destroy();
     this.peer = null;
-    this.connections.clear();
-    this.attempts.clear();
-    this.mtSessions.clear();
+    // Bluetooth links (2.8.7) live outside the signalling server: a reconnect of the
+    // WebRTC peer must not drop a working radio channel.
+    for (const [id, connection] of this.connections) if (!connection.bluetooth) this.connections.delete(id);
+    for (const [id, connection] of this.attempts) if (!connection.bluetooth) this.attempts.delete(id);
+    for (const id of this.mtSessions.keys()) if (!this.connections.has(id)) this.mtSessions.delete(id);
   }
 }

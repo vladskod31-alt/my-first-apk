@@ -1,174 +1,147 @@
-// LIBO 2.8.7 — Bluetooth P2P transport (web half).
-//
-// The Android shell (BluetoothP2P.java) owns the sockets; this module turns its JSON
-// events into a PeerJS-shaped connection so the existing Transport/MT layer works over
-// Bluetooth without changes. Pure helpers are exported for unit tests.
+// 2.8.7 Bluetooth P2P: adapts native RFCOMM sockets (Android bridge `LiboAndroid.bt*`)
+// to the same connection interface PeerJS gives the Transport. The radio carries only
+// opaque JSON frames; the Transport runs its usual signed E2EE hello + Double Ratchet
+// over it, so Bluetooth chats are protected exactly like WebRTC chats and no new
+// cryptography is introduced here.
+import { validatePacket } from './core.mjs';
 
-export const BT_FRAME_MAX = 8_000_000;
-export const BT_NAME_PREFIX = 'LIBO-';
+const MAX_FRAME = 2 * 1024 * 1024;
 
-const ADDRESS = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/i;
-
-export function normalizeBtAddress(value) {
-  if (typeof value !== 'string') return null;
-  const text = value.trim();
-  return ADDRESS.test(text) ? text.toUpperCase() : null;
+class BluetoothConnection {
+  constructor(manager, link, peer, meta) {
+    this.manager = manager;
+    this.link = link;
+    this.peer = peer;
+    this.label = 'libo-v2';
+    this.bluetooth = true;
+    this.meta = meta;
+    this.open = false;
+    this.handlers = new Map();
+  }
+  on(event, handler) { this.handlers.set(event, handler); return this; }
+  emit(event, payload) { try { this.handlers.get(event)?.(payload); } catch { /* handler errors must not kill the socket */ } }
+  send(data) {
+    if (!this.open) return;
+    let json;
+    try { json = JSON.stringify(data); } catch { return; }
+    if (json.length > MAX_FRAME) return;
+    if (!this.manager.bridge.btSend(this.link, json)) this.close();
+  }
+  close() {
+    if (!this.open && this.closed) return;
+    this.closed = true;
+    const wasOpen = this.open;
+    this.open = false;
+    this.manager.links.delete(this.link);
+    try { this.manager.bridge.btClose(this.link); } catch { /* native side may already be gone */ }
+    if (wasOpen) this.emit('close');
+    this.manager.onChange?.();
+  }
 }
 
-/** 0-3 bars for the device list; missing RSSI (classic discovery) reports -1. */
-export function rssiLevel(rssi) {
-  if (!Number.isFinite(rssi) || rssi >= 0) return -1;
-  if (rssi >= -60) return 3;
-  if (rssi >= -75) return 2;
-  if (rssi >= -88) return 1;
-  return 0;
-}
-
-/** Short human label for a found device: LIBO short id, Bluetooth name or address tail. */
-export function peerLabel(peer) {
-  if (!peer) return 'Невідомий пристрій';
-  if (peer.shortId) return `${BT_NAME_PREFIX}${peer.shortId}`;
-  if (peer.name) return peer.name;
-  return peer.address ? `…${peer.address.slice(-8)}` : 'Невідомий пристрій';
-}
-
-export function shortIdFromCode(peerId) {
-  return String(peerId || '').replace(/^libo-/, '').slice(0, 8);
-}
-
-/**
- * Thin wrapper over the `LiboAndroid` bridge. In a browser without the bridge every
- * call degrades to "unsupported", and the UI explains that Bluetooth P2P lives in the
- * Android build.
- */
-export class BluetoothLink {
-  constructor(bridge = typeof window === 'undefined' ? null : window.LiboAndroid) {
-    this.bridge = bridge && typeof bridge.btState === 'function' ? bridge : null;
-    this.handlers = {};
-    this.peers = new Map();
+export class BluetoothManager {
+  constructor({ transport, onChange, onDevices, onToast }) {
+    this.transport = transport;
+    this.onChange = onChange;
+    this.onDevices = onDevices;
+    this.onToast = onToast;
     this.links = new Map();
-    this.state = { supported: false, enabled: false, permissions: false, listening: false, scanning: false, shortId: '' };
-    if (this.bridge && typeof window !== 'undefined') window.LiboBluetooth = this;
+    this.devices = new Map();
+    this.scanning = false;
+    this.bridge = window.LiboAndroid;
   }
 
-  get supported() { return !!this.bridge; }
+  get supported() { return !!(this.bridge?.btStatus); }
 
-  on(name, handler) { this.handlers[name] = handler; return this; }
-  fire(name, ...args) { this.handlers[name]?.(...args); }
+  status() {
+    if (!this.supported) return { available: false };
+    try { return JSON.parse(this.bridge.btStatus()); } catch { return { available: false }; }
+  }
 
-  /** Called from Java with already-parsed JSON events. */
+  hasPermissions() { return this.supported && this.bridge.btHasPermissions(); }
+  requestPermissions() { if (this.supported) this.bridge.btRequestPermissions(); }
+
+  start(myId) {
+    this.myId = myId;
+    if (!this.supported) return false;
+    if (!this.hasPermissions()) { this.requestPermissions(); return false; }
+    return this.bridge.btStart(myId);
+  }
+
+  discoverable() { if (this.supported) this.bridge.btDiscoverable(); }
+
+  scan() {
+    if (!this.supported) return false;
+    if (!this.hasPermissions()) { this.requestPermissions(); return false; }
+    this.devices.clear();
+    this.scanning = true;
+    this.onDevices?.();
+    const ok = this.bridge.btScan();
+    if (!ok) { this.scanning = false; this.onDevices?.(); }
+    return ok;
+  }
+
+  stopScan() { if (this.supported) this.bridge.btStopScan(); this.scanning = false; }
+
+  connect(address) {
+    if (!this.supported || !/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(address)) return false;
+    return this.bridge.btConnect(address);
+  }
+
+  stop() {
+    for (const connection of [...this.links.values()]) connection.close();
+    if (this.supported) this.bridge.btStop();
+  }
+
+  connections() { return [...this.links.values()].filter(c => c.open); }
+
+  // Called from native code on the UI thread via window.LiboBT.onEvent.
   onEvent(event) {
     if (!event || typeof event !== 'object') return;
-    switch (event.type) {
-      case 'state':
-        this.state = { ...this.state, ...event };
-        this.peers = new Map((event.peers || []).map(peer => [peer.address, peer]));
-        this.links = new Map((event.links || []).map(link => [link.address, link]));
-        this.fire('state', this.state);
-        break;
-      case 'peer': {
-        const known = this.peers.get(event.address);
-        const peer = { ...known, ...event };
-        delete peer.type;
-        this.peers.set(event.address, peer);
-        this.fire('peer', peer, !known);
-        break;
-      }
-      case 'connected':
-        this.links.set(event.socket ?? event.address, {
-          address: event.address, socket: event.socket ?? null, name: event.name,
-          connected: true, incoming: !!event.incoming,
-        });
-        this.fire('connected', event);
-        break;
-      case 'disconnected': {
-        const key = event.socket ?? event.address;
-        const link = this.links.get(key);
-        this.links.delete(key);
-        this.fire('disconnected', event, link);
+    switch (event.ev) {
+      case 'open': {
+        if (this.links.has(event.link) || typeof event.peer !== 'string') return;
+        const connection = new BluetoothConnection(this, event.link, event.peer, { address: event.address, name: event.name, incoming: !!event.incoming });
+        this.links.set(event.link, connection);
+        connection.open = true;
+        this.transport.bind(connection, !!event.incoming);
+        connection.emit('open');
+        this.onToast?.(`Bluetooth: канал с ${event.name || 'устройством'} открыт`);
+        this.onChange?.();
         break;
       }
       case 'data': {
-        let packet = null;
-        try { packet = JSON.parse(event.text); } catch { packet = null; }
-        if (packet) this.fire('data', event, packet);
+        const connection = this.links.get(event.link);
+        if (!connection?.open || typeof event.json !== 'string' || event.json.length > MAX_FRAME) return;
+        let packet;
+        try { packet = JSON.parse(event.json); } catch { connection.close(); return; }
+        if (!validatePacket(packet)) { connection.close(); return; }
+        connection.emit('data', packet);
         break;
       }
-      case 'error':
-        this.fire('error', event.text);
+      case 'close': {
+        const connection = this.links.get(event.link);
+        if (!connection) return;
+        this.links.delete(event.link);
+        if (connection.open) { connection.open = false; connection.emit('close'); }
+        this.onChange?.();
         break;
-      default:
+      }
+      case 'devices': {
+        for (const device of event.devices || []) {
+          if (typeof device.address !== 'string') continue;
+          this.devices.set(device.address, { address: device.address, name: device.name || '', bonded: !!device.bonded });
+        }
+        this.onDevices?.();
         break;
+      }
+      case 'scan': this.scanning = !!event.active; this.onDevices?.(); break;
+      case 'connect-failed': this.onToast?.(`Не удалось подключиться к ${event.name || event.address}. Откройте LIBO и Bluetooth на обоих устройствах.`, true); break;
+      case 'perm': if (event.granted && this.myId) this.start(this.myId); else if (!event.granted) this.onToast?.('Без разрешения Bluetooth подключение невозможно.', true); this.onChange?.(); break;
+      case 'resumed': if (this.myId) this.start(this.myId); this.onChange?.(); break;
+      case 'status': this.onChange?.(); break;
+      case 'error': this.onToast?.(event.message || 'Ошибка Bluetooth', true); break;
+      default: break;
     }
-  }
-
-  refresh() {
-    if (!this.bridge) return this.state;
-    try {
-      const raw = JSON.parse(this.bridge.btState());
-      this.state = { ...this.state, ...raw };
-      this.peers = new Map((raw.peers || []).map(peer => [peer.address, peer]));
-      this.links = new Map((raw.links || []).map(link => [link.address, link]));
-    } catch { /* bridge busy */ }
-    return this.state;
-  }
-
-  enable() { this.bridge?.btEnable(); }
-  requestPermissions() { this.bridge?.btRequestPermissions(); }
-  listen(shortId) { this.bridge?.btListen(shortId || ''); }
-  stopListen() { this.bridge?.btStopListen(); }
-  discover() { this.bridge?.btDiscover(); }
-  stopDiscover() { this.bridge?.btStopDiscover(); }
-  connect(address) { return !!this.bridge && !!normalizeBtAddress(address) && (this.bridge.btConnect(address), true); }
-  disconnect(address) { this.bridge?.btDisconnect(address); }
-  stopAll() { this.bridge?.btStopAll(); this.links.clear(); }
-
-  /** Serialises one protocol packet into a Bluetooth frame of one socket. */
-  send(address, packet, socket = null) {
-    if (!this.bridge) return false;
-    const text = JSON.stringify(packet);
-    if (text.length > BT_FRAME_MAX) return false;
-    if (socket != null && typeof this.bridge.btSendTo === 'function') return this.bridge.btSendTo(socket, text);
-    return this.bridge.btSend(address, text);
-  }
-
-  closeConnection({ address, socket }) {
-    if (socket != null && typeof this.bridge?.btDisconnectToken === 'function') this.bridge.btDisconnectToken(socket);
-    else this.bridge?.btDisconnect(address);
-  }
-}
-
-/**
- * PeerJS-DataConnection-shaped socket over one Bluetooth link. `peer` is filled in
- * after the remote hello reveals the personal code; until then the Transport keeps the
- * socket in its Bluetooth handshake queue.
- */
-export class BtConnection {
-  constructor(link, address, incoming, socket = null) {
-    this.link = link;
-    this.kind = 'bt';
-    this.address = address;
-    this.socket = socket;
-    this.incoming = incoming;
-    this.peer = null;
-    this.label = 'libo-v2';
-    this.open = true;
-    this.liboHello = false;
-    this.listeners = {};
-  }
-
-  on(name, handler) { (this.listeners[name] ||= []).push(handler); return this; }
-  emit(name, ...args) { for (const handler of this.listeners[name] || []) handler(...args); }
-
-  send(packet) {
-    if (!this.open) return false;
-    return this.link.send(this.address, packet, this.socket);
-  }
-
-  close() {
-    if (!this.open) return;
-    this.open = false;
-    this.link.closeConnection(this);
-    this.emit('close');
   }
 }

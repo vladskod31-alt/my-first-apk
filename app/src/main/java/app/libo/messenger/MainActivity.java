@@ -1,21 +1,37 @@
 package app.libo.messenger;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.pm.PackageManager;
+import org.json.JSONObject;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.graphics.Color;
+import android.app.KeyguardManager;
+import android.content.Context;
 import android.graphics.Insets;
+import android.hardware.biometrics.BiometricPrompt;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.CancellationSignal;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyInfo;
+import android.security.keystore.KeyProperties;
+import android.util.Base64;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
+import android.view.WindowManager;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.JavascriptInterface;
@@ -34,38 +50,49 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
 import java.util.HashMap;
 import java.util.Map;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.GCMParameterSpec;
 
 /** A small, offline-capable shell. Only bundled application code can access the native bridge. */
 public final class MainActivity extends Activity {
     private static final String ORIGIN = "https://appassets.androidplatform.net";
     private static final int PICK_PHOTO = 100;
     private static final int SAVE_EXPORT = 101;
-    private static final int NOTIFY_PERMISSION = 102;
-    private static final int BLUETOOTH_PERMISSIONS = 103;
+    private static final int CONFIRM_CREDENTIAL = 102;
+    private static final String VAULT_ALIAS = "libo-vault-v1";
+    private static final String KEYSTORE = "AndroidKeyStore";
     private static final String CSP = "default-src 'self'; script-src 'self'; "
             + "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
             + "connect-src 'self' https: wss:; font-src 'self'; media-src blob:; "
             + "object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'";
     private WebView webView;
     private FrameLayout root;
-    private SplashView splash;
-    private BluetoothP2P bluetooth;
     private ValueCallback<Uri[]> photoCallback;
     private byte[] pendingExport;
-    private boolean keepAlive;
+    private BluetoothLinks bluetooth;
+    private SplashView splash;
+    private static final String MESSAGES_CHANNEL = "libo-messages";
+    private static final int REQUEST_NOTIFICATIONS = 220;
 
     @Override
     @SuppressLint("SetJavaScriptEnabled") // Required by the bundled messenger; arbitrary remote pages are never loaded.
     protected void onCreate(Bundle state) {
-        // The activity starts in AppLaunchTheme (branded splash window, see styles.xml);
-        // switching here keeps every later window in the regular messenger theme.
-        setTheme(R.style.AppTheme);
         super.onCreate(state);
+        // The activity starts in AppLaunchTheme (branded launch window, res/values/styles.xml)
+        // so the first frame is never black; switch to the regular theme before inflating views.
+        setTheme(R.style.AppTheme);
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(247, 247, 251));
         setContentView(root);
+        // FLAG_SECURE: no screenshots, no preview in the recent-apps switcher, no screen capture.
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         installInsets();
 
         webView = new WebView(this);
@@ -100,27 +127,18 @@ public final class MainActivity extends Activity {
                 try { startActivityForResult(pick, PICK_PHOTO); }
                 catch (ActivityNotFoundException error) {
                     photoCallback.onReceiveValue(null);
-                    showToast("На пристрої немає застосунку для вибору фотографій.");
+                    photoCallback = null;
+                    showToast("На устройстве нет приложения для выбора фотографий.");
                 }
                 return true;
             }
         });
-        webView.loadUrl(ORIGIN + "/index.html");
-
-        bluetooth = new BluetoothP2P(this, new BluetoothP2P.Listener() {
-            @Override public void onEvent(final String json) {
-                runOnUiThread(new Runnable() { @Override public void run() {
-                    if (webView != null) {
-                        webView.evaluateJavascript(
-                                "window.LiboBluetooth && window.LiboBluetooth.onEvent(" + json + ")", null);
-                    }
-                }});
-            }
+        bluetooth = new BluetoothLinks(this, new BluetoothLinks.Sink() {
+            @Override public void emit(JSONObject event) { dispatchJs("window.LiboBT && window.LiboBT.onEvent(" + event + ")"); }
         });
-        Notifications.ensureChannels(this);
-
         // Animated branded overlay above the WebView: no black frame while the page
-        // warms up, and a small logo moment on every launch.
+        // warms up, and a small logo moment on every launch. Removed when the web app
+        // reports uiReady(), when the page finishes loading, or after a 6 s failsafe.
         splash = new SplashView(this);
         splash.setOnGone(new Runnable() { @Override public void run() {
             if (splash != null) root.removeView(splash);
@@ -131,6 +149,51 @@ public final class MainActivity extends Activity {
         root.postDelayed(new Runnable() { @Override public void run() {
             if (splash != null) splash.finish();
         }}, 6000);
+        webView.loadUrl(ORIGIN + "/index.html");
+        pendingChat = chatFromIntent(getIntent());
+    }
+
+    private String pendingChat;
+    private static String chatFromIntent(Intent intent) {
+        String chat = intent == null ? null : intent.getStringExtra("libo.chat");
+        return chat != null && chat.matches("^[a-z0-9-]{1,48}$") ? chat : null;
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String chat = chatFromIntent(intent);
+        if (chat != null) dispatchJs("window.Libo && window.Libo.openChatById(" + JSONObject.quote(chat) + ")");
+    }
+
+    /** Runs JS on the UI thread; the WebView may already be gone during shutdown. */
+    private void dispatchJs(final String script) {
+        runOnUiThread(new Runnable() { @Override public void run() {
+            if (webView != null) webView.evaluateJavascript(script, null);
+        }});
+    }
+
+    private void ensureMessagesChannel() {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager.getNotificationChannel(MESSAGES_CHANNEL) != null) return;
+        NotificationChannel channel = new NotificationChannel(MESSAGES_CHANNEL, "Сообщения", NotificationManager.IMPORTANCE_HIGH);
+        channel.setDescription("Новые сообщения LIBO");
+        channel.enableVibration(true);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+        manager.createNotificationChannel(channel);
+    }
+
+    private boolean notificationsAllowed() {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false;
+        return getSystemService(NotificationManager.class).areNotificationsEnabled();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(request, permissions, results);
+        boolean granted = results.length > 0;
+        for (int result : results) granted &= result == PackageManager.PERMISSION_GRANTED;
+        if (request == REQUEST_NOTIFICATIONS) dispatchJs("window.Libo && window.Libo.onNotificationPermission(" + granted + ")");
+        if (request == BluetoothLinks.REQUEST_PERMISSIONS) dispatchJs("window.LiboBT && window.LiboBT.onEvent({ev:'perm',granted:" + granted + "})");
     }
 
     private void installInsets() {
@@ -183,7 +246,7 @@ public final class MainActivity extends Activity {
             if (request.isForMainFrame() && request.hasGesture()
                     && ("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))) {
                 try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
-                catch (ActivityNotFoundException error) { showToast("Немає браузера для відкриття посилання."); }
+                catch (ActivityNotFoundException error) { showToast("Нет браузера для открытия ссылки."); }
             }
             return true;
         }
@@ -213,12 +276,51 @@ public final class MainActivity extends Activity {
     }
 
     private final class NativeBridge {
+        /** 2.8.7: the web app reports the first meaningful paint; the splash fades out. */
+        @JavascriptInterface
+        public void uiReady() {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                if (splash != null) splash.finish();
+            }});
+        }
+
+        /** 2.8.7: tactile feedback for key actions ("tick", "success", "reject"). */
+        @JavascriptInterface
+        public void haptic(String kind) {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                int constant = "success".equals(kind) ? HapticFeedbackConstants.CONFIRM
+                        : "reject".equals(kind) ? HapticFeedbackConstants.REJECT
+                        : HapticFeedbackConstants.VIRTUAL_KEY;
+                root.performHapticFeedback(constant);
+                if ("success".equals(kind) || "reject".equals(kind)) vibrate(kind);
+            }});
+        }
+
+        private void vibrate(String kind) {
+            Vibrator vibrator = vibrator();
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            long[] pattern = "success".equals(kind) ? new long[]{0, 18, 60, 24} : new long[]{0, 40, 50, 40};
+            if (Build.VERSION.SDK_INT >= 26) {
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1));
+            } else {
+                vibrator.vibrate(pattern, -1);
+            }
+        }
+
+        private Vibrator vibrator() {
+            if (Build.VERSION.SDK_INT >= 31) {
+                VibratorManager manager = getSystemService(VibratorManager.class);
+                return manager == null ? null : manager.getDefaultVibrator();
+            }
+            return getSystemService(Vibrator.class);
+        }
+
         @JavascriptInterface
         public void copyText(String text) {
             if (text == null || text.length() > 1024) return;
             runOnUiThread(new Runnable() { @Override public void run() {
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("Особистий код LIBO", text));
+                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("Личный код LIBO", text));
             }});
         }
 
@@ -229,8 +331,8 @@ public final class MainActivity extends Activity {
                 Intent send = new Intent(Intent.ACTION_SEND);
                 send.setType("text/plain");
                 send.putExtra(Intent.EXTRA_TEXT, text);
-                try { startActivity(Intent.createChooser(send, "Запросити до LIBO")); }
-                catch (ActivityNotFoundException error) { showToast("Не вдалося відкрити меню надсилання."); }
+                try { startActivity(Intent.createChooser(send, "Пригласить в LIBO")); }
+                catch (ActivityNotFoundException error) { showToast("Не удалось открыть меню отправки."); }
             }});
         }
 
@@ -239,7 +341,7 @@ public final class MainActivity extends Activity {
             if (content == null || content.length() > 6_000_000) return;
             final String safe = filename == null ? "LIBO-export.json" : filename.replaceAll("[^a-zA-Z0-9._-]", "_");
             runOnUiThread(new Runnable() { @Override public void run() {
-                if (pendingExport != null) { showToast("Спершу завершіть поточний експорт."); return; }
+                if (pendingExport != null) { showToast("Сначала завершите текущий экспорт."); return; }
                 pendingExport = content.getBytes(StandardCharsets.UTF_8);
                 Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                 create.addCategory(Intent.CATEGORY_OPENABLE);
@@ -248,8 +350,104 @@ public final class MainActivity extends Activity {
                 try { startActivityForResult(create, SAVE_EXPORT); }
                 catch (ActivityNotFoundException error) {
                     pendingExport = null;
-                    showToast("Немає застосунку для збереження файлу.");
+                    showToast("Нет приложения для сохранения файла.");
                 }
+            }});
+        }
+
+        // ---- 2.8.2: Android Keystore wrapping for the IndexedDB vault key -------------
+        // The web layer generates a random 256-bit vault key and asks the shell to wrap
+        // it. The wrapping key is an AES-256-GCM key that never leaves Android Keystore
+        // (StrongBox / TEE where available); only the wrapped blob is persisted.
+        @JavascriptInterface
+        public String keystoreWrap(String rawBase64) {
+            try {
+                SecretKey key = vaultKey(true);
+                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+                cipher.init(Cipher.ENCRYPT_MODE, key);
+                byte[] iv = cipher.getIV();
+                byte[] sealed = cipher.doFinal(Base64.decode(rawBase64, Base64.DEFAULT));
+                byte[] out = new byte[1 + iv.length + sealed.length];
+                out[0] = (byte) iv.length;
+                System.arraycopy(iv, 0, out, 1, iv.length);
+                System.arraycopy(sealed, 0, out, 1 + iv.length, sealed.length);
+                return Base64.encodeToString(out, Base64.NO_WRAP);
+            } catch (Exception error) { return null; }
+        }
+
+        @JavascriptInterface
+        public String keystoreUnwrap(String wrappedBase64) {
+            try {
+                SecretKey key = vaultKey(false);
+                if (key == null) return null;
+                byte[] blob = Base64.decode(wrappedBase64, Base64.DEFAULT);
+                int ivLength = blob[0] & 0xff;
+                byte[] iv = new byte[ivLength];
+                System.arraycopy(blob, 1, iv, 0, ivLength);
+                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+                cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, iv));
+                byte[] raw = cipher.doFinal(blob, 1 + ivLength, blob.length - 1 - ivLength);
+                return Base64.encodeToString(raw, Base64.NO_WRAP);
+            } catch (Exception error) { return null; }
+        }
+
+        @JavascriptInterface
+        public boolean keystoreHardwareBacked() {
+            try {
+                SecretKey key = vaultKey(false);
+                if (key == null) return false;
+                SecretKeyFactory factory = SecretKeyFactory.getInstance(key.getAlgorithm(), KEYSTORE);
+                KeyInfo info = (KeyInfo) factory.getKeySpec(key, KeyInfo.class);
+                if (Build.VERSION.SDK_INT >= 31) {
+                    int level = info.getSecurityLevel();
+                    return level == KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT || level == KeyProperties.SECURITY_LEVEL_STRONGBOX;
+                }
+                return info.isInsideSecureHardware();
+            } catch (Exception error) { return false; }
+        }
+
+        @JavascriptInterface
+        public boolean biometricAvailable() {
+            KeyguardManager keyguard = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            return keyguard != null && keyguard.isDeviceSecure();
+        }
+
+        // Biometric or device-credential confirmation. Result goes back through
+        // window.Libo.onBiometric(ok). API 28+ uses the system BiometricPrompt; API 26/27
+        // fall back to the keyguard credential screen.
+        @JavascriptInterface
+        public void biometricUnlock() {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                if (Build.VERSION.SDK_INT >= 30) {
+                    BiometricPrompt prompt = new BiometricPrompt.Builder(MainActivity.this)
+                            .setTitle("LIBO заблокирован")
+                            .setSubtitle("Подтвердите личность, чтобы открыть переписку")
+                            .setAllowedAuthenticators(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG
+                                    | android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                            .build();
+                    prompt.authenticate(new CancellationSignal(), getMainExecutor(), biometricCallback());
+                } else if (Build.VERSION.SDK_INT >= 28) {
+                    BiometricPrompt prompt = new BiometricPrompt.Builder(MainActivity.this)
+                            .setTitle("LIBO заблокирован")
+                            .setSubtitle("Подтвердите личность, чтобы открыть переписку")
+                            .setDeviceCredentialAllowed(true)
+                            .build();
+                    prompt.authenticate(new CancellationSignal(), getMainExecutor(), biometricCallback());
+                } else {
+                    KeyguardManager keyguard = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+                    Intent intent = keyguard == null ? null : keyguard.createConfirmDeviceCredentialIntent("LIBO заблокирован", "Подтвердите личность");
+                    if (intent == null) { reportBiometric(false); return; }
+                    try { startActivityForResult(intent, CONFIRM_CREDENTIAL); }
+                    catch (ActivityNotFoundException error) { reportBiometric(false); }
+                }
+            }});
+        }
+
+        @JavascriptInterface
+        public void setSecureScreen(boolean secure) {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                if (secure) getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+                else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
             }});
         }
 
@@ -273,193 +471,154 @@ public final class MainActivity extends Activity {
             }});
         }
 
-        /** 2.8.7: the web app reports the first meaningful paint; the splash fades out. */
+        // ---- 2.8.7 notifications ---------------------------------------------------
         @JavascriptInterface
-        public void uiReady() {
-            runOnUiThread(new Runnable() { @Override public void run() {
-                if (splash != null) splash.finish();
-            }});
-        }
-
-        /** 2.8.7: tactile feedback for key actions ("tick", "success", "reject"). */
-        @JavascriptInterface
-        public void haptic(String kind) {
-            runOnUiThread(new Runnable() { @Override public void run() {
-                int constant = "success".equals(kind) ? HapticFeedbackConstants.CONFIRM
-                        : "reject".equals(kind) ? HapticFeedbackConstants.REJECT
-                        : HapticFeedbackConstants.VIRTUAL_KEY;
-                if (Build.VERSION.SDK_INT >= 27) root.performHapticFeedback(constant);
-                else root.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-                if ("success".equals(kind) || "reject".equals(kind)) vibrate(kind);
-            }});
-        }
-
-        private void vibrate(String kind) {
-            Vibrator vibrator = vibrator();
-            if (vibrator == null || !vibrator.hasVibrator()) return;
-            long[] pattern = "success".equals(kind) ? new long[]{0, 18, 60, 24} : new long[]{0, 40, 50, 40};
-            if (Build.VERSION.SDK_INT >= 26) {
-                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1));
-            } else {
-                vibrator.vibrate(pattern, -1);
-            }
-        }
-
-        /** 2.8.7: system notification for a message received in the background. */
-        @JavascriptInterface
-        public void notifyMessage(String title, String text, int badge) {
-            if (text == null || text.length() > 500) return;
-            runOnUiThread(new Runnable() { @Override public void run() {
-                Notifications.showMessage(MainActivity.this,
-                        title == null || title.isEmpty() ? "LIBO" : title, text, badge);
-            }});
-        }
-
-        @JavascriptInterface
-        public boolean notificationsEnabled() {
-            return Notifications.areEnabled(MainActivity.this);
-        }
+        public boolean notificationsEnabled() { return notificationsAllowed(); }
 
         @JavascriptInterface
         public void requestNotifications() {
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+            } else dispatchJs("window.Libo && window.Libo.onNotificationPermission(" + notificationsAllowed() + ")");
+        }
+
+        /** Shows a message notification. Text is optional (privacy setting); the lock screen shows only the title. */
+        @JavascriptInterface
+        public void showNotification(String chatId, String title, String body, int count) {
+            if (chatId == null || !chatId.matches("^[a-z0-9-]{1,48}$") || title == null) return;
+            if (!notificationsAllowed()) return;
+            final String safeTitle = title.length() > 80 ? title.substring(0, 80) : title;
+            final String safeBody = body == null ? "" : body.length() > 400 ? body.substring(0, 400) : body;
             runOnUiThread(new Runnable() { @Override public void run() {
-                if (Build.VERSION.SDK_INT >= 33 && !Notifications.permissionGranted(MainActivity.this)) {
-                    requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
-                            NOTIFY_PERMISSION);
-                }
+                ensureMessagesChannel();
+                Intent open = new Intent(MainActivity.this, MainActivity.class)
+                        .setAction("app.libo.OPEN_CHAT").setData(Uri.parse("libo://chat/" + chatId))
+                        .putExtra("libo.chat", chatId)
+                        .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                PendingIntent tap = PendingIntent.getActivity(MainActivity.this, chatId.hashCode(), open,
+                        PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                Notification publicVersion = new Notification.Builder(MainActivity.this, MESSAGES_CHANNEL)
+                        .setSmallIcon(R.drawable.ic_notification).setContentTitle("LIBO").setContentText("Новое сообщение").build();
+                Notification.Builder builder = new Notification.Builder(MainActivity.this, MESSAGES_CHANNEL)
+                        .setSmallIcon(R.drawable.ic_notification)
+                        .setColor(0xFF6D28D9)
+                        .setContentTitle(safeTitle)
+                        .setContentText(safeBody)
+                        .setStyle(new Notification.BigTextStyle().bigText(safeBody))
+                        .setCategory(Notification.CATEGORY_MESSAGE)
+                        .setAutoCancel(true)
+                        .setContentIntent(tap)
+                        .setVisibility(Notification.VISIBILITY_PRIVATE)
+                        .setPublicVersion(publicVersion)
+                        .setOnlyAlertOnce(false);
+                if (count > 1) builder.setNumber(count);
+                getSystemService(NotificationManager.class).notify(chatId, 1000, builder.build());
             }});
         }
 
         @JavascriptInterface
-        public void clearNotifications() {
-            runOnUiThread(new Runnable() { @Override public void run() {
-                Notifications.cancelMessages(MainActivity.this);
-            }});
-        }
-
-        /** 2.8.7: opt-in foreground service so notifications arrive in background. */
-        @JavascriptInterface
-        public void setKeepAlive(boolean on, String status, int unread) {
-            keepAlive = on;
-            runOnUiThread(new Runnable() { @Override public void run() {
-                if (on) ConnectionService.start(MainActivity.this,
-                        status == null || status.isEmpty() ? "Тримаємо з'єднання" : status);
-                else ConnectionService.stop(MainActivity.this);
-            }});
+        public void clearNotification(String chatId) {
+            if (chatId == null) return;
+            getSystemService(NotificationManager.class).cancel(chatId, 1000);
         }
 
         @JavascriptInterface
-        public void keepAliveStatus(String status, int unread) {
-            runOnUiThread(new Runnable() { @Override public void run() {
-                ConnectionService.update(MainActivity.this,
-                        status == null || status.isEmpty() ? "Тримаємо з'єднання" : status, unread);
-            }});
+        public void setKeepAlive(boolean on) {
+            Intent service = new Intent(MainActivity.this, KeepAliveService.class);
+            try {
+                if (on) startForegroundService(service); else stopService(service);
+            } catch (Exception ignored) { }
         }
 
+        // ---- 2.8.7 Bluetooth P2P ---------------------------------------------------
         @JavascriptInterface
-        public boolean keepAliveRunning() {
-            return keepAlive && ConnectionService.running;
-        }
-
-        // ---- Bluetooth P2P (2.8.7) --------------------------------------------
-        @JavascriptInterface
-        public String btState() {
-            return bluetooth.stateJson();
-        }
+        public String btStatus() { return bluetooth == null ? "{}" : bluetooth.status().toString(); }
 
         @JavascriptInterface
-        public void btEnable() {
-            runOnUiThread(new Runnable() { @Override public void run() {
-                if (!bluetooth.isEnabled()) {
-                    try { startActivityForResult(new Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE), 104); }
-                    catch (ActivityNotFoundException error) { showToast("Bluetooth недоступний на цьому пристрої."); }
-                }
-                bluetooth.broadcastState();
-            }});
-        }
+        public boolean btHasPermissions() { return bluetooth != null && bluetooth.available() && bluetooth.hasPermissions(); }
 
         @JavascriptInterface
         public void btRequestPermissions() {
-            runOnUiThread(new Runnable() { @Override public void run() {
-                String[] missing = bluetooth.missingPermissions();
-                if (missing.length > 0) requestPermissions(missing, BLUETOOTH_PERMISSIONS);
-                else bluetooth.broadcastState();
-            }});
+            if (bluetooth != null && bluetooth.available()) runOnUiThread(new Runnable() { @Override public void run() { bluetooth.requestPermissions(); }});
         }
 
         @JavascriptInterface
-        public void btListen(String shortId) {
-            new Thread(new Runnable() { @Override public void run() {
-                bluetooth.startListening(shortId);
-            }}, "libo-bt-listen").start();
-        }
+        public boolean btStart(String myId) { return bluetooth != null && bluetooth.start(myId); }
 
         @JavascriptInterface
-        public void btStopListen() {
-            new Thread(new Runnable() { @Override public void run() {
-                bluetooth.stopListening();
-            }}, "libo-bt-stop-listen").start();
-        }
+        public void btDiscoverable() { if (bluetooth != null) runOnUiThread(new Runnable() { @Override public void run() { bluetooth.makeDiscoverable(); }}); }
 
         @JavascriptInterface
-        public void btDiscover() {
-            runOnUiThread(new Runnable() { @Override public void run() { bluetooth.startDiscovery(); }});
-        }
+        public boolean btScan() { return bluetooth != null && bluetooth.scan(); }
 
         @JavascriptInterface
-        public void btStopDiscover() {
-            runOnUiThread(new Runnable() { @Override public void run() { bluetooth.stopDiscovery(); }});
-        }
+        public void btStopScan() { if (bluetooth != null) bluetooth.stopScan(); }
 
         @JavascriptInterface
-        public void btConnect(String address) {
-            bluetooth.connect(address);
-        }
+        public boolean btConnect(String address) { return bluetooth != null && bluetooth.connect(address); }
 
         @JavascriptInterface
-        public void btDisconnect(String address) {
-            bluetooth.disconnect(address);
-        }
+        public boolean btSend(int link, String json) { return bluetooth != null && bluetooth.send(link, json); }
 
         @JavascriptInterface
-        public boolean btSend(String address, String payload) {
-            return payload != null && bluetooth.send(address, payload);
-        }
+        public void btClose(int link) { if (bluetooth != null) bluetooth.close(link); }
 
         @JavascriptInterface
-        public void btStopAll() {
-            new Thread(new Runnable() { @Override public void run() { bluetooth.stopAll(); }}, "libo-bt-stop").start();
-        }
+        public void btStop() { if (bluetooth != null) bluetooth.stop(); }
     }
 
-    private Vibrator vibrator() {
-        if (Build.VERSION.SDK_INT >= 31) {
-            VibratorManager manager = getSystemService(VibratorManager.class);
-            return manager == null ? null : manager.getDefaultVibrator();
-        }
-        return getSystemService(Vibrator.class);
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
-        super.onRequestPermissionsResult(request, permissions, results);
-        if (request == BLUETOOTH_PERMISSIONS || request == NOTIFY_PERMISSION) {
-            bluetooth.broadcastState();
-            if (webView != null) {
-                webView.evaluateJavascript("window.LiboNotify && window.LiboNotify.onPermissionChange()", null);
+    private SecretKey vaultKey(boolean create) throws Exception {
+        KeyStore store = KeyStore.getInstance(KEYSTORE);
+        store.load(null);
+        KeyStore.Entry entry = store.getEntry(VAULT_ALIAS, null);
+        if (entry instanceof KeyStore.SecretKeyEntry) return ((KeyStore.SecretKeyEntry) entry).getSecretKey();
+        if (!create) return null;
+        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE);
+        KeyGenParameterSpec.Builder spec = new KeyGenParameterSpec.Builder(VAULT_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true);
+        if (Build.VERSION.SDK_INT >= 28 && getPackageManager().hasSystemFeature("android.hardware.strongbox_keystore")) {
+            try {
+                spec.setIsStrongBoxBacked(true);
+                generator.init(spec.build());
+                return generator.generateKey();
+            } catch (Exception strongBoxUnavailable) {
+                spec.setIsStrongBoxBacked(false);
             }
         }
+        generator.init(spec.build());
+        return generator.generateKey();
+    }
+
+    private BiometricPrompt.AuthenticationCallback biometricCallback() {
+        return new BiometricPrompt.AuthenticationCallback() {
+            @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) { reportBiometric(true); }
+            @Override public void onAuthenticationError(int code, CharSequence message) { reportBiometric(false); }
+        };
+    }
+
+    private void reportBiometric(boolean ok) {
+        runOnUiThread(new Runnable() { @Override public void run() {
+            if (webView != null) webView.evaluateJavascript("window.Libo && window.Libo.onBiometric(" + ok + ")", null);
+        }});
     }
 
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == CONFIRM_CREDENTIAL) { reportBiometric(result == RESULT_OK); return; }
+        if (request == BluetoothLinks.REQUEST_ENABLE || request == BluetoothLinks.REQUEST_DISCOVERABLE) {
+            dispatchJs("window.LiboBT && window.LiboBT.onEvent({ev:'resumed',request:" + request + ",result:" + result + "})");
+            return;
+        }
         if (request == PICK_PHOTO && photoCallback != null) {
             Uri uri = result == RESULT_OK && data != null ? data.getData() : null;
             photoCallback.onReceiveValue(uri == null ? null : new Uri[]{uri});
             photoCallback = null;
         }
-        if (request == 104) bluetooth.broadcastState();
         if (request == SAVE_EXPORT) {
             byte[] bytes = pendingExport;
             pendingExport = null;
@@ -469,9 +628,9 @@ public final class MainActivity extends Activity {
                 try (OutputStream output = getContentResolver().openOutputStream(uri)) {
                     if (output == null) throw new IOException("No output stream");
                     output.write(bytes);
-                    runOnUiThread(new Runnable() { @Override public void run() { showToast("Текстовий експорт збережено"); }});
+                    runOnUiThread(new Runnable() { @Override public void run() { showToast("Текстовый экспорт сохранён"); }});
                 } catch (IOException | SecurityException error) {
-                    runOnUiThread(new Runnable() { @Override public void run() { showToast("Не вдалося зберегти файл. Перевірте вільне місце."); }});
+                    runOnUiThread(new Runnable() { @Override public void run() { showToast("Не удалось сохранить файл. Проверьте свободное место."); }});
                 }
             }}, "libo-export").start();
         }
@@ -487,23 +646,26 @@ public final class MainActivity extends Activity {
         });
     }
 
-    @Override protected void onPause() {
-        super.onPause();
-        // With the keep-alive service on, the WebView must keep executing JavaScript in
-        // the background: that is what lets incoming messages raise notifications.
-        if (webView != null && !keepAlive) webView.onPause();
-        if (keepAlive) ConnectionService.update(this, "LIBO у фоні · чекаємо на повідомлення", 0);
-    }
+    // The WebView keeps running while the app is in the background: that is what lets the
+    // transport receive messages and raise notifications (2.8.7). Timers are not paused.
     @Override protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
-        Notifications.cancelMessages(this);
-        if (keepAlive) ConnectionService.update(this, "LIBO відкрито на екрані", 0);
+        if (pendingChat != null) {
+            final String chat = pendingChat; pendingChat = null;
+            dispatchJs("window.Libo && window.Libo.openChatById(" + JSONObject.quote(chat) + ")");
+        }
+        dispatchJs("window.Libo && window.Libo.onForeground && window.Libo.onForeground(true)");
+    }
+    @Override protected void onStop() {
+        super.onStop();
+        dispatchJs("window.Libo && window.Libo.onForeground && window.Libo.onForeground(false)");
     }
     @Override protected void onDestroy() {
+        if (bluetooth != null) { bluetooth.stop(); bluetooth = null; }
+        if (splash != null) { root.removeView(splash); splash = null; }
         if (photoCallback != null) { photoCallback.onReceiveValue(null); photoCallback = null; }
         pendingExport = null;
-        if (bluetooth != null) bluetooth.stopAll();
         if (webView != null) {
             root.removeView(webView);
             webView.removeJavascriptInterface("LiboAndroid");

@@ -526,182 +526,313 @@ html[data-wall="dusk"] .messages { background: linear-gradient(160deg, color-mix
 html[data-wall="mint"] .messages { background: radial-gradient(120% 90% at 85% -10%, color-mix(in srgb, #a5dacc 26%, transparent), transparent 60%), var(--bg); }
 html[data-wall="mono"] .messages { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--muted) 7%, transparent) 0 12px, transparent 12px 24px), var(--bg); }
 
-/* ================================================================
-   LIBO 2.8.7 — «потужна» версія: м'якші форми, пружинні кнопки,
-   хвилі від дотику, ефекти появи, Bluetooth P2P та сповіщення.
-   Усі правила нижче перевизначають базові; prefers-reduced-motion
-   вимикає анімації в кінці файлу.
-   ================================================================ */
-:root {
-  --r-sm: 14px; --r-md: 18px; --r-lg: 24px; --r-xl: 30px; --r-pill: 999px;
-  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
-  --ease-soft: cubic-bezier(.22, .9, .28, 1);
-  --shadow-pop: 0 10px 30px #4c1d9522, 0 2px 6px #4c1d9514;
+/* ---------------------------------------------------------------- 2.8.2 ---- */
+:root[data-font='small'] body { font-size: 13px; }
+:root[data-font='large'] body { font-size: 16px; }
+:root[data-font='small'] .message-text { font-size: 13px; }
+:root[data-font='large'] .message-text { font-size: 17px; }
+.fmt-bold { font-weight: 750; }
+.fmt-italic { font-style: italic; }
+.fmt-strike { text-decoration: line-through; opacity: .8; }
+code.fmt-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; background: rgba(127, 127, 127, .14); padding: 1px 5px; border-radius: 6px; }
+.fmt-spoiler { background: var(--text); color: transparent; border-radius: 5px; cursor: pointer; transition: all .2s; user-select: none; }
+.fmt-spoiler.revealed { background: rgba(127, 127, 127, .14); color: inherit; user-select: text; }
+.spoiler-photo img { filter: blur(22px) saturate(.6); transform: scale(1.06); }
+.spoiler-photo { position: relative; overflow: hidden; }
+.spoiler-photo:after { content: 'Показать'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-weight: 700; text-shadow: 0 1px 8px rgba(0, 0, 0, .7); }
+.unread-divider { text-align: center; font-size: 12px; font-weight: 650; color: var(--accent-text); background: var(--accent-soft); border-radius: 10px; padding: 5px 10px; margin: 8px auto; width: max-content; }
+.scroll-bottom { position: absolute; right: 18px; bottom: 96px; width: 42px; height: 42px; border-radius: 50%; background: var(--surface-strong, var(--surface)); border: 1px solid var(--border); color: var(--accent-text); display: grid; place-items: center; box-shadow: 0 6px 18px rgba(0, 0, 0, .15); cursor: pointer; z-index: 4; }
+.scroll-bottom svg { width: 18px; height: 18px; transform: rotate(90deg); fill: none; stroke: currentColor; stroke-width: 2; }
+.scroll-bottom span { position: absolute; top: -6px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.conversation { position: relative; }
+.silent-mark svg, .star-mark.warn svg { width: 12px; height: 12px; }
+.star-mark.warn { color: #d9534f; }
+.draft-mark { color: #d9534f; font-weight: 650; }
+.e2-badge { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-text); margin-left: 6px; flex: none; }
+.e2-badge.verified { background: #d8f3e6; color: #0f766e; }
+.e2-badge svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+.keychange-bar { border-left: 4px solid #d9534f; }
+.keychange-bar > div { display: flex; gap: 8px; flex-wrap: wrap; }
+.safety-number { display: block; font-size: 15px; letter-spacing: .5px; line-height: 1.7; word-break: break-word; }
+.sessions-list { display: grid; gap: 8px; margin: 8px 0 14px; }
+.session-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; }
+.session-row small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.section-subtitle { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 14px 0 6px; }
+.invite-fp { display: block; margin-top: 4px; font-size: 10px; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.invite-fp code { font-size: 10px; }
+.send-options { position: absolute; right: 12px; bottom: 74px; width: min(340px, calc(100% - 24px)); background: var(--surface-strong, var(--surface)); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; box-shadow: 0 12px 34px rgba(0, 0, 0, .18); z-index: 6; }
+.send-options-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+#send-options-button.active { color: var(--accent-text); background: var(--accent-soft); }
+.att-voice .rate-button { border: 1px solid var(--border); border-radius: 8px; background: transparent; color: inherit; font-size: 11px; font-weight: 700; padding: 2px 6px; cursor: pointer; }
+.att-sticker { width: 128px; height: 128px; }
+.att-sticker svg { width: 100%; height: 100%; stroke: none; }
+.sticker-bubble { background: transparent !important; box-shadow: none !important; padding: 0 !important; }
+.sticker-strip { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; border-top: 1px solid var(--border); padding-top: 6px; margin-top: 4px; }
+.sticker-pick { width: 46px; height: 46px; border: 0; background: transparent; cursor: pointer; border-radius: 10px; padding: 3px; }
+.sticker-pick:hover { background: var(--accent-soft); }
+.sticker-pick svg { width: 100%; height: 100%; stroke: none; }
+.message-row { transition: transform .15s ease-out; }
+/* Per-chat accent colours. */
+#conversation[data-color='violet'] { --chat-accent: #7850df; }
+#conversation[data-color='mint'] { --chat-accent: #1f9d7a; }
+#conversation[data-color='rose'] { --chat-accent: #d94b7a; }
+#conversation[data-color='peach'] { --chat-accent: #e0793d; }
+#conversation[data-color='blue'] { --chat-accent: #2f6fe4; }
+#conversation[data-color]:not([data-color='']) .outgoing .message-bubble { background: var(--chat-accent); color: #fff; }
+#conversation[data-color]:not([data-color='']) .chat-header { box-shadow: inset 0 -2px 0 var(--chat-accent); }
+
+/* ===================================================================== */
+/* 2.8.5 — motion, buttons, performance, wide device support             */
+/* ===================================================================== */
+:root { --ease: cubic-bezier(.2, .8, .2, 1); --spring: cubic-bezier(.34, 1.4, .64, 1); }
+@keyframes libo-pop { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes libo-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes libo-menu { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes libo-toast { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes libo-dialog { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes libo-pulse { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 40% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); } }
+@keyframes libo-dot { 0%, 80%, 100% { transform: translateY(0); opacity: .4; } 40% { transform: translateY(-3px); opacity: 1; } }
+@keyframes libo-slide-in { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes libo-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* Buttons: consistent press/hover feedback, softer primary with gradient sheen. */
+button, .primary-button, .secondary-button, .icon-button, .send-button, .chat-row, .rail-button, .filter, .folder-tab, .settings-action {
+  transition: background-color .18s var(--ease), color .18s var(--ease), transform .16s var(--ease), box-shadow .2s var(--ease), opacity .18s var(--ease), border-color .18s var(--ease);
 }
+button:not(:disabled):active, .settings-action:active, .chat-row:active { transform: scale(.965); }
+.primary-button { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 88%, #fff) 0%, var(--accent) 60%, var(--accent-hover) 100%); background-size: 160% 160%; box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 28%, transparent); }
+.primary-button:hover:not(:disabled) { background-position: 100% 0; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 38%, transparent); transform: translateY(-1px); }
+.secondary-button:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.send-button { transition: transform .18s var(--spring), background-color .18s var(--ease), box-shadow .2s var(--ease); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 30%, transparent); }
+.send-button:not(:disabled):hover { transform: scale(1.06) rotate(-8deg); }
+.send-button:not(:disabled):active { transform: scale(.92); }
+.icon-button:hover svg { transform: scale(1.08); }
+.icon-button svg { transition: transform .18s var(--spring); }
+.rail-button.active:after { transition: top .25s var(--ease); }
+.unread-badge { animation: libo-pop .3s var(--spring); }
+.avatar { transition: transform .2s var(--spring); }
+.chat-row:hover .avatar { transform: scale(1.04); }
+.chat-row { position: relative; overflow: hidden; }
+.chat-row.selected:before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); animation: libo-fade .25s; }
 
-/* --- більш заокруглений інтерфейс ------------------------------------------- */
-.dialog { border-radius: var(--r-xl); padding: 30px; }
-.message-bubble { border-radius: 22px 22px 22px 8px; }
-.outgoing .message-bubble { border-radius: 22px 22px 8px 22px; }
-.composer { border-radius: 26px; padding: 9px; }
-.send-button { border-radius: 18px; }
-.chat-row { border-radius: var(--r-md); }
-.avatar { border-radius: var(--r-md); }
-.chat-header .avatar { border-radius: 16px; }
-.avatar.large { border-radius: 22px; }
-.icon-button { border-radius: 14px; }
-.search-box { border-radius: var(--r-sm); }
-.text-field { border-radius: var(--r-sm); }
-.primary-button, .secondary-button { border-radius: var(--r-md); }
-.dropdown-menu, .message-actions { border-radius: var(--r-md); }
-.dropdown-menu button, .message-actions button { border-radius: 12px; }
-.emoji-picker { border-radius: var(--r-md); }
-.emoji-picker button { border-radius: 12px; }
-.attachment-preview { border-radius: var(--r-md); }
-.qr-card { border-radius: 26px; }
-.lock-card { border-radius: 28px; }
-.toast { border-radius: var(--r-pill); }
-.notice { border-radius: var(--r-sm); }
-.invite-card { border-radius: var(--r-md); }
-.invite-icon { border-radius: 12px; }
-.settings-action { border-radius: var(--r-md); }
-.brand-mark { border-radius: 17px; }
-.new-chat-button { border-radius: 13px; }
-.rail-button { border-radius: 16px; }
-.filter { border-radius: 10px; }
-.theme-options button { border-radius: 13px; }
-.modal-icon { border-radius: 18px; }
-.day-separator span { border-radius: 10px; }
-.reaction-chip { border-radius: var(--r-pill); }
-.att-file { border-radius: 14px; }
-.poll-option { border-radius: 14px; }
-.forward-row { border-radius: 16px; }
-.global-result { border-radius: 13px; }
-.message-photo { border-radius: 14px; }
-.message-video { border-radius: 16px; }
-
-/* --- хвиля від дотику (ripple) ---------------------------------------------- */
-.primary-button, .secondary-button, .icon-button, .send-button, .chat-row,
-.rail-button, .filter, .folder-tab, .theme-options button, .settings-action,
-.invite-card, .poll-option, .reaction-pick, .forward-row, .emoji-picker button,
-.global-result, .notify-card, .bt-chip, .bt-row button { position: relative; overflow: hidden; }
-.ripple {
-  position: absolute; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle, currentColor 0%, transparent 62%);
-  opacity: .16; transform: scale(0); animation: libo-ripple .62s var(--ease-soft) forwards;
-}
-@keyframes libo-ripple { to { transform: scale(1); opacity: 0; } }
-
-/* --- пружинне натискання кнопок --------------------------------------------- */
-button:active:not(:disabled) { transform: scale(.94); transition: transform .12s var(--ease-spring); }
-.primary-button, .secondary-button { transition: transform .18s var(--ease-spring), background .16s, box-shadow .22s, color .16s; }
-.primary-button { box-shadow: var(--shadow-pop); overflow: hidden; }
-.primary-button::after {
-  content: ''; position: absolute; inset: 0 auto 0 0; width: 38%;
-  background: linear-gradient(105deg, transparent, #ffffff55, transparent);
-  transform: translateX(-160%) skewX(-14deg);
-}
-.primary-button:hover:not(:disabled)::after { animation: libo-shine .8s var(--ease-soft); }
-@keyframes libo-shine { to { transform: translateX(420%) skewX(-14deg); } }
-.secondary-button:hover { transform: translateY(-1px); }
-.secondary-button.active { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
-
-/* --- список чатів: підйом і м'яке виділення ---------------------------------- */
-.chat-row { transition: background .18s, transform .18s var(--ease-spring), box-shadow .22s; }
-.chat-row:hover { transform: translateY(-1px); box-shadow: 0 6px 18px #3320500d; }
-.chat-row.selected { box-shadow: inset 0 0 0 1px #a994d855; }
-.unread-badge { border-radius: var(--r-pill); animation: libo-pop .34s var(--ease-spring); }
-@keyframes libo-pop { from { transform: scale(.4); opacity: 0; } }
-
-/* --- повідомлення: поява, реакції, друк ------------------------------------- */
-.message-row.enter { animation: libo-msg-in .38s var(--ease-spring); }
-@keyframes libo-msg-in { from { opacity: 0; transform: translateY(14px) scale(.96); } }
-.reaction-chip.burst { animation: libo-burst .42s var(--ease-spring); }
-@keyframes libo-burst { 35% { transform: scale(1.22) rotate(-4deg); } 70% { transform: scale(.96); } }
-.typing-dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: 1px; }
-.typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: libo-typing 1.1s infinite; }
+/* Messages: entrance animation only for genuinely new rows; layout containment for long chats. */
+.message-row { contain: layout style; content-visibility: auto; contain-intrinsic-size: auto 64px; }
+.message-row.pop-in { animation: libo-pop .32s var(--spring) both; }
+.message-row.outgoing.pop-in { transform-origin: bottom right; }
+.message-row.incoming.pop-in { transform-origin: bottom left; }
+.message-row.pulse .message-bubble { animation: libo-pulse 1.2s var(--ease) 2; }
+.message-bubble { transition: box-shadow .2s var(--ease), transform .2s var(--ease); }
+.message-row:hover .message-bubble { box-shadow: 0 6px 20px #2a1f4a12; }
+.reaction-chip, .reaction-pick { transition: transform .18s var(--spring), background-color .18s; }
+.reaction-chip:hover, .reaction-pick:hover { transform: scale(1.15); }
+.reaction-chip.mine { animation: libo-pop .3s var(--spring); }
+.message-status { transition: color .3s var(--ease); }
+.message-status.read { animation: libo-pop .3s var(--spring); }
+.typing-dots { display: inline-flex; gap: 2px; margin-left: 3px; vertical-align: baseline; }
+.typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: libo-dot 1.1s infinite var(--ease); }
 .typing-dots i:nth-child(2) { animation-delay: .15s; }
 .typing-dots i:nth-child(3) { animation-delay: .3s; }
-@keyframes libo-typing { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+.day-separator span, .unread-divider { animation: libo-fade .3s; }
+.message-photo img { transition: transform .35s var(--ease), filter .35s var(--ease); }
+.message-photo:not(.spoiler-photo):hover img { transform: scale(1.015); }
+.spoiler-photo img { transition: filter .4s var(--ease); }
+.att-sticker svg { transition: transform .25s var(--spring); }
+.att-sticker:hover svg { transform: scale(1.08) rotate(-3deg); }
+.sticker-pick { transition: transform .18s var(--spring), background-color .18s; }
+.sticker-pick:hover { transform: scale(1.12); }
+
+/* Overlays. */
+.dropdown-menu, .message-actions, .emoji-picker, .send-options, .scroll-bottom { animation: libo-menu .2s var(--ease) both; }
+.dropdown-menu button, .message-actions button { transition: background-color .15s, padding-left .15s var(--ease); }
+.dropdown-menu button:hover, .message-actions button:hover { padding-left: 14px; }
+.dialog[open] { animation: libo-dialog .28s var(--ease) both; }
+.dialog[open]::backdrop { animation: libo-fade .25s both; }
+.toast { animation: libo-toast .3s var(--spring) both; border-radius: 14px; }
+.scroll-bottom { transition: transform .18s var(--spring); }
+.scroll-bottom:hover { transform: translateY(-2px) scale(1.04); }
+.pinned-bar, .request-bar, .keychange-bar, .reply-bar, .attachment-preview, .selection-bar { animation: libo-fade .25s; }
+.lock-card { animation: libo-dialog .35s var(--ease) both; }
+.network-status { transition: background-color .3s, color .3s; }
+.e2-badge { animation: libo-pop .35s var(--spring) both; }
+.e2-badge.verified { box-shadow: 0 0 0 3px color-mix(in srgb, #0f766e 18%, transparent); }
+.brand-mark { background: linear-gradient(135deg, #7c3aed, #4c1d95); box-shadow: 0 6px 16px #5b21b640; }
+.modal-icon { transition: transform .3s var(--spring); }
+.dialog:hover .modal-icon { transform: rotate(-6deg) scale(1.05); }
+
+/* Text fields. */
+.text-field, textarea { transition: border-color .18s var(--ease), box-shadow .18s var(--ease), background-color .18s; }
+.text-field:focus, #message-input:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.switch { transition: background-color .2s var(--ease); }
+.switch:after, .switch:before { transition: transform .2s var(--spring), background-color .2s; }
+
+/* Mobile: slide the conversation in, keep the composer above the keyboard. */
+@media (max-width: 760px) {
+  .shell.chat-open .main-pane { animation: libo-slide-in .26s var(--ease) both; }
+  .composer-zone { padding-bottom: max(7px, env(safe-area-inset-bottom)); }
+  .sidebar { padding-top: env(safe-area-inset-top); }
+  .messages { padding-left: 12px; padding-right: 12px; }
+  .scroll-bottom { right: 12px; bottom: 90px; }
+  .send-options { right: 8px; left: 8px; width: auto; }
+}
+/* Landscape phones and short screens. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .shell { grid-template-rows: minmax(0, 1fr) 52px; }
+  .rail { padding-top: 3px; padding-bottom: 3px; }
+  .rail-button { width: 38px; height: 38px; }
+  .messages { padding-top: 10px; padding-bottom: 10px; }
+  .chat-header { padding-top: 6px; padding-bottom: 6px; }
+}
+/* Tablets and foldables (portrait): two columns without the rail crowding. */
+@media (min-width: 761px) and (max-width: 1000px) and (orientation: portrait) {
+  .shell { grid-template-columns: 66px 260px minmax(0, 1fr); }
+}
+/* Very wide desktop/TV: cap line lengths for readability. */
+@media (min-width: 1920px) { .message-bubble { max-width: min(70%, 640px); } }
+/* Coarse pointers (phones, tablets, TV remotes): larger targets, no hover-only affordances. */
+@media (pointer: coarse) {
+  .icon-button, .rail-button, .filter, .folder-tab { min-width: 44px; min-height: 44px; }
+  .dropdown-menu button, .message-actions button { padding-top: 14px; padding-bottom: 14px; }
+  .message-actions-button { opacity: 1 !important; }
+  .reaction-chip { min-height: 30px; }
+}
+/* Keyboard / high-contrast users. */
+@media (forced-colors: active) {
+  .primary-button, .send-button, .unread-badge { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .message-bubble { border: 1px solid CanvasText; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .message-row.pop-in, .dialog[open], .dropdown-menu, .message-actions, .emoji-picker, .send-options, .toast, .shell.chat-open .main-pane { animation: none !important; }
+  .typing-dots i { animation: none; opacity: 1; }
+}
+/* Without color-mix support (old WebView < 111) the shadows simply fall back. */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .primary-button { background: var(--accent); box-shadow: 0 6px 18px #7850df40; }
+  .send-button { box-shadow: 0 4px 14px #7850df40; }
+  .text-field:focus, #message-input:focus { box-shadow: 0 0 0 3px #7850df2e; }
+  .lock-screen { background: var(--bg); }
+}
+
+/* ===================================================================== */
+/* 2.8.7 — rounder surfaces, ripple buttons, richer motion, Bluetooth UI  */
+/* ===================================================================== */
+:root { --r-xs: 10px; --r-sm: 14px; --r-md: 18px; --r-lg: 24px; --r-xl: 30px; }
+@keyframes libo-ripple { to { transform: scale(2.6); opacity: 0; } }
+@keyframes libo-glow { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 16%, transparent); } }
+@keyframes libo-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes libo-sent { 0% { transform: translateX(0) scale(1); } 40% { transform: translateX(6px) scale(.9) rotate(-10deg); } 100% { transform: translateX(0) scale(1); } }
+@keyframes libo-scan { 0% { background-position: 0 0; } 100% { background-position: 60px 0; } }
+@keyframes libo-radar { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(1.8); opacity: 0; } }
+@keyframes libo-check { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@keyframes libo-welcome { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* Rounder everything. */
+.rail-button { border-radius: 16px; }
+.icon-button { border-radius: 13px; }
+.search-box { border-radius: 14px; }
+.filter { border-radius: 11px; }
+.chat-row { border-radius: 18px; }
+.avatar { border-radius: 18px; }
+.unread-badge { border-radius: 9px; }
+.primary-button, .secondary-button { border-radius: 16px; }
+.send-button { border-radius: 14px; }
+.composer { border-radius: 22px; padding: 9px 9px 9px 12px; }
+.message-bubble { border-radius: 20px 20px 20px 6px; }
+.message-row.outgoing .message-bubble { border-radius: 20px 20px 6px 20px; }
+.message-photo { border-radius: 14px; }
+.dropdown-menu, .message-actions, .emoji-picker, .send-options { border-radius: 20px; padding: 8px; }
+.dropdown-menu button, .message-actions button { border-radius: 12px; }
+.dialog { border-radius: 28px; padding: 30px; }
+.text-field { border-radius: 14px; }
+.notice { border-radius: 16px; }
+.qr-card { border-radius: 24px; }
+.personal-code { border-radius: 14px; }
+.theme-options button { border-radius: 13px; }
+.folder-tab { border-radius: 14px; }
+.toast { border-radius: 18px; }
+.modal-icon { border-radius: 16px; }
+.scroll-bottom { border-radius: 50%; }
+.reaction-chip { border-radius: 14px; }
+.pinned-bar, .reply-bar, .request-bar, .keychange-bar, .attachment-preview { border-radius: 16px; }
+.chat-header { border-radius: 0 0 24px 24px; }
+@media (max-width: 760px) { .dialog { border-radius: 26px 26px 0 0; } .chat-header { border-radius: 0 0 20px 20px; } }
+
+/* Ripple (added by app.js on pointerdown). */
+.primary-button, .secondary-button, .icon-button, .send-button, .chat-row, .settings-action, .filter, .folder-tab, .dropdown-menu button, .message-actions button, .theme-options button, .bt-device, .emoji-picker button, .sticker-pick { position: relative; overflow: hidden; isolation: isolate; }
+.ripple { position: absolute; border-radius: 50%; pointer-events: none; transform: scale(0); opacity: .35; background: currentColor; animation: libo-ripple .55s var(--ease) forwards; z-index: -1; }
+.primary-button .ripple, .send-button .ripple { background: #fff; opacity: .45; }
+
+/* Button life. */
+.primary-button { letter-spacing: .2px; }
+.primary-button:not(:disabled):focus-visible, .send-button:not(:disabled):focus-visible { animation: libo-glow 1.4s ease-out infinite; }
+.send-button.sent { animation: libo-sent .45s var(--spring); }
+.rail-button:hover { color: var(--accent-text); background: var(--accent-soft); }
+.rail-button.active { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent); }
+.icon-button:active svg { transform: scale(.85); }
+.secondary-button:active, .settings-action:active { background: var(--accent-soft); }
+.settings-action svg:last-child { transition: transform .2s var(--spring); }
+.settings-action:hover svg:last-child { transform: translateX(4px); }
+.theme-options button { transition: transform .18s var(--spring), background-color .18s, border-color .18s; }
+.theme-options button:hover { transform: translateY(-2px); }
+.theme-options button.active { transform: scale(1.03); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 18%, transparent); }
+.switch { transition: background-color .22s var(--ease), box-shadow .22s; }
+.setting-row:hover .switch { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent); }
+.filter.active, .folder-tab.active { animation: libo-pop .25s var(--spring); }
+.chat-row.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent); }
+.chat-row .avatar { box-shadow: 0 4px 10px #2a1f4a12; }
+.message-status svg path, .message-status svg polyline { stroke-dasharray: 24; }
+.message-status.read svg path, .message-status.read svg polyline { animation: libo-check .4s var(--ease) both; }
+.welcome-content { animation: libo-welcome .5s var(--ease) both; }
+.welcome-actions .primary-button { animation: libo-float 3.5s ease-in-out infinite; }
+.welcome-actions .primary-button:hover { animation-play-state: paused; }
+.modal-icon { animation: libo-pop .4s var(--spring) both; }
+.e2-badge svg { animation: libo-pop .4s var(--spring) both; }
+.composer:focus-within { box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.composer { transition: box-shadow .25s var(--ease), border-color .25s; }
+.dialog[open] { animation: libo-dialog .32s var(--spring) both; }
+
+/* Bluetooth dialog. */
+.bt-state { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 650; color: var(--secondary); padding: 8px 12px; border-radius: 14px; background: var(--surface); margin: 4px 0 2px; }
+.bt-state:before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.bt-state.on:before { background: #22c55e; box-shadow: 0 0 0 3px #22c55e33; animation: libo-glow 2s infinite; }
+.bt-devices, .bt-links { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
+.bt-device, .bt-link { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 18px; border: 1px solid var(--line); background: var(--panel); text-align: left; width: 100%; animation: libo-pop .3s var(--spring) both; }
+.bt-device:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: var(--surface); }
+.bt-device .avatar, .bt-link .avatar { width: 38px; height: 38px; border-radius: 14px; font-size: 14px; }
+.bt-device .avatar svg { width: 18px; height: 18px; }
+.bt-device-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.bt-device-text strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt-device-text small { font-size: 9.5px; color: var(--muted); }
+.bt-connect { font-size: 10.5px; font-weight: 700; color: var(--accent-text); white-space: nowrap; }
+.bt-device.busy .bt-connect { opacity: .6; }
+.bt-device.busy .avatar { position: relative; }
+.bt-device.busy .avatar:after { content: ''; position: absolute; inset: 0; border-radius: inherit; border: 2px solid var(--accent); animation: libo-radar 1.2s ease-out infinite; }
+#bt-scan.scanning { background-image: repeating-linear-gradient(90deg, transparent 0 20px, #ffffff22 20px 40px); background-size: 60px 100%; animation: libo-scan 1s linear infinite; }
+.secondary-button.small { padding: 8px 12px; min-height: 34px; font-size: 10.5px; border-radius: 12px; }
+#notify-state { margin: 0; align-self: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ripple, .welcome-actions .primary-button, .modal-icon, .bt-state.on:before, #bt-scan.scanning, .bt-device.busy .avatar:after { animation: none !important; }
+}
+
+/* ================================================================
+   2.8.7 final pass — shine sweep on primary buttons, ambient blobs
+   behind the welcome screen, hover lift for chat rows, online pulse
+   and a sheet grabber on mobile dialogs.
+   ================================================================ */
+.primary-button::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 38%; background: linear-gradient(105deg, transparent, #ffffff55, transparent); transform: translateX(-160%) skewX(-14deg); pointer-events: none; }
+.primary-button:hover:not(:disabled)::after { animation: libo-shine .8s var(--ease) forwards; }
+@keyframes libo-shine { to { transform: translateX(420%) skewX(-14deg); } }
+.welcome-content { position: relative; }
+.welcome-content::before, .welcome-content::after { content: ''; position: absolute; border-radius: 50%; pointer-events: none; z-index: -1; filter: blur(46px); opacity: .5; }
+.welcome-content::before { width: 260px; height: 260px; left: -40px; top: 30px; background: #a78bfa40; animation: libo-blob 11s ease-in-out infinite; }
+.welcome-content::after { width: 210px; height: 210px; right: -30px; top: 150px; background: #84cc1626; animation: libo-blob 13s ease-in-out infinite reverse; }
+@keyframes libo-blob { 50% { transform: translate3d(18px, -22px, 0) scale(1.08); } }
+.chat-row { transition: background-color .18s, transform .18s var(--spring), box-shadow .22s; }
+.chat-row:hover { transform: translateY(-1px); box-shadow: 0 6px 18px #3320500d; }
 .avatar.online:after { animation: libo-online 2.4s ease-out infinite; }
 @keyframes libo-online { 0% { box-shadow: 0 0 0 0 #79b69966; } 70% { box-shadow: 0 0 0 7px #79b69900; } 100% { box-shadow: 0 0 0 0 #79b69900; } }
-.network-status i { animation: libo-net 2s ease-in-out infinite; }
-@keyframes libo-net { 50% { opacity: .45; } }
-.rail-button.active:after { animation: libo-rail .3s var(--ease-spring); }
-@keyframes libo-rail { from { transform: scaleY(.3); opacity: 0; } }
-
-/* --- діалоги: пружина та мобільний аркуш ------------------------------------ */
-.dialog[open] { animation: libo-dialog-in .34s var(--ease-spring); }
-@keyframes libo-dialog-in { from { opacity: 0; transform: translateY(26px) scale(.94); } }
-.dialog::backdrop { animation: libo-fade .24s ease-out; }
-@keyframes libo-fade { from { opacity: 0; } }
-@media (max-width: 760px) {
-  .dialog { border-radius: 28px 28px 0 0; max-height: 92dvh; margin: auto 0 0; width: 100%; }
-  .dialog[open] { animation: libo-sheet-in .38s var(--ease-soft); }
-  @keyframes libo-sheet-in { from { transform: translateY(100%); } }
-  .dialog::before { content: ''; display: block; width: 42px; height: 5px; border-radius: 3px; background: var(--line); margin: -14px auto 16px; }
-}
-
-/* --- амбієнтне тло вітального екрана ---------------------------------------- */
-.welcome-content { position: relative; }
-.welcome-content::before, .welcome-content::after {
-  content: ''; position: absolute; border-radius: 50%; pointer-events: none; z-index: -1;
-  filter: blur(46px); opacity: .5;
-}
-.welcome-content::before { width: 260px; height: 260px; left: -40px; top: 30px; background: #a78bfa40; animation: libo-float 11s ease-in-out infinite; }
-.welcome-content::after { width: 210px; height: 210px; right: -30px; top: 150px; background: #84cc1626; animation: libo-float 13s ease-in-out infinite reverse; }
-@keyframes libo-float { 50% { transform: translate3d(18px, -22px, 0) scale(1.08); } }
-.brand-logo { width: 27px; height: 27px; }
-.brand-mark { box-shadow: 0 6px 16px #784ee333; transition: transform .2s var(--ease-spring); }
-.brand-mark:hover { transform: rotate(-4deg) scale(1.05); }
-
-/* --- сповіщення: стек банерів ------------------------------------------------ */
-.notify-stack { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 80; display: flex; flex-direction: column; gap: 10px; width: min(420px, calc(100vw - 24px)); pointer-events: none; }
-.notify-card {
-  pointer-events: auto; display: flex; align-items: center; gap: 12px; width: 100%;
-  text-align: left; padding: 13px 15px; border-radius: 22px; cursor: pointer;
-  background: color-mix(in srgb, var(--panel) 88%, transparent);
-  border: 1px solid var(--line); box-shadow: 0 18px 50px #18122238;
-  backdrop-filter: blur(14px); color: var(--text);
-  animation: libo-notify-in .42s var(--ease-spring);
-}
-.notify-card.leaving { animation: libo-notify-out .24s ease-in forwards; }
-@keyframes libo-notify-in { from { opacity: 0; transform: translateY(-26px) scale(.92); } }
-@keyframes libo-notify-out { to { opacity: 0; transform: translateY(-18px) scale(.94); } }
-.notify-avatar { width: 38px; height: 38px; border-radius: 14px; background: var(--accent-soft); color: var(--accent-text); display: grid; place-items: center; font-weight: 800; font-size: 13px; flex-shrink: 0; }
-.notify-body { flex: 1; min-width: 0; }
-.notify-body strong { display: block; font-size: 12px; font-weight: 750; }
-.notify-body small { display: block; font-size: 10.5px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.notify-card > svg { width: 17px; height: 17px; color: var(--accent-text); }
-
-/* --- Bluetooth P2P ----------------------------------------------------------- */
-.bt-chip {
-  display: inline-flex; align-items: center; gap: 4px; margin-left: auto;
-  font-size: 8px; font-weight: 800; letter-spacing: .6px; color: var(--muted);
-  border: 1px solid var(--line); border-radius: var(--r-pill); padding: 4px 8px;
-}
-.bt-chip svg { width: 12px; height: 12px; }
-.bt-chip.on { color: var(--accent-text); border-color: #a994d870; background: var(--accent-soft); }
-.bt-chip.linked { color: #3f6212; border-color: #84cc1680; background: #ecfccb; animation: libo-pop .34s var(--ease-spring); }
-:root[data-theme='dark'] .bt-chip.linked { color: #bef264; background: #1a2e05; }
-.connection-bar .beta-badge { margin-left: 6px; }
-.bt-status { display: flex; gap: 9px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-sm); background: var(--surface); color: var(--secondary); font-size: 10.5px; line-height: 1.7; margin-bottom: 14px; }
-.bt-status i { width: 7px; height: 7px; border-radius: 50%; background: #c4ab76; margin-top: 5px; flex-shrink: 0; animation: libo-net 2s ease-in-out infinite; }
-.bt-status.ok i { background: #80ae98; }
-.bt-actions { display: flex; gap: 8px; margin-bottom: 10px; }
-.bt-actions .secondary-button { flex: 1; padding: 11px 10px; font-size: 10.5px; }
-.bt-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 6px; }
-@media (max-width: 560px) { .bt-columns { grid-template-columns: 1fr; } }
-.bt-list { display: flex; flex-direction: column; gap: 7px; min-height: 46px; }
-.bt-empty { font-size: 10px; color: var(--muted); line-height: 1.7; padding: 10px; border: 1px dashed var(--line); border-radius: var(--r-sm); }
-.bt-row { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); animation: libo-msg-in .3s var(--ease-spring); }
-.bt-peer-name { flex: 1; min-width: 0; font-size: 10.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bt-signal { font-size: 9px; color: var(--green); letter-spacing: 1px; white-space: nowrap; }
-.bt-row .secondary-button { padding: 7px 10px; font-size: 10px; border-radius: 12px; }
-.bt-open-button { margin-top: 12px; }
-
-/* --- посилена повага до prefers-reduced-motion ------------------------------- */
+@media (max-width: 760px) { .dialog::before { content: ''; display: block; width: 42px; height: 5px; border-radius: 3px; background: var(--line); margin: -14px auto 16px; } }
 @media (prefers-reduced-motion: reduce) {
-  .ripple, .primary-button::after { display: none !important; }
-  .message-row.enter, .notify-card, .dialog[open], .reaction-chip.burst, .unread-badge { animation: none !important; }
+  .primary-button::after, .welcome-content::before, .welcome-content::after, .avatar.online:after { animation: none !important; }
+  .chat-row:hover { transform: none; }
 }

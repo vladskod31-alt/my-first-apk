@@ -1,8 +1,7 @@
 import qrcode from 'qrcode-generator';
 import { Store } from './lib/storage.mjs';
 import { Transport } from './lib/transport.mjs';
-import { BluetoothLink, peerLabel, rssiLevel, shortIdFromCode } from './lib/bluetooth.mjs';
-import { Notifier, notificationTarget, shouldSignal } from './lib/notify.mjs';
+import { BluetoothManager } from './lib/bluetooth.mjs';
 import {
   APK_URL, VERSION, MAX_TEXT, MAX_IMAGE_DATA, MAX_MESSAGES, MAX_CHATS,
   FEATURES,
@@ -12,7 +11,13 @@ import {
   makeEditPacket, makeDeletePacket, makePinPacket, makeReactPacket,
   makeReadPacket, makePollVotePacket, mergePollVote, pollTally,
   TTL_OPTIONS, WALLPAPERS, FOLDERS,
+  normalizeBio, FONT_SIZES, AUTOLOCK_OPTIONS, CHAT_COLORS, STICKERS, PLAYBACK_RATES,
+  formatRuns, plainText, dueScheduled,
 } from './lib/core.mjs';
+import {
+  generateIdentity, serializeIdentity, deserializeIdentity, wipeIdentity, fingerprint, safetyNumber,
+  makePairToken, formatInvite, parseInvite, b64 as bytesToB64,
+} from './lib/e2ee.mjs';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -24,15 +29,19 @@ const state = {
   typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
   lastSeen: new Map(), recording: null, archiveNotice: false,
   folderTab: '', selection: null, ttl: 0, highlight: null,
-  bt: { state: { supported: false, enabled: false, permissions: false, listening: false, scanning: false }, peers: new Map(), links: new Map() },
+  // 2.8.7
+  identity: null, pairToken: null, scheduleAt: 0, silent: false, spoiler: false,
+  unreadFrom: null, newBelow: 0, voiceRate: 1, lastActivity: Date.now(), locked: false,
 };
-const renderedMessages = new Set();
 const ttlTimers = new Map();
 const locks = new Map();
 const lastSent = new Map();
 const timeFormat = new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' });
 const dateFormat = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long' });
 let toastTimer;
+let foreground = true;           // Android activity visibility (2.8.7 notifications)
+let bt = null;                   // Bluetooth P2P manager (Android only)
+let pendingOpenChat = null;
 let unlockResolve;
 let typingSentAt = 0;
 let confirmAction = null;
@@ -48,9 +57,43 @@ const transport = new Transport({
   },
   onReady: retryConnections,
   isAllowed: id => !!normalizePeerCode(id) && id !== state.profile?.id && !state.blocked.includes(id),
-  async onHello(id, name) {
-    await changeChat(id, chat => { chat.name = name; }, { request: true });
+  identity: () => state.identity,
+  pairTokenFor: id => state.chats.find(chat => chat.id === id)?.pairToken || null,
+  async onHello(id, name, packet = {}) {
+    await changeChat(id, chat => {
+      chat.name = name;
+      chat.bio = packet.bio || '';
+      chat.hideSeen = !!packet.hideSeen;
+    }, { request: true });
     renderSidebar();
+    if (state.current === id) renderHeader();
+  },
+  // Identity pinning (trust on first use + QR pinning). Returning false aborts the
+  // handshake: an invitation named a different key than the one presented.
+  async onIdentity(id, info) {
+    let verdict = true;
+    let changed = false;
+    let paired = false;
+    const token = state.pairToken;
+    const tokenOk = info.token && token && info.token === token.token && token.expiresAt > Date.now();
+    await changeChat(id, chat => {
+      if (chat.expectedSignPk && chat.expectedSignPk !== info.signPk) { verdict = false; return false; }
+      if (chat.peerSignPk && chat.peerSignPk !== info.signPk) { changed = true; chat.keyChanged = true; chat.verified = false; }
+      chat.peerSignPk = info.signPk;
+      chat.peerDhPk = info.dhPk;
+      if (chat.expectedSignPk) { chat.expectedSignPk = null; chat.pairToken = null; }
+      if (tokenOk) { paired = true; chat.request = false; }
+    }, { request: true });
+    if (tokenOk) state.pairToken = null;
+    if (!verdict) notify('Ключ собеседника не совпадает с ключом из приглашения. Соединение отклонено: возможна подмена.', true);
+    if (changed) notify('Ключ безопасности собеседника изменился. Проверьте номер безопасности.', true);
+    if (paired) notify('Устройство подтверждено по QR-приглашению');
+    renderSidebar();
+    if (state.current === id) renderHeader();
+    return verdict;
+  },
+  onE2Ready(id) {
+    void flushPending(id);
     if (state.current === id) renderHeader();
   },
   onContactState(id, status) {
@@ -74,7 +117,7 @@ const transport = new Transport({
         chat.messages.push({
           id: packet.id, text: packet.text, image: packet.image, reply: packet.reply,
           att: packet.att || null, editedAt: packet.editedAt || null,
-          ttl: packet.ttl || 0, fwd: packet.fwd || null,
+          ttl: packet.ttl || 0, fwd: packet.fwd || null, silent: !!packet.silent, spoiler: !!packet.spoiler,
           at: Math.min(packet.at, Date.now() + 60_000), direction: 'in', status: 'received',
         });
         if (state.current !== id || document.hidden) chat.unread = (chat.unread || 0) + 1;
@@ -85,9 +128,13 @@ const transport = new Transport({
       if (fresh) {
         if (packet.ttl) scheduleExpiry(id, packet.id, packet.ttl, packet.at);
         renderSidebar();
-        if (state.current === id) { renderMessages(); renderHeader(); sendReadReceipt(id); }
-        announceIncoming(id, packet);
-        if (shouldSignal({ muted: chatMuted(id), sound: state.settings.sound })) playMessageSound(id);
+        if (state.current === id) {
+          const box = $('#messages');
+          if (box.scrollHeight - box.scrollTop - box.clientHeight > 160) { state.newBelow += 1; updateScrollButton(); }
+          renderMessages(); renderHeader(); sendReadReceipt(id);
+        }
+        if (!packet.silent) playMessageSound(id);
+        if (!packet.silent && (!foreground || document.hidden || state.current !== id)) pushNotification(id, packet);
       }
     } catch (error) {
       transport.closeContact(id);
@@ -180,92 +227,6 @@ const transport = new Transport({
   onStorageError() { notify('Не удалось сохранить контакт. Проверьте свободное место.', true); },
 });
 
-// 2.8.7: notifications. The native channel posts real Android notifications, the
-// system channel covers browsers, the banner is the in-app animated card.
-const notifier = new Notifier({
-  native: payload => {
-    if (!window.LiboAndroid?.notifyMessage) return false;
-    window.LiboAndroid.notifyMessage(payload.title, payload.text, payload.badge);
-    return true;
-  },
-  system: payload => {
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
-    try { new Notification(payload.title, { body: payload.text, icon: './icon-192.png', tag: 'libo-message' }); return true; }
-    catch { return false; }
-  },
-  banner: payload => showBanner(payload),
-  askSystem: async () => {
-    if (window.LiboAndroid?.requestNotifications) {
-      window.LiboAndroid.requestNotifications();
-      return window.LiboAndroid.notificationsEnabled() ? 'granted' : 'pending';
-    }
-    if (typeof Notification === 'undefined') return 'unsupported';
-    try { return await Notification.requestPermission(); } catch { return 'denied'; }
-  },
-  clearSystem: () => { window.LiboAndroid?.clearNotifications?.(); },
-});
-window.LiboNotify = {
-  onPermissionChange() { renderBt(); notify('Дозвіл на сповіщення оновлено'); },
-};
-
-// 2.8.7: Bluetooth P2P. Sockets become regular transport connections, so chats,
-// the MT layer and acks work over Bluetooth exactly like over WebRTC.
-const btLink = new BluetoothLink();
-btLink
-  .on('state', next => { state.bt.state = next; renderBt(); renderBtChip(); })
-  .on('peer', (peer, fresh) => { state.bt.peers.set(peer.address, peer); renderBt(); if (fresh) haptic('tick'); })
-  .on('connected', event => { renderBt(); notify(`Bluetooth: канал відкрито (${event.address.slice(-5)})`); })
-  .on('disconnected', () => { renderBt(); })
-  .on('error', text => { renderBt(); notify(text, true); });
-
-function haptic(kind = 'tick') {
-  if (window.LiboAndroid?.haptic) { window.LiboAndroid.haptic(kind); return; }
-  try { navigator.vibrate?.(kind === 'success' ? [12, 40, 18] : kind === 'reject' ? [30, 40, 30] : 8); } catch { /* optional */ }
-}
-
-function showBanner({ title, text, chatId }) {
-  const stack = $('#notify-stack');
-  const card = document.createElement('button');
-  card.type = 'button';
-  card.className = 'notify-card';
-  card.innerHTML = `<span class="notify-avatar"></span><span class="notify-body"><strong></strong><small></small></span><svg aria-hidden="true"><use href="#i-bell"/></svg>`;
-  card.querySelector('.notify-avatar').textContent = initials(title);
-  card.querySelector('strong').textContent = title;
-  card.querySelector('small').textContent = text;
-  card.onclick = () => {
-    card.classList.add('leaving');
-    setTimeout(() => card.remove(), 240);
-    if (chatId) void openChat(chatId);
-  };
-  stack.appendChild(card);
-  while (stack.children.length > 3) stack.firstElementChild.remove();
-  setTimeout(() => {
-    if (!card.isConnected) return;
-    card.classList.add('leaving');
-    setTimeout(() => card.remove(), 240);
-  }, 5200);
-}
-
-function chatMuted(id) {
-  return !!state.chats.find(chat => chat.id === id)?.muted;
-}
-
-function announceIncoming(id, packet) {
-  const chat = state.chats.find(item => item.id === id);
-  const title = chat?.name || 'LIBO';
-  const text = packet.text || (packet.image ? 'Фотографія' : packet.att ? 'Вкладення' : 'Нове повідомлення');
-  const target = notificationTarget({
-    chatId: id,
-    currentChatId: state.current,
-    visible: !document.hidden,
-    muted: chatMuted(id),
-    enabled: state.settings.notify !== false,
-  });
-  const used = notifier.push({ target, title, text, chatId: id });
-  if (used !== 'none' && used !== 'banner') haptic('success');
-  return used;
-}
-
 // Serialize each chat's writes. Concurrent incoming messages, ACKs, and drafts must not overwrite one another.
 function changeChat(id, mutate, defaults = null) {
   const previous = locks.get(id) || Promise.resolve();
@@ -296,6 +257,8 @@ function makeRoom(chat) {
 }
 
 function activeChat() { return state.chats.find(chat => chat.id === state.current); }
+const displayName = chat => chat.nick || chat.name;
+const chatColor = chat => (CHAT_COLORS.includes(chat?.color) ? chat.color : '');
 
 function notify(text, error = false) {
   const toast = $('#toast');
@@ -317,100 +280,36 @@ function renderNetwork() {
   el.title = state.networkDetail || 'Наличие связи с сигнальным сервером. Статус собеседника показан внутри чата.';
 }
 
-function renderBtChip() {
-  const chip = $('#bt-chip');
-  if (!chip) return;
-  const links = [...transport.connections.values()].filter(connection => connection.kind === 'bt' && connection.open).length;
-  chip.classList.toggle('linked', links > 0);
-  chip.classList.toggle('on', !links && (state.bt.state.listening || state.bt.state.scanning));
-  chip.querySelector('span').textContent = links ? `BT·${links}` : 'BT';
-  chip.title = links ? `Bluetooth-каналів: ${links}` : 'Bluetooth P2P поруч';
+// Render coalescing: bursts of events (typing, ACKs, read receipts, ratchet pings)
+// used to rebuild the DOM several times per frame. Each renderer now runs at most
+// once per animation frame; explicit *Now variants exist for code that must read
+// the DOM straight after painting.
+const renderQueue = { sidebar: false, messages: null, header: false };
+let renderFrame = 0;
+function flushRenders() {
+  renderFrame = 0;
+  if (renderQueue.sidebar) { renderQueue.sidebar = false; renderSidebarNow(); }
+  if (renderQueue.header) { renderQueue.header = false; renderHeaderNow(); }
+  if (renderQueue.messages) { const scroll = renderQueue.messages.scroll; renderQueue.messages = null; renderMessagesNow(scroll); }
+}
+function queueRender() { if (!renderFrame) renderFrame = requestAnimationFrame(flushRenders); }
+function renderSidebar() { renderQueue.sidebar = true; queueRender(); }
+function renderHeader() { renderQueue.header = true; queueRender(); }
+function renderMessages(scroll = true) {
+  renderQueue.messages = { scroll: scroll || !!renderQueue.messages?.scroll };
+  queueRender();
 }
 
-function renderBt() {
-  const dialog = $('#bt-dialog');
-  if (!dialog) return;
-  const status = $('#bt-status');
-  const st = state.bt.state;
-  const lines = [];
-  if (!btLink.supported) lines.push('Bluetooth P2P працює у APK для Android: у браузері немає доступу до радіомодуля.');
-  else if (!st.supported) lines.push('На цьому пристрої немає Bluetooth.');
-  else if (!st.enabled) lines.push('Bluetooth вимкнено в системі.');
-  else if (!st.permissions) lines.push('Потрібен дозвіл на Bluetooth поруч.');
-  else {
-    if (st.listening) lines.push('Пристрій слухає з’єднання і видимий сусідам.');
-    if (st.scanning) lines.push('Пошук пристроїв поруч…');
-    if (!st.listening && !st.scanning) lines.push('Готово: увімкніть слухання або пошук.');
-  }
-  status.className = `bt-status${st.enabled && st.permissions ? ' ok' : ''}`;
-  status.querySelector('span').textContent = lines.join(' ') || 'Bluetooth готовий.';
-  $('#bt-enable').hidden = !btLink.supported || !!st.enabled;
-  $('#bt-permissions').hidden = !btLink.supported || !st.enabled || !!st.permissions;
-  $('#bt-listen').hidden = !btLink.supported || !st.permissions;
-  $('#bt-discover').hidden = !btLink.supported || !st.permissions;
-  $('#bt-listen').classList.toggle('active', !!st.listening);
-  $('#bt-discover').classList.toggle('active', !!st.scanning);
-  $('#bt-listen').innerHTML = `${svg('device')} ${st.listening ? 'Припинити слухати' : 'Слухати з’єднання'}`;
-  $('#bt-discover').innerHTML = `${svg('search')} ${st.scanning ? 'Зупинити пошук' : 'Шукати поруч'}`;
-
-  const peers = $('#bt-peers');
-  peers.replaceChildren();
-  if (!state.bt.peers.size) {
-    peers.innerHTML = '<p class="bt-empty">Поки нікого поруч. Відкрийте LIBO на другому пристрої та натисніть «Слухати з’єднання».</p>';
-  }
-  for (const peer of state.bt.peers.values()) {
-    const row = document.createElement('div');
-    row.className = 'bt-row';
-    const bars = rssiLevel(peer.rssi);
-    row.innerHTML = `<span class="bt-peer-name"></span><span class="bt-signal" data-bars="${bars}" title="Сигнал">${bars < 0 ? 'класичний пошук' : '•'.repeat(bars + 1)}</span>`;
-    row.querySelector('.bt-peer-name').textContent = `${peerLabel(peer)} · ${peer.address.slice(-5)}`;
-    const linked = [...transport.connections.values()].some(connection => connection.kind === 'bt' && connection.address === peer.address && connection.open);
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'secondary-button';
-    if (linked) { button.textContent = 'Канал відкрито'; button.disabled = true; }
-    else { button.textContent = 'Підключити'; button.dataset.btConnect = peer.address; }
-    row.appendChild(button);
-    peers.appendChild(row);
-  }
-
-  const links = $('#bt-links');
-  links.replaceChildren();
-  const active = [...state.bt.links.values()];
-  if (!active.length) links.innerHTML = '<p class="bt-empty">Немає активних сокетів. ЛС-чат з’явиться у списку чатів після рукостискання.</p>';
-  for (const link of active) {
-    const row = document.createElement('div');
-    row.className = 'bt-row';
-    row.innerHTML = `<span class="bt-peer-name"></span>`;
-    row.querySelector('.bt-peer-name').textContent = `${link.name || peerLabel({ address: link.address })} · ${link.incoming ? 'вхідний' : 'вихідний'}`;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'secondary-button danger';
-    button.textContent = 'Від’єднати';
-    button.dataset.btDrop = link.address;
-    row.appendChild(button);
-    links.appendChild(row);
-  }
-  renderBtChip();
-}
-
-function updateKeepAliveStatus() {
-  if (!window.LiboAndroid?.keepAliveStatus || !window.LiboAndroid.keepAliveRunning?.()) return;
-  const unread = state.chats.filter(chat => chat.unread > 0).length;
-  const status = document.hidden
-    ? `LIBO у фоні · непрочитаних: ${unread}`
-    : `LIBO відкрито · непрочитаних: ${unread}`;
-  window.LiboAndroid.keepAliveStatus(status, unread);
-}
-
-function renderSidebar() {
+function renderSidebarNow() {
   if (!state.profile) return;
   const query = $('#chat-search').value.trim().toLocaleLowerCase('ru');
-  const chats = [...state.chats].sort((a, b) => a.id === 'saved' ? -1 : b.id === 'saved' ? 1 : (b.starred ? 1 : 0) - (a.starred ? 1 : 0) || b.updatedAt - a.updatedAt);
+  const chats = [...state.chats].sort((a, b) => a.id === 'saved' ? -1 : b.id === 'saved' ? 1 : (b.pinnedChat ? 1 : 0) - (a.pinnedChat ? 1 : 0) || (b.starred ? 1 : 0) - (a.starred ? 1 : 0) || b.updatedAt - a.updatedAt);
   const filtered = chats.filter(chat => {
-    if (state.folderTab && (chat.folder || '') !== state.folderTab) return false;
+    if (state.folderTab === 'archived') { if (!chat.archived) return false; }
+    else if (chat.archived && !query) return false;
+    else if (state.folderTab && (chat.folder || '') !== state.folderTab) return false;
     if (state.filter === 'unread' && !chat.unread) return false;
-    return !query || chat.name.toLocaleLowerCase('ru').includes(query) || chat.messages.some(m => m.text.toLocaleLowerCase('ru').includes(query));
+    return !query || displayName(chat).toLocaleLowerCase('ru').includes(query) || chat.messages.some(m => m.text.toLocaleLowerCase('ru').includes(query));
   });
   const list = $('#chat-list');
   list.replaceChildren();
@@ -428,7 +327,9 @@ function renderSidebar() {
     const body = document.createElement('span');
     body.className = 'chat-row-body';
     body.innerHTML = '<span class="chat-row-top"><strong></strong><time></time></span><span class="chat-row-bottom"><p></p></span>';
-    body.querySelector('strong').textContent = chat.name;
+    body.querySelector('strong').textContent = displayName(chat);
+    if (chat.pinnedChat) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="star-mark" title="Закреплённый чат">${svg('pin')}</span>`);
+    if (chat.keyChanged) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="star-mark warn" title="Ключ безопасности изменился">${svg('shield')}</span>`);
     if (chat.starred) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="star-mark" title="Близкий контакт">${svg('star')}</span>`);
     if (chat.muted) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="star-mark" title="Без звука">${svg('mute')}</span>`);
     if (chat.folder) body.querySelector('strong').insertAdjacentHTML('afterend', `<span class="folder-mark" title="Папка: ${FOLDERS[chat.folder] || ''}">${svg('folder')}</span>`);
@@ -436,7 +337,11 @@ function renderSidebar() {
     const last = chat.messages.at(-1);
     body.querySelector('time').textContent = last ? briefDate(last.at) : '';
     const excerpt = query ? [...chat.messages].reverse().find(m => m.text.toLocaleLowerCase('ru').includes(query)) || last : last;
-    body.querySelector('p').textContent = !last && chat.id === 'saved' ? 'Ваши заметки, ссылки и идеи' : previewText(excerpt);
+    const draft = chat.id !== state.current && state.drafts[chat.id];
+    if (draft && !query) {
+      body.querySelector('p').innerHTML = '<span class="draft-mark">Черновик:</span> ';
+      body.querySelector('p').append(draft.slice(0, 80));
+    } else body.querySelector('p').textContent = !last && chat.id === 'saved' ? 'Ваши заметки, ссылки и идеи' : previewText(excerpt);
     if (chat.unread) {
       const badge = document.createElement('span');
       badge.className = 'unread-badge';
@@ -470,7 +375,7 @@ function renderSidebar() {
         button.className = 'global-result';
         button.dataset.goto = `${hit.chat.id}|${hit.message.id}`;
         button.innerHTML = '<strong></strong><p></p>';
-        button.querySelector('strong').textContent = hit.chat.name;
+        button.querySelector('strong').textContent = displayName(hit.chat);
         button.querySelector('p').textContent = hit.message.text.slice(0, 90);
         list.appendChild(button);
       }
@@ -494,7 +399,6 @@ function renderSidebar() {
   const unread = state.chats.filter(c => c.unread > 0).length;
   $('#unread-count').textContent = unread;
   $('#unread-count').hidden = !unread;
-  updateKeepAliveStatus();
   $('#nav-chats').classList.toggle('active', state.current !== 'saved');
   $('#nav-saved').classList.toggle('active', state.current === 'saved');
 }
@@ -512,23 +416,31 @@ function dayLabel(at) {
   return date.toDateString() === today.toDateString() ? 'Вчера' : dateFormat.format(date);
 }
 
-function renderHeader() {
+function renderHeaderNow() {
   const chat = activeChat();
   if (!chat) return;
   const avatar = $('#chat-avatar');
   avatar.className = `avatar ${chat.id === 'saved' ? 'saved' : avatarColor(chat.id)}${transport.isOpen(chat.id) ? ' online' : ''}`;
   if (chat.id === 'saved') avatar.innerHTML = svg('bookmark'); else avatar.textContent = initials(chat.name);
-  $('#chat-title').textContent = chat.name;
+  $('#chat-title').textContent = displayName(chat);
+  $('#conversation').dataset.color = chatColor(chat);
   const presence = $('#chat-presence');
+  const e2 = chat.id !== 'saved' ? transport.e2Status(chat.id) : null;
   presence.classList.toggle('is-online', transport.isOpen(chat.id));
+  const seenAllowed = state.settings.privacy?.lastSeen !== false && !chat.hideSeen;
   if (chat.id === 'saved') presence.textContent = 'Личное пространство · только на этом устройстве';
-  else if (state.typing.get(chat.id) > Date.now()) presence.innerHTML = 'печатает<span class="typing-dots"><i></i><i></i><i></i></span>';
+  else if (state.typing.get(chat.id) > Date.now()) { presence.innerHTML = 'печатает<span class="typing-dots"><i></i><i></i><i></i></span>'; }
   else if (chat.request) presence.textContent = 'Новый запрос на общение';
-  else if (transport.isOpen(chat.id)) presence.textContent = transport.bluetoothAddress(chat.id) ? 'В сети · прямое соединение по Bluetooth' : 'В сети · прямое соединение';
+  else if (transport.isOpen(chat.id)) presence.textContent = transport.channel(chat.id) === 'bluetooth' ? (e2 ? 'Рядом · Bluetooth · сквозное шифрование' : 'Рядом · Bluetooth') : (e2 ? 'В сети · сквозное шифрование' : 'В сети · прямое соединение');
   else if (state.contactStates.get(chat.id) === 'connecting') presence.textContent = 'Ищем собеседника…';
-  else if (state.lastSeen.get(chat.id)) presence.textContent = `Был(а) в сети в ${timeFormat.format(new Date(state.lastSeen.get(chat.id)))}`;
-  else if (transport.bluetoothAddress(chat.id)) presence.textContent = 'Поруч · канал Bluetooth P2P';
+  else if (seenAllowed && state.lastSeen.get(chat.id)) presence.textContent = `Был(а) в сети в ${timeFormat.format(new Date(state.lastSeen.get(chat.id)))}`;
+  else if (!seenAllowed && state.lastSeen.get(chat.id)) presence.textContent = 'Был(а) в сети недавно';
   else presence.textContent = 'Не подключён · откройте LIBO на обоих устройствах';
+  if (chat.bio && chat.id !== 'saved' && !(state.typing.get(chat.id) > Date.now())) presence.textContent += ` · ${chat.bio}`;
+  $('#keychange-bar').hidden = !chat.keyChanged;
+  $('#e2-badge').hidden = !e2;
+  $('#e2-badge').classList.toggle('verified', !!chat.verified);
+  $('#e2-badge').title = chat.verified ? 'Сквозное шифрование · номер безопасности подтверждён' : 'Сквозное шифрование активно';
   presence.title = chat.id === 'saved' ? 'Заметки не передаются другим устройствам.' : `Код собеседника: LIBO:${chat.id}`;
   $('#request-bar').hidden = !chat.request;
   $('#composer-zone').hidden = !!chat.request || !!chat.archive;
@@ -540,18 +452,26 @@ function renderHeader() {
   $('#star-contact').querySelector('span').textContent = chat.starred ? 'Убрать из близких' : 'В близкие';
   $('#composer-hint').textContent = chat.id === 'saved'
     ? 'Сохранено на этом устройстве. Последние 500 сообщений в чате.'
-    : 'Оба собеседника в приложении · ✓ сохранено у собеседника, ✓✓ прочитано';
+    : chat.ttlDefault ? `Автоудаление в этом чате: ${ttlLabel(chat.ttlDefault)} · **жирный** __курсив__ \`моно\` ||спойлер||`
+    : 'Оба собеседника в приложении · **жирный** __курсив__ `моно` ~~зачёркнутый~~ ||спойлер||';
+  $('#pin-chat').querySelector('span').textContent = chat.pinnedChat ? 'Открепить чат' : 'Закрепить чат';
+  $('#archive-chat').querySelector('span').textContent = chat.archived ? 'Вернуть из архива' : 'В архив';
+  $('#autodelete-chat').querySelector('span').textContent = chat.ttlDefault ? `Автоудаление: ${ttlLabel(chat.ttlDefault)}` : 'Автоудаление: выкл';
+  $('#rename-contact').hidden = chat.id === 'saved';
+  $('#color-chat').hidden = chat.id === 'saved';
 }
+
+const ttlLabel = ttl => ({ 10: '10 с', 60: '1 мин', 3600: '1 час' }[ttl] || 'выкл');
 
 async function showVerifyCode() {
   const chat = activeChat();
   if (!chat || chat.id === 'saved' || !state.profile) return;
   $('#verify-value').textContent = await cachedVerify(state.profile.id, chat.id);
-  $('#verify-peer-name').textContent = chat.name;
+  $('#verify-peer-name').textContent = displayName(chat);
   openDialog('verify-dialog');
 }
 
-function renderMessages(scroll = true) {
+function renderMessagesNow(scroll = true) {
   const chat = activeChat();
   if (!chat) return;
   const box = $('#messages');
@@ -569,8 +489,15 @@ function renderMessages(scroll = true) {
     box.appendChild(empty);
     return;
   }
+  if (renderedIds.chat !== chat.id) { renderedIds.chat = chat.id; renderedIds.ids = new Set(chat.messages.map(m => m.id)); }
   let previousDay = '';
+  let unreadShown = false;
   for (const message of messages) {
+    if (!unreadShown && state.unreadFrom && message.direction === 'in' && message.at >= state.unreadFrom && !query) {
+      unreadShown = true;
+      const divider = document.createElement('div'); divider.className = 'unread-divider'; divider.textContent = 'Непрочитанные сообщения';
+      box.appendChild(divider);
+    }
     const day = new Date(message.at).toDateString();
     if (day !== previousDay) {
       const separator = document.createElement('div'); separator.className = 'day-separator';
@@ -578,9 +505,9 @@ function renderMessages(scroll = true) {
       separator.appendChild(label); box.appendChild(separator); previousDay = day;
     }
     const row = document.createElement('div');
-    row.className = `message-row ${message.direction === 'out' ? 'outgoing' : 'incoming'}${message.deleted ? ' deleted-row' : ''}${state.selection?.has(message.id) ? ' in-selection' : ''}${state.highlight === message.id ? ' highlight' : ''}`;
+    const fresh = renderedIds.chat === chat.id && !renderedIds.ids.has(message.id);
+    row.className = `message-row ${message.direction === 'out' ? 'outgoing' : 'incoming'}${fresh ? ' pop-in' : ''}${message.deleted ? ' deleted-row' : ''}${state.selection?.has(message.id) ? ' in-selection' : ''}${state.highlight === message.id ? ' highlight' : ''}`;
     row.dataset.messageId = message.id;
-    if (!renderedMessages.has(message.id)) { row.classList.add('enter'); renderedMessages.add(message.id); if (renderedMessages.size > 1200) renderedMessages.clear(); }
     const bubble = document.createElement('div'); bubble.className = 'message-bubble';
     if (message.deleted) {
       const gone = document.createElement('p'); gone.className = 'message-deleted';
@@ -607,15 +534,25 @@ function renderMessages(scroll = true) {
     if (message.image) {
       const photo = document.createElement('button'); photo.className = 'message-photo'; photo.dataset.photo = message.id;
       photo.setAttribute('aria-label', 'Открыть фотографию');
-      const img = document.createElement('img'); img.src = message.image.data; img.alt = message.image.name || 'Фотография'; img.loading = 'lazy';
+      const img = document.createElement('img'); img.src = message.image.data; img.alt = message.image.name || 'Фотография'; img.loading = 'lazy'; img.decoding = 'async';
       img.onload = () => { if (scroll && nearBottom) box.scrollTop = box.scrollHeight; };
+      if (message.spoiler && !revealed.has(message.id)) { photo.classList.add('spoiler-photo'); photo.dataset.revealPhoto = message.id; delete photo.dataset.photo; photo.setAttribute('aria-label', 'Показать скрытую фотографию'); }
       photo.appendChild(img); bubble.appendChild(photo);
     }
     if (message.att) bubble.appendChild(renderAttachment(message));
     if (message.text) {
-      const text = document.createElement('p'); text.className = 'message-text'; text.textContent = message.text;
+      const text = document.createElement('p'); text.className = 'message-text';
+      for (const run of formatRuns(message.text)) {
+        if (run.kind === 'text') { text.append(run.text); continue; }
+        const span = document.createElement(run.kind === 'mono' ? 'code' : 'span');
+        span.className = `fmt-${run.kind}`;
+        span.textContent = run.text;
+        if (run.kind === 'spoiler') { span.setAttribute('role', 'button'); span.title = 'Нажмите, чтобы показать'; span.tabIndex = 0; }
+        text.appendChild(span);
+      }
       bubble.appendChild(text);
     }
+    if (message.att?.kind === 'sticker') bubble.classList.add('sticker-bubble');
     const reactions = message.reactions || {};
     const mine = Object.keys(reactions.mine || {});
     const theirs = Object.keys(reactions.theirs || {});
@@ -637,6 +574,12 @@ function renderMessages(scroll = true) {
     const meta = document.createElement('div'); meta.className = 'message-meta';
     const time = document.createElement('time'); time.dateTime = new Date(message.at).toISOString(); time.textContent = timeFormat.format(new Date(message.at));
     meta.appendChild(time);
+    if (message.silent) meta.insertAdjacentHTML('afterbegin', `<span class="silent-mark" title="Отправлено без звука">${svg('mute')}</span>`);
+    if (message.status === 'scheduled') {
+      const when = document.createElement('span'); when.className = 'edited-mark'; when.textContent = `⏰ ${new Date(message.sendAt).toLocaleString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+      when.title = 'Отложенное сообщение: уйдёт в указанное время, когда собеседник в сети';
+      meta.appendChild(when);
+    }
     if (message.editedAt) {
       const edited = document.createElement('span'); edited.className = 'edited-mark'; edited.textContent = 'изменено';
       edited.title = new Date(message.editedAt).toLocaleString('ru');
@@ -652,7 +595,7 @@ function renderMessages(scroll = true) {
     if ((activeChat()?.pins || []).includes(message.id)) meta.insertAdjacentHTML('beforeend', `<span class="pin-mark" title="Закреплено">${svg('pin')}</span>`);
     if (message.direction === 'out') {
       const status = document.createElement('span'); status.className = 'message-status'; status.dataset.status = message.status;
-      status.title = { queued: 'В очереди на этом устройстве', sent: 'Отправлено, ждём подтверждения', delivered: 'Сохранено на устройстве собеседника', local: 'Сохранено только на этом устройстве' }[message.status];
+      status.title = { queued: 'В очереди на этом устройстве', sent: 'Отправлено, ждём подтверждения', delivered: 'Сохранено на устройстве собеседника', local: 'Сохранено только на этом устройстве', scheduled: 'Отложено' }[message.status];
       status.setAttribute('aria-label', status.title);
       const read = message.status === 'delivered' && (chat.readUpTo || 0) >= message.at;
       status.classList.toggle('read', read);
@@ -665,17 +608,41 @@ function renderMessages(scroll = true) {
     actions.innerHTML = svg('more'); actions.title = 'Действия с сообщением'; actions.setAttribute('aria-label', 'Действия с сообщением');
     row.append(bubble, actions); box.appendChild(row);
   }
+  for (const message of messages) renderedIds.ids.add(message.id);
   if (scroll && nearBottom) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
   else box.scrollTop = previousTop;
+  updateScrollButton();
+}
+const renderedIds = { chat: null, ids: new Set() };
+
+const revealed = new Set();
+
+function updateScrollButton() {
+  const box = $('#messages');
+  const button = $('#scroll-bottom');
+  const far = box.scrollHeight - box.scrollTop - box.clientHeight > 240;
+  button.hidden = !far || !state.current;
+  if (!far) state.newBelow = 0;
+  button.querySelector('span').textContent = state.newBelow ? String(state.newBelow) : '';
+  button.querySelector('span').hidden = !state.newBelow;
 }
 
 function renderAttachment(message) {
   const att = message.att;
+  if (att.kind === 'sticker') {
+    const wrap = document.createElement('div'); wrap.className = 'att-sticker';
+    wrap.innerHTML = svg(`s-${att.key}`);
+    wrap.setAttribute('role', 'img'); wrap.setAttribute('aria-label', `Стикер ${att.key}`);
+    return wrap;
+  }
   if (att.kind === 'voice') {
     const wrap = document.createElement('div'); wrap.className = 'att-voice';
-    wrap.innerHTML = `${svg('mic')}<audio controls preload="metadata"></audio><span></span>`;
-    wrap.querySelector('audio').src = att.data;
+    wrap.innerHTML = `${svg('mic')}<audio controls preload="metadata"></audio><span></span><button type="button" class="rate-button" data-rate title="Скорость воспроизведения"></button>`;
+    const audio = wrap.querySelector('audio');
+    audio.src = att.data;
+    audio.playbackRate = state.voiceRate;
     wrap.querySelector('span').textContent = att.dur ? `${Math.round(att.dur / 1000)} с` : 'голосовое';
+    wrap.querySelector('[data-rate]').textContent = `${state.voiceRate}×`.replace('.', ',');
     return wrap;
   }
   if (att.kind === 'video') {
@@ -725,7 +692,7 @@ function renderPins() {
   const message = [...chat.messages].reverse().find(m => m.id === pins.at(-1));
   if (!message || message.deleted) { bar.hidden = true; return; }
   bar.hidden = false;
-  $('#pinned-text').textContent = message.text || (message.att ? { voice: 'Голосовое сообщение', video: 'Видео', file: message.att.name }[message.att.kind] : 'Фотография');
+  $('#pinned-text').textContent = plainText(message.text) || (message.att ? { voice: 'Голосовое сообщение', video: 'Видео', file: message.att.name, sticker: 'Стикер', poll: 'Опрос' }[message.att.kind] : 'Фотография');
 }
 
 function closeMessageActions() { $('#message-actions').hidden = true; }
@@ -740,7 +707,8 @@ function openMessageActions(anchor, messageId) {
   menu.querySelector('[data-act="pin"]').lastChild.textContent = (chat.pins || []).includes(messageId) ? ' Открепить' : ' Закрепить';
   menu.querySelector('[data-act="edit"]').hidden = message.direction !== 'out' || !!message.att || chat.id === 'saved';
   menu.querySelector('[data-act="forward"]').hidden = chat.id === 'saved' && false ? true : !!chat.archive;
-  menu.querySelector('[data-act="delete"]').hidden = message.direction !== 'out' || chat.id === 'saved';
+  menu.querySelector('[data-act="delete"]').hidden = message.direction !== 'out' || chat.id === 'saved' || message.status === 'scheduled';
+  menu.querySelector('[data-act="sendnow"]').hidden = message.status !== 'scheduled';
   const strip = menu.querySelector('.reaction-strip-picker');
   strip.replaceChildren();
   for (const key of REACTIONS) {
@@ -784,8 +752,6 @@ async function actOnMessage(action, messageId, extra) {
     });
     if (chat.id !== 'saved') transport.send(chat.id, makeReactPacket(messageId, extra, on));
     renderMessages(false);
-    const chip = document.querySelector(`[data-react="${extra}"][data-message-id="${messageId}"]`);
-    if (chip && on) { chip.classList.add('burst'); haptic('tick'); }
     return;
   }
   if (action === 'pin') {
@@ -802,6 +768,28 @@ async function actOnMessage(action, messageId, extra) {
   }
   if (action === 'forward') {
     openForwardDialog([messageId]);
+    return;
+  }
+  if (action === 'deleteme') {
+    await changeChat(chat.id, next => {
+      next.messages = next.messages.filter(m => m.id !== messageId);
+      next.pins = (next.pins || []).filter(pin => pin !== messageId);
+    });
+    renderMessages(false); renderPins(); renderSidebar();
+    notify('Сообщение удалено только у вас');
+    return;
+  }
+  if (action === 'sendnow') {
+    await changeChat(chat.id, next => {
+      const index = next.messages.findIndex(m => m.id === messageId);
+      if (index < 0) return false;
+      next.messages[index] = { ...next.messages[index], status: 'queued', at: Date.now(), sendAt: null };
+      next.messages.sort((a, b) => a.at - b.at);
+      next.updatedAt = Date.now();
+    });
+    renderMessages(false); renderSidebar();
+    transport.connect(chat.id);
+    await flushPending(chat.id);
     return;
   }
   if (action === 'edit') {
@@ -851,15 +839,73 @@ async function toggleStar() {
 async function openSecurity() {
   const chat = activeChat();
   if (!chat || chat.id === 'saved') return;
-  $('#sec-conn').textContent = transport.isOpen(chat.id) ? 'Прямое соединение активно, трафик шифрован DTLS (WebRTC)' : 'Соединение не активно: сообщения ждут в очереди на этом устройстве';
+  $('#sec-conn').textContent = transport.isOpen(chat.id) ? (transport.channel(chat.id) === 'bluetooth' ? 'Bluetooth P2P: прямой радиоканал без интернета и серверов; поверх него — те же подписанный hello и Double Ratchet' : 'Прямое соединение активно, трафик шифрован DTLS (WebRTC)') : 'Соединение не активно: сообщения ждут в очереди на этом устройстве';
   $('#sec-code').textContent = await cachedVerify(state.profile.id, chat.id);
   $('#sec-seen').textContent = state.lastSeen.get(chat.id) ? new Date(state.lastSeen.get(chat.id)).toLocaleString('ru') : 'нет данных на этом устройстве';
   $('#sec-peer').textContent = `LIBO:${chat.id}`;
-  const fingerprint = transport.mtStatus(chat.id);
-  $('#sec-mt').textContent = fingerprint
-    ? `Активен: AES-256-GCM поверх DTLS, отпечаток ключа пары ${fingerprint}`
-    : 'Не установлен: у собеседника версия без MT-слоя, трафик защищён только DTLS';
+  const e2 = transport.e2Status(chat.id);
+  const mt = transport.mtStatus(chat.id);
+  $('#sec-e2').textContent = e2
+    ? `Активно: X25519 + Ed25519, Double Ratchet, ChaCha20-Poly1305. Отпечаток сессии ${e2.fingerprint}, с ${new Date(e2.createdAt).toLocaleTimeString('ru')}`
+    : transport.isOpen(chat.id) ? (mt ? `Собеседник на версии без E2EE: работает MT-слой (AES-256-GCM), отпечаток ${mt}` : 'Рукопожатие ещё не завершено')
+    : 'Нет активной сессии. Ключи сессии создаются заново при каждом соединении.';
+  const peerKey = chat.peerSignPk;
+  $('#sec-number').textContent = peerKey ? safetyNumber(state.profile.id, bytesToB64(state.identity.signPk), chat.id, peerKey) : 'Появится после первого защищённого соединения';
+  $('#sec-fp').textContent = peerKey ? fingerprint(peerKey) : '—';
+  $('#sec-verified').textContent = chat.verified ? 'Подтверждён вами' : chat.keyChanged ? 'Ключ изменился — сверьте заново' : 'Не подтверждён (доверие при первом контакте)';
+  $('#sec-verify').textContent = chat.verified ? 'Снять подтверждение' : 'Подтвердить номер';
+  $('#sec-verify').disabled = !peerKey;
+  $('#sec-vault').textContent = { hardware: 'Android Keystore (аппаратный модуль)', keystore: 'Android Keystore', browser: 'ключ браузера (неизвлекаемый)' }[store.vaultKind] || 'неизвестно';
   openDialog('security-dialog');
+}
+
+async function toggleVerified() {
+  const chat = activeChat();
+  if (!chat || !chat.peerSignPk) return;
+  await changeChat(chat.id, next => { next.verified = !next.verified; next.keyChanged = false; });
+  renderHeader(); renderSidebar();
+  await openSecurity();
+}
+
+async function acknowledgeKeyChange() {
+  const chat = activeChat();
+  if (!chat) return;
+  await changeChat(chat.id, next => { next.keyChanged = false; });
+  renderHeader(); renderSidebar();
+}
+
+// Sessions screen: every live E2EE channel, its fingerprint and age; revoking closes
+// the channel and wipes its keys; the next connection starts a fresh ratchet.
+function renderSessions() {
+  const list = $('#sessions-list');
+  list.replaceChildren();
+  const live = state.chats.filter(chat => chat.id !== 'saved' && transport.isOpen(chat.id));
+  $('#sessions-identity').textContent = fingerprint(bytesToB64(state.identity.signPk));
+  $('#sessions-created').textContent = new Date(state.identity.createdAt).toLocaleString('ru');
+  $('#sessions-vault').textContent = { hardware: 'Android Keystore, аппаратный модуль', keystore: 'Android Keystore', browser: 'неизвлекаемый ключ браузера' }[store.vaultKind] || '—';
+  if (!live.length) { list.innerHTML = '<p class="privacy-caption align-left">Сейчас нет активных соединений.</p>'; return; }
+  for (const chat of live) {
+    const e2 = transport.e2Status(chat.id);
+    const row = document.createElement('div'); row.className = 'session-row';
+    row.innerHTML = '<div><strong></strong><small></small></div><button class="secondary-button danger" type="button">Отозвать</button>';
+    row.querySelector('strong').textContent = displayName(chat);
+    row.querySelector('small').textContent = e2 ? `E2EE ${e2.fingerprint} · с ${new Date(e2.createdAt).toLocaleTimeString('ru')} · сообщений после ротации: ${e2.sent}` : 'Без E2EE (старая версия у собеседника)';
+    row.querySelector('button').onclick = () => { transport.revoke(chat.id); notify(`Сессия с ${displayName(chat)} отозвана`); renderSessions(); renderSidebar(); };
+    list.appendChild(row);
+  }
+}
+
+async function rotateIdentity() {
+  confirmDialog('Пересоздать ключи устройства?', 'Старые ключи будут безвозвратно стёрты. У всех собеседников появится предупреждение о смене ключа, и номера безопасности изменятся.', async () => {
+    const previous = state.identity;
+    const identity = generateIdentity();
+    await store.setSecret('identity', serializeIdentity(identity));
+    state.identity = identity;
+    wipeIdentity(previous);
+    for (const chat of state.chats) if (chat.id !== 'saved') transport.revoke(chat.id);
+    notify('Ключи устройства пересозданы');
+    renderSessions();
+  }, 'Пересоздать');
 }
 
 // 2.8.1: ссылка «Безопасность соединения» в настройках открывает сводку по открытому
@@ -937,6 +983,8 @@ function rememberDraft() {
 function resetComposerExtras() {
   state.reply = null;
   state.attachment = null;
+  state.scheduleAt = 0; state.silent = false; state.spoiler = false;
+  syncSendOptions();
   photoGeneration++;
   $('#reply-bar').hidden = true;
   $('#attachment-preview').hidden = true;
@@ -950,6 +998,7 @@ async function openChat(id) {
   if (!state.chats.some(chat => chat.id === id)) return;
   rememberDraft();
   state.current = id;
+  window.LiboAndroid?.clearNotification?.(id);
   closeMessageActions();
   $('#shell').classList.add('chat-open');
   $('#welcome').hidden = true;
@@ -958,10 +1007,14 @@ async function openChat(id) {
   closeMessageSearch();
   setSelection(null);
   state.highlight = null;
+  const opening = state.chats.find(chat => chat.id === id);
+  const firstUnread = opening?.unread ? opening.messages.filter(m => m.direction === 'in').slice(-opening.unread)[0] : null;
+  state.unreadFrom = firstUnread ? firstUnread.at : null;
+  state.newBelow = 0;
   resetComposerExtras();
   $('#message-input').value = state.drafts[id] || '';
   updateComposer();
-  renderHeader(); renderMessages(); renderSidebar();
+  renderHeaderNow(); renderMessagesNow(); renderSidebar();
   requestAnimationFrame(() => { $('#messages').scrollTop = $('#messages').scrollHeight; });
   if (id !== 'saved') transport.connect(id);
   sendReadReceipt(id);
@@ -993,12 +1046,16 @@ async function sendMessage(event) {
   if (!chat || chat.request || chat.archive || state.sending || (!text && !state.attachment)) return;
   const id = chat.id;
   const attachment = state.attachment;
+  const scheduled = id !== 'saved' && state.scheduleAt > Date.now();
+  const sendButton = $('#send-button'); sendButton.classList.remove('sent'); void sendButton.offsetWidth; sendButton.classList.add('sent'); haptic('success');
   const message = {
     id: crypto.randomUUID(), text,
     image: attachment?.kind === 'photo' ? { data: attachment.data, name: attachment.name } : null,
     att: attachment && attachment.kind !== 'photo' ? attachment : null,
-    reply: state.reply, ttl: state.ttl || 0,
-    at: Date.now(), direction: 'out', status: id === 'saved' ? 'local' : 'queued',
+    reply: state.reply, ttl: state.ttl || chat.ttlDefault || 0,
+    silent: id !== 'saved' && state.silent, spoiler: attachment?.kind === 'photo' && state.spoiler,
+    sendAt: scheduled ? state.scheduleAt : null,
+    at: Date.now(), direction: 'out', status: id === 'saved' ? 'local' : scheduled ? 'scheduled' : 'queued',
   };
   state.sending = true; updateComposer();
   try {
@@ -1010,15 +1067,35 @@ async function sendMessage(event) {
       requestAnimationFrame(() => { $('#messages').scrollTop = $('#messages').scrollHeight; });
     }
     renderSidebar();
-    if (message.ttl) scheduleExpiry(id, message.id, message.ttl, message.at);
-    if (id !== 'saved') {
+    if (message.ttl && !scheduled) scheduleExpiry(id, message.id, message.ttl, message.at);
+    if (scheduled) notify(`Отложено до ${new Date(message.sendAt).toLocaleString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`);
+    if (id !== 'saved' && !scheduled) {
       transport.send(id, { v: 1, type: 'typing', active: false });
       transport.connect(id);
       await flushPending(id);
-      haptic('success');
-    } else haptic('tick');
+    }
   } catch (error) { notify(error.message?.includes('500') ? error.message : 'Не удалось сохранить сообщение. Проверьте свободное место.', true); }
   finally { state.sending = false; updateComposer(); }
+}
+
+async function releaseScheduled() {
+  for (const chat of state.chats) {
+    const due = dueScheduled(chat);
+    if (!due.length) continue;
+    const ids = new Set(due.map(m => m.id));
+    try {
+      await changeChat(chat.id, next => {
+        next.messages = next.messages.map(m => ids.has(m.id) ? { ...m, status: 'queued', at: Date.now(), sendAt: null } : m);
+        next.messages.sort((a, b) => a.at - b.at);
+        next.updatedAt = Date.now();
+      });
+      for (const m of due) if (m.ttl) scheduleExpiry(chat.id, m.id, m.ttl, Date.now());
+      if (state.current === chat.id) renderMessages(false);
+      renderSidebar();
+      transport.connect(chat.id);
+      await flushPending(chat.id);
+    } catch { /* retried on the next tick */ }
+  }
 }
 
 async function flushPending(id) {
@@ -1060,12 +1137,16 @@ function openDialog(id) {
     const code = `LIBO:${state.profile.id}`;
     $('#my-code').textContent = code;
     $('#invite-name').textContent = state.profile.name;
-    const qr = qrcode(0, 'M'); qr.addData(code); qr.make();
-    $('#invite-qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+    // QR: personal code + public signing key + one-time pairing token (10 minutes).
+    state.pairToken = makePairToken();
+    const invite = formatInvite(state.profile.id, state.identity, state.pairToken.token);
+    const qr = qrcode(0, 'M'); qr.addData(invite); qr.make();
+    $('#invite-qr').innerHTML = qr.createSvgTag({ cellSize: 3, margin: 2, scalable: true });
+    $('#invite-fp').textContent = fingerprint(bytesToB64(state.identity.signPk));
   }
+  if (id === 'sessions-dialog') renderSessions();
   if (id === 'new-dialog') { $('#contact-error').hidden = true; $('#contact-code').value = ''; }
   if (id === 'settings-dialog') { populateSettings(); syncSecurityLink(); }
-  if (id === 'bt-dialog') { state.bt.state = btLink.refresh(); renderBt(); }
   if (id === 'blocked-dialog') renderBlocked();
   if (id === 'about-dialog') {
     const features = [
@@ -1079,9 +1160,10 @@ function openDialog(id) {
       FEATURES.multiselect,
       FEATURES.search,
       FEATURES.mute,
-      FEATURES.bluetooth,
-      FEATURES.notify,
-      FEATURES.motion,
+      FEATURES.e2ee, FEATURES.vault, FEATURES.format, FEATURES.spoiler, FEATURES.schedule, FEATURES.silent,
+      FEATURES.autodelete, FEATURES.archive, FEATURES.pinchat, FEATURES.nickname, FEATURES.chatcolor, FEATURES.speed,
+      FEATURES.swipe, FEATURES.unreadbar, FEATURES.deleteme, FEATURES.privacy, FEATURES.bio, FEATURES.fontsize,
+      FEATURES.autolock, FEATURES.sessions, FEATURES.stickers,
     ];
     $('#about-features').innerHTML = features.map(text => `<li>${text}</li>`).join('');
   }
@@ -1099,7 +1181,8 @@ function confirmDialog(title, text, action, button = 'Продолжить') {
 
 async function addContact(event) {
   event.preventDefault();
-  const id = normalizePeerCode($('#contact-code').value);
+  const invite = parseInvite($('#contact-code').value, normalizePeerCode);
+  const id = invite?.id || null;
   const error = $('#contact-error');
   error.hidden = true;
   if (!id || id === state.profile.id || state.blocked.includes(id)) {
@@ -1109,10 +1192,14 @@ async function addContact(event) {
     error.hidden = false; return;
   }
   try {
-    await changeChat(id, chat => { chat.request = false; }, { request: false, updatedAt: Date.now() });
+    await changeChat(id, chat => {
+      chat.request = false;
+      if (invite.signPk) { chat.expectedSignPk = chat.peerSignPk && chat.peerSignPk !== invite.signPk ? invite.signPk : invite.signPk; }
+      if (invite.token) chat.pairToken = invite.token;
+    }, { request: false, updatedAt: Date.now() });
     closeDialogs();
     await openChat(id);
-    notify('Контакт добавлен. Откройте LIBO на обоих устройствах.');
+    notify(invite.signPk ? 'Контакт добавлен, ключ из приглашения закреплён.' : 'Контакт добавлен. Откройте LIBO на обоих устройствах.');
   } catch (err) { error.textContent = err.message; error.hidden = false; }
 }
 
@@ -1134,7 +1221,7 @@ const UI_KEY = 'libo-v2-ui';
 // Synchronous mirror of the cosmetic settings: a reload must never race the
 // IndexedDB commit and flash the wrong theme or wallpaper.
 function rememberUi() {
-  try { localStorage.setItem(UI_KEY, JSON.stringify({ theme: state.settings.theme, wall: state.settings.wall || 'plain' })); }
+  try { localStorage.setItem(UI_KEY, JSON.stringify({ theme: state.settings.theme, wall: state.settings.wall || 'plain', font: state.settings.font || 'normal' })); }
   catch { /* Cosmetic only; storage may be full. */ }
 }
 
@@ -1152,10 +1239,21 @@ async function setTheme(theme) {
 
 function populateSettings() {
   $('#profile-name').value = state.profile.name;
+  $('#profile-bio').value = state.profile.bio || '';
   $('#settings-avatar').textContent = initials(state.profile.name);
+  $('#font-select').value = FONT_SIZES.includes(state.settings.font) ? state.settings.font : 'normal';
+  $('#autolock-select').value = String(AUTOLOCK_OPTIONS.includes(state.settings.autolock) ? state.settings.autolock : 0);
+  $('#privacy-seen').checked = state.settings.privacy?.lastSeen !== false;
+  $('#privacy-read').checked = state.settings.privacy?.readReceipts !== false;
+  $('#privacy-typing').checked = state.settings.privacy?.typing !== false;
+  $('#biometric-row').hidden = !(window.LiboAndroid?.biometricAvailable?.());
+  $('#biometric-enabled').checked = !!state.settings.biometric;
   $('#sound-enabled').checked = state.settings.sound;
   $('#notify-enabled').checked = state.settings.notify !== false;
-  $('#keepalive-enabled').checked = !!state.settings.keepAlive && !!window.LiboAndroid;
+  $('#notify-text').checked = state.settings.notifyText !== false;
+  $('#keepalive-enabled').checked = !!state.settings.keepAlive;
+  $('#keepalive-row').hidden = !window.LiboAndroid?.setKeepAlive;
+  $('#notify-state').textContent = notificationState();
   $('#wall-select').value = WALLPAPERS.includes(state.settings.wall) ? state.settings.wall : 'plain';
   const lock = lockState();
   $('#lock-state').value = lock ? 'Включён' : 'Выключен';
@@ -1174,26 +1272,31 @@ async function saveSettings(event) {
   const error = $('#settings-error'); error.hidden = true;
   const name = normalizeName($('#profile-name').value);
   if (!name) { error.textContent = 'Напишите, как вас называть.'; error.hidden = false; return; }
+  const bio = normalizeBio($('#profile-bio').value);
   const settings = {
     ...state.settings, sound: $('#sound-enabled').checked,
-    notify: $('#notify-enabled').checked,
-    keepAlive: $('#keepalive-enabled').checked && !!window.LiboAndroid,
     wall: WALLPAPERS.includes($('#wall-select').value) ? $('#wall-select').value : 'plain',
+    font: FONT_SIZES.includes($('#font-select').value) ? $('#font-select').value : 'normal',
+    autolock: Number($('#autolock-select').value) || 0,
+    biometric: $('#biometric-enabled').checked,
+    notify: $('#notify-enabled').checked, notifyText: $('#notify-text').checked, keepAlive: $('#keepalive-enabled').checked,
+    privacy: { lastSeen: $('#privacy-seen').checked, readReceipts: $('#privacy-read').checked, typing: $('#privacy-typing').checked },
     signalUrl: $('#signal-url').value.trim(), turnUrl: $('#turn-url').value.trim(),
     turnUser: $('#turn-user').value.trim(), turnPassword: $('#turn-password').value,
   };
-  applyKeepAlive(settings);
-  if (settings.notify) void notifier.ensurePermission();
   try {
     parseSignalingUrl(settings.signalUrl, location.origin);
     makeIceServers(settings);
     const reconnect = ['signalUrl', 'turnUrl', 'turnUser', 'turnPassword'].some(key => settings[key] !== state.settings[key]);
-    const profile = { ...state.profile, name };
+    const profile = { ...state.profile, name, bio };
     await store.setMeta('settings', settings);
     await store.setMeta('profile', profile);
     state.settings = settings; state.profile = profile;
     $('#profile-button').textContent = initials(name);
-    applyTheme(); applyWall(); rememberUi();
+    applyTheme(); applyWall(); applyFont(); rememberUi();
+    transport.updateSettings(settings);
+    window.LiboAndroid?.setKeepAlive?.(!!settings.keepAlive);
+    if (settings.notify !== false) requestNotificationPermission();
     if (reconnect) {
       state.contactStates.clear();
       transport.start(profile, settings);
@@ -1201,13 +1304,6 @@ async function saveSettings(event) {
     closeDialogs(); renderSidebar(); renderHeader();
     notify('Ваши настройки сохранены');
   } catch (err) { error.textContent = err.message || 'Не удалось сохранить настройки.'; error.hidden = false; }
-}
-
-function applyKeepAlive(settings = state.settings) {
-  if (!window.LiboAndroid?.setKeepAlive) return;
-  const unread = state.chats.filter(chat => chat.unread > 0).length;
-  window.LiboAndroid.setKeepAlive(!!settings.keepAlive,
-    settings.keepAlive ? `Тримаємо з'єднання · непрочитаних: ${unread}` : '', unread);
 }
 
 async function copyCode() {
@@ -1228,7 +1324,8 @@ async function copyLikeCode(text) {
 }
 
 async function shareCode() {
-  const text = `Добавьте меня в LIBO!\n\nLIBO:${state.profile.id}\n\nДля переписки откройте приложение на обоих устройствах.`;
+  const invite = formatInvite(state.profile.id, state.identity, state.pairToken?.expiresAt > Date.now() ? state.pairToken.token : null);
+  const text = `Добавьте меня в LIBO!\n\n${invite}\n\nКод содержит только открытый ключ и одноразовый код приглашения. Откройте приложение на обоих устройствах.`;
   try {
     if (window.LiboAndroid) window.LiboAndroid.shareText(text);
     else if (navigator.share) await navigator.share({ title: 'Мой личный код LIBO', text });
@@ -1306,7 +1403,7 @@ async function attachPhoto(file) {
     if (data.length > MAX_IMAGE_DATA) throw new Error('Фото слишком большое даже после сжатия. Попробуйте другое.');
     if (generation !== photoGeneration) return;
     state.attachment = { kind: 'photo', data, name: safeFilename(file.name.replace(/\.[^.]+$/, '') + '.jpg') };
-    $('#attachment-image').src = data; $('#attachment-preview').hidden = false; updateComposer();
+    $('#attachment-image').src = data; $('#attachment-preview').hidden = false; updateComposer(); syncSendOptions();
   } catch (error) { notify(error.message?.includes('сжатия') ? error.message : 'Не удалось открыть фотографию.', true); }
   finally { URL.revokeObjectURL(url); $('#photo-input').value = ''; }
 }
@@ -1395,7 +1492,7 @@ async function expireMessage(chatId, messageId) {
 
 function sendReadReceipt(id) {
   const chat = state.chats.find(item => item.id === id);
-  if (!chat || id === 'saved' || document.hidden || !transport.isOpen(id)) return;
+  if (!chat || id === 'saved' || document.hidden || !transport.isOpen(id) || state.settings.privacy?.readReceipts === false) return;
   const lastIn = chat.messages.filter(m => m.direction === 'in' && !m.deleted).at(-1);
   if (lastIn) void transport.send(id, makeReadPacket(lastIn.at));
 }
@@ -1511,20 +1608,61 @@ async function setLock(pin) {
   localStorage.setItem(LOCK_KEY, JSON.stringify({ salt: btoa(String.fromCharCode(...salt)), hash: await hashPin(pin, salt) }));
 }
 
+function showLock() {
+  if (state.locked || !lockState()) return Promise.resolve();
+  state.locked = true;
+  closeDialogs(); closeChatMenu(); closeMessageActions();
+  $('#lock-screen').hidden = false;
+  $('#lock-input').value = '';
+  $('#lock-biometric').hidden = !(state.settings?.biometric && window.LiboAndroid?.biometricAvailable?.());
+  setTimeout(() => $('#lock-input').focus(), 50);
+  return new Promise(resolve => {
+    unlockResolve = () => { state.locked = false; $('#lock-screen').hidden = true; state.lastActivity = Date.now(); resolve(); };
+    if (!$('#lock-biometric').hidden) window.LiboAndroid.biometricUnlock();
+  });
+}
+
+function checkAutoLock() {
+  const timeout = state.settings?.autolock || 0;
+  if (!timeout || state.locked || !lockState()) return;
+  if (Date.now() - state.lastActivity > timeout * 1000) void showLock();
+}
+
 async function tryUnlock() {
   const stored = lockState();
   const pin = $('#lock-input').value.trim();
   const error = $('#lock-error');
   error.hidden = true;
   if (!stored) { unlockResolve?.(); return; }
+  // Brute-force slowdown: each wrong attempt adds a growing delay on this device.
+  const attempts = Number(sessionStorage.getItem('libo-lock-fails') || 0);
+  if (attempts >= 3) await new Promise(resolve => setTimeout(resolve, Math.min(30_000, 1000 * 2 ** (attempts - 3))));
   const hash = await hashPin(pin, Uint8Array.from(atob(stored.salt), char => char.charCodeAt(0)));
   if (hash !== stored.hash) {
-    error.textContent = 'Неверный код-замок. Данные останутся на устройстве.';
+    sessionStorage.setItem('libo-lock-fails', String(attempts + 1));
+    error.textContent = attempts >= 2 ? 'Неверный код-замок. Следующая попытка — с задержкой.' : 'Неверный код-замок. Данные останутся на устройстве.';
     error.hidden = false;
     $('#lock-input').value = '';
     return;
   }
+  sessionStorage.removeItem('libo-lock-fails');
   unlockResolve?.();
+}
+
+// Send options popover: schedule, silent delivery, photo spoiler.
+function syncSendOptions() {
+  const button = $('#send-options-button');
+  if (!button) return;
+  const active = state.scheduleAt > Date.now() || state.silent || state.spoiler;
+  button.classList.toggle('active', active);
+  $('#opt-silent').checked = state.silent;
+  $('#opt-spoiler').checked = state.spoiler;
+  $('#opt-spoiler-row').hidden = state.attachment?.kind !== 'photo';
+  $('#opt-schedule-state').textContent = state.scheduleAt > Date.now() ? new Date(state.scheduleAt).toLocaleString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'не задано';
+}
+
+function applyFont() {
+  document.documentElement.dataset.font = FONT_SIZES.includes(state.settings?.font) ? state.settings.font : 'normal';
 }
 
 function applyWall() {
@@ -1552,13 +1690,38 @@ function handleBack() {
   if (open) { open.close(); return true; }
   if (!$('#emoji-picker').hidden) { $('#emoji-picker').hidden = true; $('#emoji-button').setAttribute('aria-expanded', 'false'); return true; }
   if (!$('#chat-menu').hidden) { closeChatMenu(); return true; }
+  if (!$('#send-options').hidden) { $('#send-options').hidden = true; return true; }
   if (!$('#message-actions').hidden) { closeMessageActions(); return true; }
   if (!$('#message-search-bar').hidden) { closeMessageSearch(); renderMessages(); return true; }
   if (state.current) { closeChat(); return true; }
   return false;
 }
 
+// 2.8.7: tactile feedback — native haptics in the APK, navigator.vibrate in the browser.
+function haptic(kind = 'tick') {
+  if (window.LiboAndroid?.haptic) { window.LiboAndroid.haptic(kind); return; }
+  try { navigator.vibrate?.(kind === 'success' ? [12, 40, 18] : kind === 'reject' ? [30, 40, 30] : 8); } catch { /* optional */ }
+}
+
 function bindEvents() {
+  // 2.8.7 ripple: a transient circle at the pointer position on tappable surfaces.
+  const rippleHosts = '.primary-button, .secondary-button, .icon-button, .send-button, .chat-row, .settings-action, .filter, .folder-tab, .dropdown-menu button, .message-actions button, .theme-options button, .bt-device, .emoji-picker button, .sticker-pick';
+  document.addEventListener('pointerdown', event => {
+    const host = event.target.closest(rippleHosts);
+    if (!host || host.disabled) return;
+    haptic('tick');
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const rect = host.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    ripple.style.cssText = `width:${size}px;height:${size}px;left:${event.clientX - rect.left - size / 2}px;top:${event.clientY - rect.top - size / 2}px`;
+    host.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
+    setTimeout(() => ripple.remove(), 700);
+  }, { passive: true });
+  bindBluetooth();
+  $('#notify-test').onclick = testNotification;
   document.addEventListener('click', event => {
     const dialogButton = event.target.closest('[data-dialog]');
     if (dialogButton) { openDialog(dialogButton.dataset.dialog); return; }
@@ -1599,6 +1762,7 @@ function bindEvents() {
     state.highlight = messageId;
     void openChat(chatId).then(() => {
       const row = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (row) row.classList.add('pulse');
       if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
       setTimeout(() => { state.highlight = null; }, 2400);
     });
@@ -1614,7 +1778,7 @@ function bindEvents() {
   $('#composer').onsubmit = sendMessage;
   $('#message-input').addEventListener('input', () => {
     updateComposer(); rememberDraft();
-    if (state.current !== 'saved' && Date.now() - typingSentAt > 1000) {
+    if (state.current !== 'saved' && state.settings.privacy?.typing !== false && Date.now() - typingSentAt > 1000) {
       typingSentAt = Date.now(); transport.send(state.current, { v: 1, type: 'typing', active: !!$('#message-input').value });
     }
   });
@@ -1672,6 +1836,17 @@ function bindEvents() {
     }
     const actionsButton = event.target.closest('[data-actions]');
     if (actionsButton) { openMessageActions(actionsButton, actionsButton.dataset.actions); return; }
+    const spoiler = event.target.closest('.fmt-spoiler');
+    if (spoiler) { spoiler.classList.toggle('revealed'); return; }
+    const hiddenPhoto = event.target.closest('[data-reveal-photo]');
+    if (hiddenPhoto) { revealed.add(hiddenPhoto.dataset.revealPhoto); renderMessages(false); return; }
+    const rate = event.target.closest('[data-rate]');
+    if (rate) {
+      state.voiceRate = PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(state.voiceRate) + 1) % PLAYBACK_RATES.length];
+      for (const audio of $$('.att-voice audio')) audio.playbackRate = state.voiceRate;
+      for (const button of $$('[data-rate]')) button.textContent = `${state.voiceRate}×`.replace('.', ',');
+      return;
+    }
     const reactionChip = event.target.closest('[data-react]');
     if (reactionChip) { void actOnMessage('react', reactionChip.dataset.messageId, reactionChip.dataset.react); return; }
     const attachButton = event.target.closest('[data-attach]');
@@ -1725,6 +1900,81 @@ function bindEvents() {
   $('#security-button').onclick = () => void openSecurity();
   $('#star-contact').onclick = () => void toggleStar();
   $('#mute-contact').onclick = () => void toggleMute();
+  $('#pin-chat').onclick = () => void toggleChatFlag('pinnedChat', ['Чат откреплён', 'Чат закреплён вверху']);
+  $('#archive-chat').onclick = () => void toggleChatFlag('archived', ['Чат возвращён из архива', 'Чат перенесён в архив']);
+  $('#autodelete-chat').onclick = async () => {
+    const chat = activeChat(); if (!chat) return;
+    const next = TTL_OPTIONS[(TTL_OPTIONS.indexOf(chat.ttlDefault || 0) + 1) % TTL_OPTIONS.length];
+    await changeChat(chat.id, c => { c.ttlDefault = next; });
+    renderHeader(); notify(next ? `Автоудаление в чате: ${ttlLabel(next)}` : 'Автоудаление в чате выключено');
+  };
+  $('#color-chat').onclick = async () => {
+    const chat = activeChat(); if (!chat) return;
+    const next = CHAT_COLORS[(CHAT_COLORS.indexOf(chatColor(chat)) + 1) % CHAT_COLORS.length];
+    await changeChat(chat.id, c => { c.color = next; });
+    renderHeader(); notify(next ? 'Цвет чата изменён' : 'Цвет чата по умолчанию');
+  };
+  $('#rename-contact').onclick = () => {
+    const chat = activeChat(); if (!chat) return;
+    closeChatMenu();
+    $('#rename-input').value = chat.nick || '';
+    $('#rename-original').textContent = chat.name;
+    openDialog('rename-dialog');
+    $('#rename-input').focus();
+  };
+  $('#rename-save').onclick = async () => {
+    const chat = activeChat(); if (!chat) return;
+    const nick = normalizeName($('#rename-input').value);
+    await changeChat(chat.id, c => { c.nick = nick || ''; });
+    closeDialogs(); renderHeader(); renderSidebar();
+    notify(nick ? 'Имя контакта сохранено только у вас' : 'Используется имя, которое задал собеседник');
+  };
+  $('#keychange-accept').onclick = () => void acknowledgeKeyChange();
+  $('#keychange-check').onclick = () => void openSecurity();
+  $('#sec-verify').onclick = () => void toggleVerified();
+  $('#sec-revoke').onclick = () => { const chat = activeChat(); if (chat) { transport.revoke(chat.id); notify('Сессия отозвана: ключи стёрты, следующее соединение создаст новые'); closeDialogs(); renderHeader(); } };
+  $('#open-sessions').onclick = () => openDialog('sessions-dialog');
+  $('#rotate-identity').onclick = () => void rotateIdentity();
+  $('#lock-now').onclick = () => { if (lockState()) void showLock(); else notify('Сначала включите код-замок в настройках.', true); };
+  $('#lock-biometric').onclick = () => window.LiboAndroid?.biometricUnlock?.();
+  $('#scroll-bottom').onclick = () => { const box = $('#messages'); box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' }); state.newBelow = 0; updateScrollButton(); };
+  $('#messages').addEventListener('scroll', updateScrollButton, { passive: true });
+  $('#send-options-button').onclick = () => { syncSendOptions(); $('#send-options').hidden = !$('#send-options').hidden; };
+  $('#opt-silent').onchange = () => { state.silent = $('#opt-silent').checked; syncSendOptions(); };
+  $('#opt-spoiler').onchange = () => { state.spoiler = $('#opt-spoiler').checked; syncSendOptions(); };
+  $('#opt-schedule').onchange = () => {
+    const at = new Date($('#opt-schedule').value).getTime();
+    state.scheduleAt = Number.isFinite(at) && at > Date.now() ? at : 0;
+    if ($('#opt-schedule').value && !state.scheduleAt) notify('Выберите время в будущем.', true);
+    syncSendOptions();
+  };
+  $('#opt-schedule-clear').onclick = () => { state.scheduleAt = 0; $('#opt-schedule').value = ''; syncSendOptions(); };
+  $('#send-options-close').onclick = () => { $('#send-options').hidden = true; };
+  document.addEventListener('click', event => {
+    if (!event.target.closest('#send-options, #send-options-button')) $('#send-options').hidden = true;
+  });
+  for (const type of ['pointerdown', 'keydown', 'touchstart']) document.addEventListener(type, () => { state.lastActivity = Date.now(); }, { passive: true });
+  // Swipe right on a message to reply (touch screens).
+  let swipe = null;
+  $('#messages').addEventListener('touchstart', event => {
+    const row = event.target.closest('.message-row');
+    swipe = row && event.touches.length === 1 ? { row, x: event.touches[0].clientX, y: event.touches[0].clientY } : null;
+  }, { passive: true });
+  $('#messages').addEventListener('touchmove', event => {
+    if (!swipe) return;
+    const dx = event.touches[0].clientX - swipe.x;
+    const dy = Math.abs(event.touches[0].clientY - swipe.y);
+    if (dy > 30) { swipe.row.style.transform = ''; swipe = null; return; }
+    swipe.row.style.transform = dx > 0 ? `translateX(${Math.min(dx, 72)}px)` : '';
+    swipe.dx = dx;
+  }, { passive: true });
+  $('#messages').addEventListener('touchend', () => {
+    if (!swipe) return;
+    const { row, dx } = swipe;
+    row.style.transform = '';
+    if (dx > 60 && !state.selection) void actOnMessage('reply', row.dataset.messageId);
+    swipe = null;
+  });
   $('#select-mode').onclick = () => { closeChatMenu(); setSelection([]); };
   $('#folder-personal').onclick = () => void setFolder('personal');
   $('#folder-work').onclick = () => void setFolder('work');
@@ -1831,67 +2081,17 @@ function bindEvents() {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !$('dialog[open]')) { event.preventDefault(); closeChat(); $('#chat-search').focus(); }
     if (event.key === 'Escape' && !$('dialog[open]')) handleBack();
   });
-  window.Libo = { handleBack, onExportSaved: () => notify('Экспорт сохранён') };
+  window.Libo = {
+    handleBack,
+    openChatById: id => { if (state.chats.some(chat => chat.id === id)) { void openChat(id); } else pendingOpenChat = id; },
+    onForeground: visible => { foreground = !!visible; if (visible && state.current) window.LiboAndroid?.clearNotification?.(state.current); },
+    onNotificationPermission: granted => { $('#notify-state').textContent = notificationState(); if (!granted) notify('Уведомления отключены в системе. Разрешите их в настройках Android.', true); },
+    onExportSaved: () => notify('Экспорт сохранён'),
+    onBiometric: ok => { if (ok && state.locked) { sessionStorage.removeItem('libo-lock-fails'); unlockResolve?.(); } else if (!ok && state.locked) notify('Биометрия не подтверждена. Введите PIN.', true); },
+  };
 }
 
 let emojiBuilt = false;
-function bindMotionAndBt() {
-  // 2.8.7: tactile wave on every pressable surface + haptic tick.
-  const pressable = '.primary-button, .secondary-button, .icon-button, .send-button, .chat-row, .rail-button, .filter, .folder-tab, .theme-options button, .settings-action, .invite-card, .poll-option, .reaction-pick, .forward-row, .emoji-picker button, .global-result, .notify-card, .bt-chip';
-  document.addEventListener('pointerdown', event => {
-    const target = event.target.closest(pressable);
-    if (!target || target.disabled) return;
-    const rect = target.getBoundingClientRect();
-    const size = Math.max(rect.width, rect.height) * 2.2;
-    const ripple = document.createElement('span');
-    ripple.className = 'ripple';
-    ripple.style.width = ripple.style.height = `${size}px`;
-    ripple.style.left = `${(event.clientX || rect.left + rect.width / 2) - rect.left - size / 2}px`;
-    ripple.style.top = `${(event.clientY || rect.top + rect.height / 2) - rect.top - size / 2}px`;
-    target.appendChild(ripple);
-    setTimeout(() => ripple.remove(), 700);
-    haptic('tick');
-  }, { passive: true });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { updateKeepAliveStatus(); return; }
-    notifier.clear();
-    updateKeepAliveStatus();
-    renderSidebar();
-  });
-
-  $('#bt-chip').onclick = () => openDialog('bt-dialog');
-  $('#bt-open').onclick = () => openDialog('bt-dialog');
-  $('#bt-enable').onclick = () => { btLink.enable(); haptic('tick'); };
-  $('#bt-permissions').onclick = () => { btLink.requestPermissions(); haptic('tick'); };
-  $('#bt-listen').onclick = () => {
-    if (state.bt.state.listening) btLink.stopListen();
-    else btLink.listen(shortIdFromCode(state.profile?.id));
-    haptic('tick');
-    setTimeout(() => { state.bt.state = btLink.refresh(); renderBt(); }, 350);
-  };
-  $('#bt-discover').onclick = () => {
-    if (state.bt.state.scanning) btLink.stopDiscover();
-    else btLink.discover();
-    haptic('tick');
-    setTimeout(() => { state.bt.state = btLink.refresh(); renderBt(); }, 350);
-  };
-  $('#bt-peers').onclick = event => {
-    const button = event.target.closest('[data-bt-connect]');
-    if (!button) return;
-    haptic('success');
-    btLink.connect(button.dataset.btConnect);
-    setTimeout(() => { state.bt.state = btLink.refresh(); renderBt(); }, 600);
-  };
-  $('#bt-links').onclick = event => {
-    const button = event.target.closest('[data-bt-drop]');
-    if (!button) return;
-    haptic('reject');
-    btLink.disconnect(button.dataset.btDrop);
-    setTimeout(() => { state.bt.state = btLink.refresh(); renderBt(); }, 300);
-  };
-}
-
 function buildEmojiPicker() {
   if (emojiBuilt) return;
   emojiBuilt = true;
@@ -1905,6 +2105,33 @@ function buildEmojiPicker() {
     };
     $('#emoji-picker').appendChild(button);
   }
+  const strip = document.createElement('div'); strip.className = 'sticker-strip'; strip.setAttribute('aria-label', 'Стикеры LIBO');
+  for (const key of STICKERS) {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'sticker-pick'; button.innerHTML = svg(`s-${key}`); button.setAttribute('aria-label', `Стикер ${key}`);
+    button.onclick = () => void sendSticker(key);
+    strip.appendChild(button);
+  }
+  $('#emoji-picker').appendChild(strip);
+}
+
+async function sendSticker(key) {
+  const chat = activeChat();
+  if (!chat || chat.request || chat.archive || state.sending) return;
+  state.attachment = { kind: 'sticker', key };
+  $('#emoji-picker').hidden = true; $('#emoji-button').setAttribute('aria-expanded', 'false');
+  const text = $('#message-input').value;
+  $('#message-input').value = '';
+  await sendMessage();
+  $('#message-input').value = text; updateComposer();
+}
+
+async function toggleChatFlag(flag, labels) {
+  const chat = activeChat();
+  if (!chat || chat.id === 'saved') return;
+  const next = !chat[flag];
+  await changeChat(chat.id, c => { c[flag] = next; });
+  closeChatMenu(); renderHeader(); renderSidebar();
+  notify(labels[next ? 1 : 0]);
 }
 
 async function main() {
@@ -1919,6 +2146,12 @@ async function main() {
     theme: 'light', sound: false, signalUrl: defaultServer, turnUrl: '', turnUser: '', turnPassword: '',
     ...recallUi(), ...await store.getMeta('settings'),
   };
+  // Device identity (Ed25519 + X25519) lives only in the encrypted vault.
+  state.identity = deserializeIdentity(await store.getSecret('identity'));
+  if (!state.identity) {
+    state.identity = generateIdentity();
+    await store.setSecret('identity', serializeIdentity(state.identity));
+  }
   state.blocked = await store.getMeta('blocked') || [];
   state.chats = await store.getChats();
   state.chats = state.chats.filter(chat => !state.blocked.includes(chat.id));
@@ -1938,19 +2171,130 @@ async function main() {
   const savedSeen = await store.getMeta('lastSeen');
   if (savedSeen && typeof savedSeen === 'object') for (const [id, at] of Object.entries(savedSeen)) state.lastSeen.set(id, at);
   if (!window.MediaRecorder || !navigator.mediaDevices) $('#voice-button').hidden = true;
-  bindEvents(); bindMotionAndBt(); applyTheme(); applyWall(); renderSidebar(); renderNetwork();
-  transport.attachBluetooth(btLink);
-  state.bt.state = btLink.refresh();
-  renderBt(); renderBtChip();
+  bindEvents(); applyTheme(); applyWall(); applyFont(); renderSidebar(); renderNetwork();
+  // First meaningful paint — the native splash overlay can fade out now.
   window.LiboAndroid?.uiReady?.();
-  if (lockState()) {
-    $('#lock-screen').hidden = false;
-    setTimeout(() => $('#lock-input').focus(), 50);
-    await new Promise(resolve => { unlockResolve = resolve; });
-    $('#lock-screen').hidden = true;
-  }
+  window.LiboAndroid?.setSecureScreen?.(true);
+  await showLock();
   transport.start(state.profile, state.settings);
+  bt = new BluetoothManager({ transport, onChange: () => { renderBluetooth(); renderHeader(); renderSidebar(); }, onDevices: renderBluetooth, onToast: notify });
+  window.LiboBT = { onEvent: event => bt.onEvent(event) };
+  if (state.settings.bluetooth && bt.supported && bt.hasPermissions()) bt.start(state.profile.id);
+  if (state.settings.keepAlive) window.LiboAndroid?.setKeepAlive?.(true);
+  if (state.settings.notify !== false && window.LiboAndroid?.notificationsEnabled && !window.LiboAndroid.notificationsEnabled()) requestNotificationPermission();
+  if (pendingOpenChat) { const id = pendingOpenChat; pendingOpenChat = null; window.Libo.openChatById(id); }
   setInterval(retryConnections, 6000);
+  setInterval(() => void releaseScheduled(), 5000);
+  setInterval(checkAutoLock, 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkAutoLock(); });
+}
+
+// ---- 2.8.7 notifications ----------------------------------------------------------
+function notificationState() {
+  if (window.LiboAndroid?.notificationsEnabled) return window.LiboAndroid.notificationsEnabled() ? 'Разрешены системой' : 'Запрещены в системе — нажмите «Проверить»';
+  if (!('Notification' in window)) return 'Браузер не поддерживает уведомления';
+  return Notification.permission === 'granted' ? 'Разрешены браузером' : Notification.permission === 'denied' ? 'Запрещены в браузере' : 'Нужно разрешение — нажмите «Проверить»';
+}
+function requestNotificationPermission() {
+  if (window.LiboAndroid?.requestNotifications) { window.LiboAndroid.requestNotifications(); return; }
+  if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission().then(() => { $('#notify-state').textContent = notificationState(); });
+}
+function notificationBody(packet) {
+  if (state.settings.notifyText === false) return 'Новое сообщение';
+  if (packet.image) return '📷 Фотография';
+  if (packet.att?.kind === 'voice') return '🎤 Голосовое сообщение';
+  if (packet.att?.kind === 'sticker') return 'Стикер';
+  if (packet.att?.kind === 'poll') return `📊 ${packet.att.q || 'Опрос'}`;
+  const text = String(packet.text || '').replace(/\s+/g, ' ').trim();
+  return text.length > 160 ? `${text.slice(0, 157)}…` : text || 'Новое сообщение';
+}
+function pushNotification(id, packet) {
+  if (state.settings.notify === false) return;
+  const chat = state.chats.find(item => item.id === id);
+  if (!chat || chat.muted) return;
+  const title = displayName(chat);
+  const body = notificationBody(packet);
+  if (window.LiboAndroid?.showNotification) { window.LiboAndroid.showNotification(id, title, body, chat.unread || 1); return; }
+  if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+    try {
+      const shown = new Notification(title, { body, tag: `libo-${id}`, icon: './icon-192.png', badge: './icon-192.png', renotify: true });
+      shown.onclick = () => { window.focus(); void openChat(id); shown.close(); };
+    } catch { /* some WebViews throw on the constructor */ }
+  }
+}
+function testNotification() {
+  if (window.LiboAndroid?.showNotification) {
+    if (!window.LiboAndroid.notificationsEnabled()) { requestNotificationPermission(); notify('Разрешите уведомления и нажмите ещё раз'); return; }
+    window.LiboAndroid.showNotification('saved', 'LIBO: проверка уведомлений', 'Если вы видите это — уведомления работают. Сверните приложение: сообщения будут приходить так же.', 1);
+    notify('Тестовое уведомление отправлено');
+    return;
+  }
+  if (!('Notification' in window)) { notify('Этот браузер не поддерживает уведомления', true); return; }
+  if (Notification.permission !== 'granted') { requestNotificationPermission(); return; }
+  try { new Notification('LIBO: проверка уведомлений', { body: 'Уведомления работают', icon: './icon-192.png' }); notify('Тестовое уведомление отправлено'); }
+  catch { notify('Браузер не показал уведомление', true); }
+}
+
+// ---- 2.8.7 Bluetooth P2P ----------------------------------------------------------
+function renderBluetooth() {
+  const dialog = $('#bt-dialog');
+  if (!dialog?.open || !bt) return;
+  const status = bt.status();
+  const stateEl = $('#bt-state');
+  const unsupported = !bt.supported;
+  $('#bt-unsupported').hidden = !unsupported;
+  $('#bt-controls').hidden = unsupported;
+  if (unsupported) return;
+  const permitted = bt.hasPermissions();
+  stateEl.className = `bt-state ${status.listening ? 'on' : ''}`;
+  stateEl.textContent = !status.available ? 'Bluetooth недоступен на этом устройстве'
+    : !permitted ? 'Нужно разрешение Bluetooth'
+    : !status.enabled ? 'Bluetooth выключен'
+    : status.listening ? `Принимаю подключения как «${status.name || 'LIBO'}»` : 'Готов к подключению';
+  $('#bt-enable').checked = !!state.settings.bluetooth;
+  $('#bt-scan').textContent = bt.scanning ? 'Поиск…' : 'Найти устройства';
+  $('#bt-scan').classList.toggle('scanning', bt.scanning);
+  const list = $('#bt-devices'); list.innerHTML = '';
+  const devices = [...bt.devices.values()].sort((a, b) => (b.bonded ? 1 : 0) - (a.bonded ? 1 : 0) || a.name.localeCompare(b.name, 'ru'));
+  if (!devices.length) { const empty = document.createElement('p'); empty.className = 'privacy-caption align-left'; empty.textContent = bt.scanning ? 'Ищу устройства рядом… На втором телефоне откройте этот экран и нажмите «Сделать видимым».' : 'Список пуст. Нажмите «Найти устройства».'; list.appendChild(empty); }
+  for (const device of devices) {
+    const row = document.createElement('button'); row.type = 'button'; row.className = 'bt-device';
+    row.innerHTML = `<span class="avatar mint">${svg('bluetooth')}</span><span class="bt-device-text"><strong></strong><small></small></span><span class="bt-connect">Подключить</span>`;
+    row.querySelector('strong').textContent = device.name || 'Без имени';
+    row.querySelector('small').textContent = `${device.address}${device.bonded ? ' · сопряжено' : ''}`;
+    row.onclick = () => { if (bt.connect(device.address)) { row.classList.add('busy'); row.querySelector('.bt-connect').textContent = 'Подключаю…'; notify(`Подключаюсь к ${device.name || device.address}…`); } };
+    list.appendChild(row);
+  }
+  const links = $('#bt-links'); links.innerHTML = '';
+  const open = bt.connections();
+  $('#bt-links-title').hidden = !open.length;
+  for (const connection of open) {
+    const chat = state.chats.find(item => item.id === connection.peer);
+    const row = document.createElement('div'); row.className = 'bt-link';
+    row.innerHTML = `<span class="avatar violet"></span><span class="bt-device-text"><strong></strong><small></small></span><button type="button" class="secondary-button small">Открыть чат</button><button type="button" class="icon-button" aria-label="Разорвать"></button>`;
+    row.querySelector('.avatar').textContent = initials(chat ? displayName(chat) : connection.meta.name || '?');
+    row.querySelector('strong').textContent = chat ? displayName(chat) : connection.meta.name || connection.peer;
+    row.querySelector('small').textContent = `${connection.meta.name || connection.meta.address} · ${transport.e2Status(connection.peer) ? 'сквозное шифрование' : 'рукопожатие…'}`;
+    row.querySelector('.secondary-button').onclick = () => { closeDialogs(); void openChat(connection.peer); };
+    const kill = row.querySelector('.icon-button'); kill.innerHTML = svg('close'); kill.onclick = () => connection.close();
+    links.appendChild(row);
+  }
+}
+async function setBluetoothEnabled(on) {
+  state.settings = { ...state.settings, bluetooth: on };
+  try { await store.setMeta('settings', state.settings); } catch { notify('Настройка не сохранена.', true); }
+  if (on) {
+    if (!bt.hasPermissions()) { bt.requestPermissions(); }
+    else if (!bt.start(state.profile.id)) notify('Включите Bluetooth, чтобы принимать подключения.');
+  } else bt.stop();
+  renderBluetooth();
+}
+function bindBluetooth() {
+  $('#open-bluetooth').onclick = () => { openDialog('bt-dialog'); renderBluetooth(); };
+  $('#bt-enable').onchange = event => void setBluetoothEnabled(event.target.checked);
+  $('#bt-visible').onclick = () => { if (!bt.hasPermissions()) { bt.requestPermissions(); return; } if (!state.settings.bluetooth) void setBluetoothEnabled(true); bt.discoverable(); };
+  $('#bt-scan').onclick = () => { if (bt.scanning) { bt.stopScan(); renderBluetooth(); return; } if (!state.settings.bluetooth) void setBluetoothEnabled(true); bt.scan(); };
+  $('#bt-dialog').addEventListener('close', () => bt?.stopScan());
 }
 
 main().catch(error => {

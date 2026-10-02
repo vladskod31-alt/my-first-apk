@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MtSession } from '../web/lib/mtproto.mjs';
-import { notificationTarget, shouldSignal, Notifier } from '../web/lib/notify.mjs';
-import { normalizeBtAddress, rssiLevel, peerLabel, shortIdFromCode, BluetoothLink, BtConnection } from '../web/lib/bluetooth.mjs';
 import {
   normalizePeerCode, makePeerId, normalizeName, validatePacket, parseSignalingUrl,
   makeIceServers, textExport, MAX_TEXT, MAX_IMAGE_DATA, MAX_ATT_DATA, safeFilename, initials, toPacket, verificationCode,
@@ -207,67 +205,20 @@ test('2.8.1 packets: poll message, ttl bounds, forward label, read marker', () =
   assert.equal(validatePacket({ v: 1, type: 'mt-hello', pub: 'AAAA' }).pub, 'AAAA');
 });
 
-test('2.8.7: notification policy — background, other chat, open chat, mute, off', () => {
-  const base = { chatId: 'a', currentChatId: 'b', visible: true, muted: false, enabled: true };
-  assert.equal(notificationTarget(base), 'banner');
-  assert.equal(notificationTarget({ ...base, visible: false }), 'system');
-  assert.equal(notificationTarget({ ...base, currentChatId: 'a' }), 'none');
-  assert.equal(notificationTarget({ ...base, muted: true }), 'none');
-  assert.equal(notificationTarget({ ...base, enabled: false }), 'none');
-  assert.equal(shouldSignal({ muted: false, sound: true }), true);
-  assert.equal(shouldSignal({ muted: true, sound: true }), false);
-  assert.equal(shouldSignal({ muted: false, sound: false }), false);
-});
-
-test('2.8.7: notifier picks native first, falls back to system, counts a badge', () => {
-  const calls = [];
-  const notifier = new Notifier({
-    native: payload => { calls.push(['native', payload]); return false; },  // permission denied
-    system: payload => { calls.push(['system', payload]); return true; },
-    banner: payload => calls.push(['banner', payload]),
-  });
-  assert.equal(notifier.push({ target: 'system', title: 'Аня', text: 'привіт' }), 'system');
-  assert.equal(notifier.badge, 1);
-  assert.deepEqual(calls.map(item => item[0]), ['native', 'system']);
-  assert.equal(notifier.push({ target: 'banner', title: 'Аня', text: 'привіт', chatId: 'x' }), 'banner');
-  assert.equal(notifier.push({ target: 'none', title: 'Аня', text: 'привіт' }), 'none');
-  notifier.clear();
-  assert.equal(notifier.badge, 0);
-});
-
-test('2.8.7: bluetooth helpers validate addresses, signal bars and labels', () => {
-  assert.equal(normalizeBtAddress('aa:bb:cc:dd:ee:ff'), 'AA:BB:CC:DD:EE:FF');
-  assert.equal(normalizeBtAddress('AA:BB:CC:DD:EE:FF:00'), null);
-  assert.equal(normalizeBtAddress('libo'), null);
-  assert.equal(rssiLevel(-55), 3);
-  assert.equal(rssiLevel(-70), 2);
-  assert.equal(rssiLevel(-80), 1);
-  assert.equal(rssiLevel(-95), 0);
-  assert.equal(rssiLevel(undefined), -1);
-  assert.equal(peerLabel({ shortId: '01234567' }), 'LIBO-01234567');
-  assert.equal(peerLabel({ name: 'Pixel Ані' }), 'Pixel Ані');
-  assert.equal(peerLabel({}), 'Невідомий пристрій');
-  assert.equal(shortIdFromCode('libo-0123456789abcdef0123456789abcdef'), '01234567');
-});
-
-test('2.8.7: BluetoothLink without a bridge is unsupported and BtConnection frames packets', () => {
-  const link = new BluetoothLink(null);
-  assert.equal(link.supported, false);
-  assert.equal(link.send('AA:BB:CC:DD:EE:FF', { v: 1, type: 'hello' }), false);
-  const sent = [];
-  const fake = { btState: () => '{"supported":true}', btSendTo: (socket, text) => sent.push([socket, text]) && true };
-  const bridged = new BluetoothLink(fake);
-  assert.equal(bridged.supported, true);
-  const connection = new BtConnection(bridged, 'AA:BB:CC:DD:EE:FF', false, 7);
-  assert.equal(connection.send({ v: 1, type: 'typing', active: true }), true);
-  assert.equal(sent.length, 1);
-  assert.match(sent[0][1], /"type":"typing"/);
-  assert.equal(sent[0][0], 7);
-  // Events from the shell are parsed into protocol packets.
-  let received = null;
-  bridged.on('data', (event, packet) => { received = { event, packet }; });
-  bridged.onEvent({ type: 'data', address: 'AA:BB:CC:DD:EE:FF', socket: 7, text: '{"v":1,"type":"hello","id":"libo-0123456789abcdef0123456789abcdef","name":"Аня"}' });
-  assert.equal(received.packet.type, 'hello');
-  assert.equal(received.event.socket, 7);
-  bridged.onEvent({ type: 'data', text: 'not json' });   // ignored, no crash
+test('2.8.7 packets: e2 envelopes, hello bio, stickers, silent and spoiler flags', () => {
+  const hello = { v: 1, type: 'e2-hello', ver: 1, ik: 'a'.repeat(44), sk: 'b'.repeat(44), ek: 'c'.repeat(44), sig: 'd'.repeat(88), tok: 'x'.repeat(22), extra: 1 };
+  assert.deepEqual(validatePacket(hello), { v: 1, type: 'e2-hello', ver: 1, ik: hello.ik, sk: hello.sk, ek: hello.ek, sig: hello.sig, tok: hello.tok });
+  assert.equal(validatePacket({ ...hello, ver: 2 }), null);
+  assert.equal(validatePacket({ ...hello, ik: 'short' }), null);
+  assert.equal(validatePacket({ ...hello, tok: '<script>' }).tok, undefined);
+  assert.deepEqual(validatePacket({ v: 1, type: 'e2', h: 'h'.repeat(56), c: 'cc' }), { v: 1, type: 'e2', h: 'h'.repeat(56), c: 'cc' });
+  assert.equal(validatePacket({ v: 1, type: 'e2', h: 'h'.repeat(55), c: 'cc' }), null);
+  assert.equal(validatePacket({ v: 1, type: 'hello', id: peerId, name: 'Аня', bio: 'x'.repeat(200) }).bio.length, 70);
+  assert.equal(validatePacket({ v: 1, type: 'profile', name: 'Аня', hideSeen: true }).hideSeen, true);
+  assert.deepEqual(validatePacket({ ...message, text: '', att: { kind: 'sticker', key: 'wave' } }).att, { kind: 'sticker', key: 'wave' });
+  assert.equal(validatePacket({ ...message, text: '', att: { kind: 'sticker', key: '<svg>' } }), null);
+  assert.equal(validatePacket({ ...message, silent: true }).silent, true);
+  assert.equal(validatePacket({ ...message, spoiler: true }).spoiler, undefined, 'spoiler only applies to photos');
+  assert.equal(validatePacket({ ...message, text: '', spoiler: true, image: { data: 'data:image/png;base64,aGVsbG8=', name: 'p.png' } }).spoiler, true);
+  assert.deepEqual(validatePacket({ v: 1, type: 'ping' }), { v: 1, type: 'ping' });
 });
