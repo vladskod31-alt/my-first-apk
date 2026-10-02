@@ -1,0 +1,23 @@
+import { test, expect } from '@playwright/test';
+test('2.8.7 smoke: settings notifications + bluetooth dialog + no console errors', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('/');
+  await page.waitForSelector('#shell');
+  await page.locator('[data-dialog="settings-dialog"]').first().click();
+  await expect(page.locator('#notify-section')).toBeVisible();
+  await expect(page.locator('#keepalive-row')).toBeHidden();
+  await page.locator('#notify-test').click();
+  await page.locator('#open-bluetooth').click();
+  await expect(page.locator('#bt-dialog')).toBeVisible();
+  await expect(page.locator('#bt-unsupported')).toBeVisible();
+  await page.screenshot({ path: 'test-results/smoke-bt.png' });
+  await page.keyboard.press('Escape');
+  await page.locator('#nav-saved').click();
+  await page.locator('#message-input').fill('ripple test');
+  await page.locator('#send-button').click();
+  await expect(page.locator('.message-row').last()).toContainText('ripple test');
+  await page.screenshot({ path: 'test-results/smoke-chat.png' });
+  expect(errors).toEqual([]);
+});

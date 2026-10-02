@@ -171,6 +171,7 @@ export class Transport {
   }
 
   isOpen(id) { const conn = this.connections.get(id); return !!(conn?.open && conn.liboHello); }
+  channel(id) { const conn = this.connections.get(id); return conn?.bluetooth ? 'bluetooth' : conn ? 'webrtc' : null; }
 
   // MTProto-inspired layer: each side announces an ephemeral ECDH key once the chat is
   // hello-ready; older peers simply never answer, and the channel stays DTLS-only.
@@ -204,7 +205,7 @@ export class Transport {
     return packet;
   }
 
-  // 2.8.5 E2EE: one Double Ratchet session per WebRTC connection. Both sides send a
+  // 2.8.7 E2EE: one Double Ratchet session per WebRTC connection. Both sides send a
   // signed hello with a fresh X25519 ephemeral key; the identity keys are pinned by
   // the app (trust on first use, QR pinning when the contact came from an invitation).
   startE2(connection) {
@@ -242,7 +243,7 @@ export class Transport {
     const connection = this.connections.get(id);
     const session = connection?.e2Session;
     if (!session?.ready) return null;
-    return { fingerprint: session.fingerprint, signPk: session.remoteSignPk, canSend: session.canSend, createdAt: session.createdAt, sent: session.sentSinceRatchet, hardware: false };
+    return { fingerprint: session.fingerprint, signPk: session.remoteSignPk, canSend: session.canSend, createdAt: session.createdAt, sent: session.sentSinceRatchet, hardware: false, bluetooth: !!connection.bluetooth };
   }
 
   async dispatch(id, data, connection, decrypted = false) {
@@ -362,8 +363,10 @@ export class Transport {
     this.retryCount = 0;
     this.peer?.destroy();
     this.peer = null;
-    this.connections.clear();
-    this.attempts.clear();
-    this.mtSessions.clear();
+    // Bluetooth links (2.8.7) live outside the signalling server: a reconnect of the
+    // WebRTC peer must not drop a working radio channel.
+    for (const [id, connection] of this.connections) if (!connection.bluetooth) this.connections.delete(id);
+    for (const [id, connection] of this.attempts) if (!connection.bluetooth) this.attempts.delete(id);
+    for (const id of this.mtSessions.keys()) if (!this.connections.has(id)) this.mtSessions.delete(id);
   }
 }

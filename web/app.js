@@ -1,6 +1,7 @@
 import qrcode from 'qrcode-generator';
 import { Store } from './lib/storage.mjs';
 import { Transport } from './lib/transport.mjs';
+import { BluetoothManager } from './lib/bluetooth.mjs';
 import {
   APK_URL, VERSION, MAX_TEXT, MAX_IMAGE_DATA, MAX_MESSAGES, MAX_CHATS,
   FEATURES,
@@ -28,7 +29,7 @@ const state = {
   typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
   lastSeen: new Map(), recording: null, archiveNotice: false,
   folderTab: '', selection: null, ttl: 0, highlight: null,
-  // 2.8.5
+  // 2.8.7
   identity: null, pairToken: null, scheduleAt: 0, silent: false, spoiler: false,
   unreadFrom: null, newBelow: 0, voiceRate: 1, lastActivity: Date.now(), locked: false,
 };
@@ -38,6 +39,9 @@ const lastSent = new Map();
 const timeFormat = new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' });
 const dateFormat = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long' });
 let toastTimer;
+let foreground = true;           // Android activity visibility (2.8.7 notifications)
+let bt = null;                   // Bluetooth P2P manager (Android only)
+let pendingOpenChat = null;
 let unlockResolve;
 let typingSentAt = 0;
 let confirmAction = null;
@@ -130,6 +134,7 @@ const transport = new Transport({
           renderMessages(); renderHeader(); sendReadReceipt(id);
         }
         if (!packet.silent) playMessageSound(id);
+        if (!packet.silent && (!foreground || document.hidden || state.current !== id)) pushNotification(id, packet);
       }
     } catch (error) {
       transport.closeContact(id);
@@ -426,7 +431,7 @@ function renderHeaderNow() {
   if (chat.id === 'saved') presence.textContent = 'Личное пространство · только на этом устройстве';
   else if (state.typing.get(chat.id) > Date.now()) { presence.innerHTML = 'печатает<span class="typing-dots"><i></i><i></i><i></i></span>'; }
   else if (chat.request) presence.textContent = 'Новый запрос на общение';
-  else if (transport.isOpen(chat.id)) presence.textContent = e2 ? 'В сети · сквозное шифрование' : 'В сети · прямое соединение';
+  else if (transport.isOpen(chat.id)) presence.textContent = transport.channel(chat.id) === 'bluetooth' ? (e2 ? 'Рядом · Bluetooth · сквозное шифрование' : 'Рядом · Bluetooth') : (e2 ? 'В сети · сквозное шифрование' : 'В сети · прямое соединение');
   else if (state.contactStates.get(chat.id) === 'connecting') presence.textContent = 'Ищем собеседника…';
   else if (seenAllowed && state.lastSeen.get(chat.id)) presence.textContent = `Был(а) в сети в ${timeFormat.format(new Date(state.lastSeen.get(chat.id)))}`;
   else if (!seenAllowed && state.lastSeen.get(chat.id)) presence.textContent = 'Был(а) в сети недавно';
@@ -834,7 +839,7 @@ async function toggleStar() {
 async function openSecurity() {
   const chat = activeChat();
   if (!chat || chat.id === 'saved') return;
-  $('#sec-conn').textContent = transport.isOpen(chat.id) ? 'Прямое соединение активно, трафик шифрован DTLS (WebRTC)' : 'Соединение не активно: сообщения ждут в очереди на этом устройстве';
+  $('#sec-conn').textContent = transport.isOpen(chat.id) ? (transport.channel(chat.id) === 'bluetooth' ? 'Bluetooth P2P: прямой радиоканал без интернета и серверов; поверх него — те же подписанный hello и Double Ratchet' : 'Прямое соединение активно, трафик шифрован DTLS (WebRTC)') : 'Соединение не активно: сообщения ждут в очереди на этом устройстве';
   $('#sec-code').textContent = await cachedVerify(state.profile.id, chat.id);
   $('#sec-seen').textContent = state.lastSeen.get(chat.id) ? new Date(state.lastSeen.get(chat.id)).toLocaleString('ru') : 'нет данных на этом устройстве';
   $('#sec-peer').textContent = `LIBO:${chat.id}`;
@@ -993,6 +998,7 @@ async function openChat(id) {
   if (!state.chats.some(chat => chat.id === id)) return;
   rememberDraft();
   state.current = id;
+  window.LiboAndroid?.clearNotification?.(id);
   closeMessageActions();
   $('#shell').classList.add('chat-open');
   $('#welcome').hidden = true;
@@ -1041,6 +1047,7 @@ async function sendMessage(event) {
   const id = chat.id;
   const attachment = state.attachment;
   const scheduled = id !== 'saved' && state.scheduleAt > Date.now();
+  const sendButton = $('#send-button'); sendButton.classList.remove('sent'); void sendButton.offsetWidth; sendButton.classList.add('sent');
   const message = {
     id: crypto.randomUUID(), text,
     image: attachment?.kind === 'photo' ? { data: attachment.data, name: attachment.name } : null,
@@ -1242,6 +1249,11 @@ function populateSettings() {
   $('#biometric-row').hidden = !(window.LiboAndroid?.biometricAvailable?.());
   $('#biometric-enabled').checked = !!state.settings.biometric;
   $('#sound-enabled').checked = state.settings.sound;
+  $('#notify-enabled').checked = state.settings.notify !== false;
+  $('#notify-text').checked = state.settings.notifyText !== false;
+  $('#keepalive-enabled').checked = !!state.settings.keepAlive;
+  $('#keepalive-row').hidden = !window.LiboAndroid?.setKeepAlive;
+  $('#notify-state').textContent = notificationState();
   $('#wall-select').value = WALLPAPERS.includes(state.settings.wall) ? state.settings.wall : 'plain';
   const lock = lockState();
   $('#lock-state').value = lock ? 'Включён' : 'Выключен';
@@ -1267,6 +1279,7 @@ async function saveSettings(event) {
     font: FONT_SIZES.includes($('#font-select').value) ? $('#font-select').value : 'normal',
     autolock: Number($('#autolock-select').value) || 0,
     biometric: $('#biometric-enabled').checked,
+    notify: $('#notify-enabled').checked, notifyText: $('#notify-text').checked, keepAlive: $('#keepalive-enabled').checked,
     privacy: { lastSeen: $('#privacy-seen').checked, readReceipts: $('#privacy-read').checked, typing: $('#privacy-typing').checked },
     signalUrl: $('#signal-url').value.trim(), turnUrl: $('#turn-url').value.trim(),
     turnUser: $('#turn-user').value.trim(), turnPassword: $('#turn-password').value,
@@ -1282,6 +1295,8 @@ async function saveSettings(event) {
     $('#profile-button').textContent = initials(name);
     applyTheme(); applyWall(); applyFont(); rememberUi();
     transport.updateSettings(settings);
+    window.LiboAndroid?.setKeepAlive?.(!!settings.keepAlive);
+    if (settings.notify !== false) requestNotificationPermission();
     if (reconnect) {
       state.contactStates.clear();
       transport.start(profile, settings);
@@ -1683,6 +1698,23 @@ function handleBack() {
 }
 
 function bindEvents() {
+  // 2.8.7 ripple: a transient circle at the pointer position on tappable surfaces.
+  const rippleHosts = '.primary-button, .secondary-button, .icon-button, .send-button, .chat-row, .settings-action, .filter, .folder-tab, .dropdown-menu button, .message-actions button, .theme-options button, .bt-device, .emoji-picker button, .sticker-pick';
+  document.addEventListener('pointerdown', event => {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const host = event.target.closest(rippleHosts);
+    if (!host || host.disabled) return;
+    const rect = host.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    ripple.style.cssText = `width:${size}px;height:${size}px;left:${event.clientX - rect.left - size / 2}px;top:${event.clientY - rect.top - size / 2}px`;
+    host.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
+    setTimeout(() => ripple.remove(), 700);
+  }, { passive: true });
+  bindBluetooth();
+  $('#notify-test').onclick = testNotification;
   document.addEventListener('click', event => {
     const dialogButton = event.target.closest('[data-dialog]');
     if (dialogButton) { openDialog(dialogButton.dataset.dialog); return; }
@@ -2044,6 +2076,9 @@ function bindEvents() {
   });
   window.Libo = {
     handleBack,
+    openChatById: id => { if (state.chats.some(chat => chat.id === id)) { void openChat(id); } else pendingOpenChat = id; },
+    onForeground: visible => { foreground = !!visible; if (visible && state.current) window.LiboAndroid?.clearNotification?.(state.current); },
+    onNotificationPermission: granted => { $('#notify-state').textContent = notificationState(); if (!granted) notify('Уведомления отключены в системе. Разрешите их в настройках Android.', true); },
     onExportSaved: () => notify('Экспорт сохранён'),
     onBiometric: ok => { if (ok && state.locked) { sessionStorage.removeItem('libo-lock-fails'); unlockResolve?.(); } else if (!ok && state.locked) notify('Биометрия не подтверждена. Введите PIN.', true); },
   };
@@ -2133,10 +2168,124 @@ async function main() {
   window.LiboAndroid?.setSecureScreen?.(true);
   await showLock();
   transport.start(state.profile, state.settings);
+  bt = new BluetoothManager({ transport, onChange: () => { renderBluetooth(); renderHeader(); renderSidebar(); }, onDevices: renderBluetooth, onToast: notify });
+  window.LiboBT = { onEvent: event => bt.onEvent(event) };
+  if (state.settings.bluetooth && bt.supported && bt.hasPermissions()) bt.start(state.profile.id);
+  if (state.settings.keepAlive) window.LiboAndroid?.setKeepAlive?.(true);
+  if (state.settings.notify !== false && window.LiboAndroid?.notificationsEnabled && !window.LiboAndroid.notificationsEnabled()) requestNotificationPermission();
+  if (pendingOpenChat) { const id = pendingOpenChat; pendingOpenChat = null; window.Libo.openChatById(id); }
   setInterval(retryConnections, 6000);
   setInterval(() => void releaseScheduled(), 5000);
   setInterval(checkAutoLock, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkAutoLock(); });
+}
+
+// ---- 2.8.7 notifications ----------------------------------------------------------
+function notificationState() {
+  if (window.LiboAndroid?.notificationsEnabled) return window.LiboAndroid.notificationsEnabled() ? 'Разрешены системой' : 'Запрещены в системе — нажмите «Проверить»';
+  if (!('Notification' in window)) return 'Браузер не поддерживает уведомления';
+  return Notification.permission === 'granted' ? 'Разрешены браузером' : Notification.permission === 'denied' ? 'Запрещены в браузере' : 'Нужно разрешение — нажмите «Проверить»';
+}
+function requestNotificationPermission() {
+  if (window.LiboAndroid?.requestNotifications) { window.LiboAndroid.requestNotifications(); return; }
+  if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission().then(() => { $('#notify-state').textContent = notificationState(); });
+}
+function notificationBody(packet) {
+  if (state.settings.notifyText === false) return 'Новое сообщение';
+  if (packet.image) return '📷 Фотография';
+  if (packet.att?.kind === 'voice') return '🎤 Голосовое сообщение';
+  if (packet.att?.kind === 'sticker') return 'Стикер';
+  if (packet.att?.kind === 'poll') return `📊 ${packet.att.q || 'Опрос'}`;
+  const text = String(packet.text || '').replace(/\s+/g, ' ').trim();
+  return text.length > 160 ? `${text.slice(0, 157)}…` : text || 'Новое сообщение';
+}
+function pushNotification(id, packet) {
+  if (state.settings.notify === false) return;
+  const chat = state.chats.find(item => item.id === id);
+  if (!chat || chat.muted) return;
+  const title = displayName(chat);
+  const body = notificationBody(packet);
+  if (window.LiboAndroid?.showNotification) { window.LiboAndroid.showNotification(id, title, body, chat.unread || 1); return; }
+  if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+    try {
+      const shown = new Notification(title, { body, tag: `libo-${id}`, icon: './icon-192.png', badge: './icon-192.png', renotify: true });
+      shown.onclick = () => { window.focus(); void openChat(id); shown.close(); };
+    } catch { /* some WebViews throw on the constructor */ }
+  }
+}
+function testNotification() {
+  if (window.LiboAndroid?.showNotification) {
+    if (!window.LiboAndroid.notificationsEnabled()) { requestNotificationPermission(); notify('Разрешите уведомления и нажмите ещё раз'); return; }
+    window.LiboAndroid.showNotification('saved', 'LIBO: проверка уведомлений', 'Если вы видите это — уведомления работают. Сверните приложение: сообщения будут приходить так же.', 1);
+    notify('Тестовое уведомление отправлено');
+    return;
+  }
+  if (!('Notification' in window)) { notify('Этот браузер не поддерживает уведомления', true); return; }
+  if (Notification.permission !== 'granted') { requestNotificationPermission(); return; }
+  try { new Notification('LIBO: проверка уведомлений', { body: 'Уведомления работают', icon: './icon-192.png' }); notify('Тестовое уведомление отправлено'); }
+  catch { notify('Браузер не показал уведомление', true); }
+}
+
+// ---- 2.8.7 Bluetooth P2P ----------------------------------------------------------
+function renderBluetooth() {
+  const dialog = $('#bt-dialog');
+  if (!dialog?.open || !bt) return;
+  const status = bt.status();
+  const stateEl = $('#bt-state');
+  const unsupported = !bt.supported;
+  $('#bt-unsupported').hidden = !unsupported;
+  $('#bt-controls').hidden = unsupported;
+  if (unsupported) return;
+  const permitted = bt.hasPermissions();
+  stateEl.className = `bt-state ${status.listening ? 'on' : ''}`;
+  stateEl.textContent = !status.available ? 'Bluetooth недоступен на этом устройстве'
+    : !permitted ? 'Нужно разрешение Bluetooth'
+    : !status.enabled ? 'Bluetooth выключен'
+    : status.listening ? `Принимаю подключения как «${status.name || 'LIBO'}»` : 'Готов к подключению';
+  $('#bt-enable').checked = !!state.settings.bluetooth;
+  $('#bt-scan').textContent = bt.scanning ? 'Поиск…' : 'Найти устройства';
+  $('#bt-scan').classList.toggle('scanning', bt.scanning);
+  const list = $('#bt-devices'); list.innerHTML = '';
+  const devices = [...bt.devices.values()].sort((a, b) => (b.bonded ? 1 : 0) - (a.bonded ? 1 : 0) || a.name.localeCompare(b.name, 'ru'));
+  if (!devices.length) { const empty = document.createElement('p'); empty.className = 'privacy-caption align-left'; empty.textContent = bt.scanning ? 'Ищу устройства рядом… На втором телефоне откройте этот экран и нажмите «Сделать видимым».' : 'Список пуст. Нажмите «Найти устройства».'; list.appendChild(empty); }
+  for (const device of devices) {
+    const row = document.createElement('button'); row.type = 'button'; row.className = 'bt-device';
+    row.innerHTML = `<span class="avatar mint">${svg('bluetooth')}</span><span class="bt-device-text"><strong></strong><small></small></span><span class="bt-connect">Подключить</span>`;
+    row.querySelector('strong').textContent = device.name || 'Без имени';
+    row.querySelector('small').textContent = `${device.address}${device.bonded ? ' · сопряжено' : ''}`;
+    row.onclick = () => { if (bt.connect(device.address)) { row.classList.add('busy'); row.querySelector('.bt-connect').textContent = 'Подключаю…'; notify(`Подключаюсь к ${device.name || device.address}…`); } };
+    list.appendChild(row);
+  }
+  const links = $('#bt-links'); links.innerHTML = '';
+  const open = bt.connections();
+  $('#bt-links-title').hidden = !open.length;
+  for (const connection of open) {
+    const chat = state.chats.find(item => item.id === connection.peer);
+    const row = document.createElement('div'); row.className = 'bt-link';
+    row.innerHTML = `<span class="avatar violet"></span><span class="bt-device-text"><strong></strong><small></small></span><button type="button" class="secondary-button small">Открыть чат</button><button type="button" class="icon-button" aria-label="Разорвать"></button>`;
+    row.querySelector('.avatar').textContent = initials(chat ? displayName(chat) : connection.meta.name || '?');
+    row.querySelector('strong').textContent = chat ? displayName(chat) : connection.meta.name || connection.peer;
+    row.querySelector('small').textContent = `${connection.meta.name || connection.meta.address} · ${transport.e2Status(connection.peer) ? 'сквозное шифрование' : 'рукопожатие…'}`;
+    row.querySelector('.secondary-button').onclick = () => { closeDialogs(); void openChat(connection.peer); };
+    const kill = row.querySelector('.icon-button'); kill.innerHTML = svg('close'); kill.onclick = () => connection.close();
+    links.appendChild(row);
+  }
+}
+async function setBluetoothEnabled(on) {
+  state.settings = { ...state.settings, bluetooth: on };
+  try { await store.setMeta('settings', state.settings); } catch { notify('Настройка не сохранена.', true); }
+  if (on) {
+    if (!bt.hasPermissions()) { bt.requestPermissions(); }
+    else if (!bt.start(state.profile.id)) notify('Включите Bluetooth, чтобы принимать подключения.');
+  } else bt.stop();
+  renderBluetooth();
+}
+function bindBluetooth() {
+  $('#open-bluetooth').onclick = () => { openDialog('bt-dialog'); renderBluetooth(); };
+  $('#bt-enable').onchange = event => void setBluetoothEnabled(event.target.checked);
+  $('#bt-visible').onclick = () => { if (!bt.hasPermissions()) { bt.requestPermissions(); return; } if (!state.settings.bluetooth) void setBluetoothEnabled(true); bt.discoverable(); };
+  $('#bt-scan').onclick = () => { if (bt.scanning) { bt.stopScan(); renderBluetooth(); return; } if (!state.settings.bluetooth) void setBluetoothEnabled(true); bt.scan(); };
+  $('#bt-dialog').addEventListener('close', () => bt?.stopScan());
 }
 
 main().catch(error => {

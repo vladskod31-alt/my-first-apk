@@ -1,6 +1,13 @@
 package app.libo.messenger;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.pm.PackageManager;
+import org.json.JSONObject;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
@@ -65,6 +72,9 @@ public final class MainActivity extends Activity {
     private FrameLayout root;
     private ValueCallback<Uri[]> photoCallback;
     private byte[] pendingExport;
+    private BluetoothLinks bluetooth;
+    private static final String MESSAGES_CHANNEL = "libo-messages";
+    private static final int REQUEST_NOTIFICATIONS = 220;
 
     @Override
     @SuppressLint("SetJavaScriptEnabled") // Required by the bundled messenger; arbitrary remote pages are never loaded.
@@ -115,7 +125,54 @@ public final class MainActivity extends Activity {
                 return true;
             }
         });
+        bluetooth = new BluetoothLinks(this, new BluetoothLinks.Sink() {
+            @Override public void emit(JSONObject event) { dispatchJs("window.LiboBT && window.LiboBT.onEvent(" + event + ")"); }
+        });
         webView.loadUrl(ORIGIN + "/index.html");
+        pendingChat = chatFromIntent(getIntent());
+    }
+
+    private String pendingChat;
+    private static String chatFromIntent(Intent intent) {
+        String chat = intent == null ? null : intent.getStringExtra("libo.chat");
+        return chat != null && chat.matches("^[a-z0-9-]{1,48}$") ? chat : null;
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String chat = chatFromIntent(intent);
+        if (chat != null) dispatchJs("window.Libo && window.Libo.openChatById(" + JSONObject.quote(chat) + ")");
+    }
+
+    /** Runs JS on the UI thread; the WebView may already be gone during shutdown. */
+    private void dispatchJs(final String script) {
+        runOnUiThread(new Runnable() { @Override public void run() {
+            if (webView != null) webView.evaluateJavascript(script, null);
+        }});
+    }
+
+    private void ensureMessagesChannel() {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager.getNotificationChannel(MESSAGES_CHANNEL) != null) return;
+        NotificationChannel channel = new NotificationChannel(MESSAGES_CHANNEL, "Сообщения", NotificationManager.IMPORTANCE_HIGH);
+        channel.setDescription("Новые сообщения LIBO");
+        channel.enableVibration(true);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+        manager.createNotificationChannel(channel);
+    }
+
+    private boolean notificationsAllowed() {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false;
+        return getSystemService(NotificationManager.class).areNotificationsEnabled();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(request, permissions, results);
+        boolean granted = results.length > 0;
+        for (int result : results) granted &= result == PackageManager.PERMISSION_GRANTED;
+        if (request == REQUEST_NOTIFICATIONS) dispatchJs("window.Libo && window.Libo.onNotificationPermission(" + granted + ")");
+        if (request == BluetoothLinks.REQUEST_PERMISSIONS) dispatchJs("window.LiboBT && window.LiboBT.onEvent({ev:'perm',granted:" + granted + "})");
     }
 
     private void installInsets() {
@@ -346,6 +403,101 @@ public final class MainActivity extends Activity {
                 }
             }});
         }
+
+        // ---- 2.8.7 notifications ---------------------------------------------------
+        @JavascriptInterface
+        public boolean notificationsEnabled() { return notificationsAllowed(); }
+
+        @JavascriptInterface
+        public void requestNotifications() {
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+            } else dispatchJs("window.Libo && window.Libo.onNotificationPermission(" + notificationsAllowed() + ")");
+        }
+
+        /** Shows a message notification. Text is optional (privacy setting); the lock screen shows only the title. */
+        @JavascriptInterface
+        public void showNotification(String chatId, String title, String body, int count) {
+            if (chatId == null || !chatId.matches("^[a-z0-9-]{1,48}$") || title == null) return;
+            if (!notificationsAllowed()) return;
+            final String safeTitle = title.length() > 80 ? title.substring(0, 80) : title;
+            final String safeBody = body == null ? "" : body.length() > 400 ? body.substring(0, 400) : body;
+            runOnUiThread(new Runnable() { @Override public void run() {
+                ensureMessagesChannel();
+                Intent open = new Intent(MainActivity.this, MainActivity.class)
+                        .setAction("app.libo.OPEN_CHAT").setData(Uri.parse("libo://chat/" + chatId))
+                        .putExtra("libo.chat", chatId)
+                        .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                PendingIntent tap = PendingIntent.getActivity(MainActivity.this, chatId.hashCode(), open,
+                        PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                Notification publicVersion = new Notification.Builder(MainActivity.this, MESSAGES_CHANNEL)
+                        .setSmallIcon(R.drawable.ic_notification).setContentTitle("LIBO").setContentText("Новое сообщение").build();
+                Notification.Builder builder = new Notification.Builder(MainActivity.this, MESSAGES_CHANNEL)
+                        .setSmallIcon(R.drawable.ic_notification)
+                        .setColor(0xFF6D28D9)
+                        .setContentTitle(safeTitle)
+                        .setContentText(safeBody)
+                        .setStyle(new Notification.BigTextStyle().bigText(safeBody))
+                        .setCategory(Notification.CATEGORY_MESSAGE)
+                        .setAutoCancel(true)
+                        .setContentIntent(tap)
+                        .setVisibility(Notification.VISIBILITY_PRIVATE)
+                        .setPublicVersion(publicVersion)
+                        .setOnlyAlertOnce(false);
+                if (count > 1) builder.setNumber(count);
+                getSystemService(NotificationManager.class).notify(chatId, 1000, builder.build());
+            }});
+        }
+
+        @JavascriptInterface
+        public void clearNotification(String chatId) {
+            if (chatId == null) return;
+            getSystemService(NotificationManager.class).cancel(chatId, 1000);
+        }
+
+        @JavascriptInterface
+        public void setKeepAlive(boolean on) {
+            Intent service = new Intent(MainActivity.this, KeepAliveService.class);
+            try {
+                if (on) startForegroundService(service); else stopService(service);
+            } catch (Exception ignored) { }
+        }
+
+        // ---- 2.8.7 Bluetooth P2P ---------------------------------------------------
+        @JavascriptInterface
+        public String btStatus() { return bluetooth == null ? "{}" : bluetooth.status().toString(); }
+
+        @JavascriptInterface
+        public boolean btHasPermissions() { return bluetooth != null && bluetooth.available() && bluetooth.hasPermissions(); }
+
+        @JavascriptInterface
+        public void btRequestPermissions() {
+            if (bluetooth != null && bluetooth.available()) runOnUiThread(new Runnable() { @Override public void run() { bluetooth.requestPermissions(); }});
+        }
+
+        @JavascriptInterface
+        public boolean btStart(String myId) { return bluetooth != null && bluetooth.start(myId); }
+
+        @JavascriptInterface
+        public void btDiscoverable() { if (bluetooth != null) runOnUiThread(new Runnable() { @Override public void run() { bluetooth.makeDiscoverable(); }}); }
+
+        @JavascriptInterface
+        public boolean btScan() { return bluetooth != null && bluetooth.scan(); }
+
+        @JavascriptInterface
+        public void btStopScan() { if (bluetooth != null) bluetooth.stopScan(); }
+
+        @JavascriptInterface
+        public boolean btConnect(String address) { return bluetooth != null && bluetooth.connect(address); }
+
+        @JavascriptInterface
+        public boolean btSend(int link, String json) { return bluetooth != null && bluetooth.send(link, json); }
+
+        @JavascriptInterface
+        public void btClose(int link) { if (bluetooth != null) bluetooth.close(link); }
+
+        @JavascriptInterface
+        public void btStop() { if (bluetooth != null) bluetooth.stop(); }
     }
 
     private SecretKey vaultKey(boolean create) throws Exception {
@@ -391,6 +543,10 @@ public final class MainActivity extends Activity {
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (request == CONFIRM_CREDENTIAL) { reportBiometric(result == RESULT_OK); return; }
+        if (request == BluetoothLinks.REQUEST_ENABLE || request == BluetoothLinks.REQUEST_DISCOVERABLE) {
+            dispatchJs("window.LiboBT && window.LiboBT.onEvent({ev:'resumed',request:" + request + ",result:" + result + "})");
+            return;
+        }
         if (request == PICK_PHOTO && photoCallback != null) {
             Uri uri = result == RESULT_OK && data != null ? data.getData() : null;
             photoCallback.onReceiveValue(uri == null ? null : new Uri[]{uri});
@@ -423,15 +579,23 @@ public final class MainActivity extends Activity {
         });
     }
 
-    @Override protected void onPause() {
-        super.onPause();
-        if (webView != null) webView.onPause();
-    }
+    // The WebView keeps running while the app is in the background: that is what lets the
+    // transport receive messages and raise notifications (2.8.7). Timers are not paused.
     @Override protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
+        if (pendingChat != null) {
+            final String chat = pendingChat; pendingChat = null;
+            dispatchJs("window.Libo && window.Libo.openChatById(" + JSONObject.quote(chat) + ")");
+        }
+        dispatchJs("window.Libo && window.Libo.onForeground && window.Libo.onForeground(true)");
+    }
+    @Override protected void onStop() {
+        super.onStop();
+        dispatchJs("window.Libo && window.Libo.onForeground && window.Libo.onForeground(false)");
     }
     @Override protected void onDestroy() {
+        if (bluetooth != null) { bluetooth.stop(); bluetooth = null; }
         if (photoCallback != null) { photoCallback.onReceiveValue(null); photoCallback = null; }
         pendingExport = null;
         if (webView != null) {

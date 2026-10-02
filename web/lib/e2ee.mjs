@@ -1,4 +1,4 @@
-// LIBO E2EE layer (2.8.5).
+// LIBO E2EE layer (2.8.7).
 //
 // Primitives come from the audited @noble libraries; nothing here is home-grown
 // cryptography. The construction follows the public Signal specifications:

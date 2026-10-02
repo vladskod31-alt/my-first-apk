@@ -1,5 +1,5 @@
-export const VERSION = '2.8.5';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.5/downloads/LIBO-2.8.5.apk';
+export const VERSION = '2.8.7';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.7/downloads/LIBO-2.8.7.apk';
 // 2.8.1: the in-app interface no longer mentions code hosting; the About screen
 // describes the product, its version and its feature set instead.
 export const FEATURES = {
@@ -13,7 +13,7 @@ export const FEATURES = {
   multiselect: 'Мультивыбор: пакетное удаление для обоих и пересылка нескольких сообщений.',
   search: 'Глобальный поиск по чатам и сообщениям с переходом к найденному.',
   mute: 'Без звука для отдельного контакта — значок в списке чатов.',
-  // 2.8.5: E2EE architecture and twenty Telegram-style additions.
+  // 2.8.7: E2EE architecture and twenty Telegram-style additions.
   e2ee: 'Сквозное шифрование: X25519 + Ed25519, Double Ratchet, ChaCha20-Poly1305; номер безопасности и контроль смены ключа.',
   vault: 'Зашифрованное хранилище: история и ключи устройства под AES-256-GCM, ключ — в Android Keystore.',
   format: 'Форматирование текста: **жирный**, __курсив__, `моно`, ~~зачёркнутый~~.',
@@ -315,7 +315,7 @@ export function toPacket(message) {
   return packet;
 }
 
-// 2.8.5 text formatting (Telegram-style markdown subset) rendered to a safe DOM
+// 2.8.7 text formatting (Telegram-style markdown subset) rendered to a safe DOM
 // fragment: **bold**, __italic__, `mono`, ~~strike~~, ||spoiler||. Nothing is parsed
 // as HTML; every literal chunk becomes a text node.
 const FORMAT_RE = /(\*\*(.+?)\*\*|__(.+?)__|`([^`]+?)`|~~(.+?)~~|\|\|(.+?)\|\|)/gs;

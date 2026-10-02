@@ -711,3 +711,105 @@ button:not(:disabled):active, .settings-action:active, .chat-row:active { transf
   .text-field:focus, #message-input:focus { box-shadow: 0 0 0 3px #7850df2e; }
   .lock-screen { background: var(--bg); }
 }
+
+/* ===================================================================== */
+/* 2.8.7 — rounder surfaces, ripple buttons, richer motion, Bluetooth UI  */
+/* ===================================================================== */
+:root { --r-xs: 10px; --r-sm: 14px; --r-md: 18px; --r-lg: 24px; --r-xl: 30px; }
+@keyframes libo-ripple { to { transform: scale(2.6); opacity: 0; } }
+@keyframes libo-glow { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 16%, transparent); } }
+@keyframes libo-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes libo-sent { 0% { transform: translateX(0) scale(1); } 40% { transform: translateX(6px) scale(.9) rotate(-10deg); } 100% { transform: translateX(0) scale(1); } }
+@keyframes libo-scan { 0% { background-position: 0 0; } 100% { background-position: 60px 0; } }
+@keyframes libo-radar { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(1.8); opacity: 0; } }
+@keyframes libo-check { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@keyframes libo-welcome { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* Rounder everything. */
+.rail-button { border-radius: 16px; }
+.icon-button { border-radius: 13px; }
+.search-box { border-radius: 14px; }
+.filter { border-radius: 11px; }
+.chat-row { border-radius: 18px; }
+.avatar { border-radius: 18px; }
+.unread-badge { border-radius: 9px; }
+.primary-button, .secondary-button { border-radius: 16px; }
+.send-button { border-radius: 14px; }
+.composer { border-radius: 22px; padding: 9px 9px 9px 12px; }
+.message-bubble { border-radius: 20px 20px 20px 6px; }
+.message-row.outgoing .message-bubble { border-radius: 20px 20px 6px 20px; }
+.message-photo { border-radius: 14px; }
+.dropdown-menu, .message-actions, .emoji-picker, .send-options { border-radius: 20px; padding: 8px; }
+.dropdown-menu button, .message-actions button { border-radius: 12px; }
+.dialog { border-radius: 28px; padding: 30px; }
+.text-field { border-radius: 14px; }
+.notice { border-radius: 16px; }
+.qr-card { border-radius: 24px; }
+.personal-code { border-radius: 14px; }
+.theme-options button { border-radius: 13px; }
+.folder-tab { border-radius: 14px; }
+.toast { border-radius: 18px; }
+.modal-icon { border-radius: 16px; }
+.scroll-bottom { border-radius: 50%; }
+.reaction-chip { border-radius: 14px; }
+.pinned-bar, .reply-bar, .request-bar, .keychange-bar, .attachment-preview { border-radius: 16px; }
+.chat-header { border-radius: 0 0 24px 24px; }
+@media (max-width: 760px) { .dialog { border-radius: 26px 26px 0 0; } .chat-header { border-radius: 0 0 20px 20px; } }
+
+/* Ripple (added by app.js on pointerdown). */
+.primary-button, .secondary-button, .icon-button, .send-button, .chat-row, .settings-action, .filter, .folder-tab, .dropdown-menu button, .message-actions button, .theme-options button, .bt-device, .emoji-picker button, .sticker-pick { position: relative; overflow: hidden; isolation: isolate; }
+.ripple { position: absolute; border-radius: 50%; pointer-events: none; transform: scale(0); opacity: .35; background: currentColor; animation: libo-ripple .55s var(--ease) forwards; z-index: -1; }
+.primary-button .ripple, .send-button .ripple { background: #fff; opacity: .45; }
+
+/* Button life. */
+.primary-button { letter-spacing: .2px; }
+.primary-button:not(:disabled):focus-visible, .send-button:not(:disabled):focus-visible { animation: libo-glow 1.4s ease-out infinite; }
+.send-button.sent { animation: libo-sent .45s var(--spring); }
+.rail-button:hover { color: var(--accent-text); background: var(--accent-soft); }
+.rail-button.active { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent); }
+.icon-button:active svg { transform: scale(.85); }
+.secondary-button:active, .settings-action:active { background: var(--accent-soft); }
+.settings-action svg:last-child { transition: transform .2s var(--spring); }
+.settings-action:hover svg:last-child { transform: translateX(4px); }
+.theme-options button { transition: transform .18s var(--spring), background-color .18s, border-color .18s; }
+.theme-options button:hover { transform: translateY(-2px); }
+.theme-options button.active { transform: scale(1.03); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 18%, transparent); }
+.switch { transition: background-color .22s var(--ease), box-shadow .22s; }
+.setting-row:hover .switch { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent); }
+.filter.active, .folder-tab.active { animation: libo-pop .25s var(--spring); }
+.chat-row.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent); }
+.chat-row .avatar { box-shadow: 0 4px 10px #2a1f4a12; }
+.message-status svg path, .message-status svg polyline { stroke-dasharray: 24; }
+.message-status.read svg path, .message-status.read svg polyline { animation: libo-check .4s var(--ease) both; }
+.welcome-content { animation: libo-welcome .5s var(--ease) both; }
+.welcome-actions .primary-button { animation: libo-float 3.5s ease-in-out infinite; }
+.welcome-actions .primary-button:hover { animation-play-state: paused; }
+.modal-icon { animation: libo-pop .4s var(--spring) both; }
+.e2-badge svg { animation: libo-pop .4s var(--spring) both; }
+.composer:focus-within { box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.composer { transition: box-shadow .25s var(--ease), border-color .25s; }
+.dialog[open] { animation: libo-dialog .32s var(--spring) both; }
+
+/* Bluetooth dialog. */
+.bt-state { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 650; color: var(--secondary); padding: 8px 12px; border-radius: 14px; background: var(--surface); margin: 4px 0 2px; }
+.bt-state:before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.bt-state.on:before { background: #22c55e; box-shadow: 0 0 0 3px #22c55e33; animation: libo-glow 2s infinite; }
+.bt-devices, .bt-links { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
+.bt-device, .bt-link { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 18px; border: 1px solid var(--line); background: var(--panel); text-align: left; width: 100%; animation: libo-pop .3s var(--spring) both; }
+.bt-device:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: var(--surface); }
+.bt-device .avatar, .bt-link .avatar { width: 38px; height: 38px; border-radius: 14px; font-size: 14px; }
+.bt-device .avatar svg { width: 18px; height: 18px; }
+.bt-device-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.bt-device-text strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt-device-text small { font-size: 9.5px; color: var(--muted); }
+.bt-connect { font-size: 10.5px; font-weight: 700; color: var(--accent-text); white-space: nowrap; }
+.bt-device.busy .bt-connect { opacity: .6; }
+.bt-device.busy .avatar { position: relative; }
+.bt-device.busy .avatar:after { content: ''; position: absolute; inset: 0; border-radius: inherit; border: 2px solid var(--accent); animation: libo-radar 1.2s ease-out infinite; }
+#bt-scan.scanning { background-image: repeating-linear-gradient(90deg, transparent 0 20px, #ffffff22 20px 40px); background-size: 60px 100%; animation: libo-scan 1s linear infinite; }
+.secondary-button.small { padding: 8px 12px; min-height: 34px; font-size: 10.5px; border-radius: 12px; }
+#notify-state { margin: 0; align-self: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ripple, .welcome-actions .primary-button, .modal-icon, .bt-state.on:before, #bt-scan.scanning, .bt-device.busy .avatar:after { animation: none !important; }
+}
