@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 2.8.7 splash mark: drawn inside the 66dp safe zone so the Android 12+ splash
+     icon (and the pre-31 windowBackground layer) shows the whole logo. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M43,32 H65 A13,13 0 0 1 78,45 V57 A13,13 0 0 1 65,70 H43 A13,13 0 0 1 30,57 V45 A13,13 0 0 1 43,32 Z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M40,56 V76.6 A4.2,4.2 0 0 0 45.5,79.2 L57,69.5 Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#4C1D95"
+        android:strokeWidth="6.4" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M43.6,44.6 L52.4,51 L43.6,57.4 M56.2,44.6 L65,51 L56.2,57.4" />
+    <path android:fillColor="#A3E635"
+        android:pathData="M69.6,42 m-3.7,0 a3.7,3.7 0 1 0 7.4,0 a3.7,3.7 0 1 0 -7.4,0" />
+</vector>

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-label="LIBO">
+  <rect width="108" height="108" fill="#6d28d9"/>
+  <path d="M108 0v64.8L30.2 0Z" fill="#8b5cf6"/>
+  <g fill="#5b21b6" fill-rule="evenodd">
+    <path d="M-43.2 151.2a179.3 179.3 0 1 0 0-358.6 179.3 179.3 0 0 0 0 358.6Zm0-32.4a146.9 146.9 0 1 1 0-293.8 146.9 146.9 0 0 1 0 293.8Z"/>
+    <path d="M-43.2 151.2a101.5 101.5 0 1 0 0-203 101.5 101.5 0 0 0 0 203Zm0-34.6a66.9 66.9 0 1 1 0-133.8 66.9 66.9 0 0 1 0 133.8Z"/>
+  </g>
+  <g fill="none" stroke-linecap="round">
+    <circle cx="-43.2" cy="151.2" r="183.6" stroke="#fff" stroke-width="2.2"/>
+    <circle cx="-43.2" cy="151.2" r="110.2" stroke="#c4b5fd" stroke-width="1.6"/>
+    <circle cx="-43.2" cy="151.2" r="62.6" stroke="#c4b5fd" stroke-width="1.4"/>
+  </g>
+  <rect x="30" y="32" width="48" height="38" rx="13" fill="#fff"/>
+  <path d="M40 56v20.6a4.2 4.2 0 0 0 5.5 2.6L57 69.5Z" fill="#fff"/>
+  <g fill="none" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m45.6 47 8.8 6.4-8.8 6.4m12.6-12.8 8.8 6.4-8.8 6.4" stroke="#3f6212"/>
+    <path d="m43.6 44.6 8.8 6.4-8.8 6.4m12.6-12.8 8.8 6.4-8.8 6.4" stroke="#65a30d"/>
+  </g>
+  <circle cx="69.6" cy="42" r="3.7" fill="#a3e635"/>
+</svg>

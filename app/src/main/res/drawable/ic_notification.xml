@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 2.8.7 silhouette used by the notification small icon and the splash mark:
+     a solid white bubble with the chevrons and the dot knocked out. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd"
+        android:pathData="M43,32 H65 A13,13 0 0 1 78,45 V57 A13,13 0 0 1 65,70 H43 A13,13 0 0 1 30,57 V45 A13,13 0 0 1 43,32 Z M40,56 V76.6 A4.2,4.2 0 0 0 45.5,79.2 L57,69.5 Z M43.6,41.4 A3.2,3.2 0 0 0 41.7,47.2 L47.9,51 L41.7,54.8 A3.2,3.2 0 0 0 45.5,60.2 L54.3,53.8 A3.2,3.2 0 0 0 54.3,48.2 L45.5,41.8 A3.2,3.2 0 0 0 43.6,41.4 Z M56.2,41.4 A3.2,3.2 0 0 0 54.3,47.2 L60.5,51 L54.3,54.8 A3.2,3.2 0 0 0 58.1,60.2 L66.9,53.8 A3.2,3.2 0 0 0 66.9,48.2 L58.1,41.8 A3.2,3.2 0 0 0 56.2,41.4 Z M69.6,38.3 A3.7,3.7 0 1 0 69.6,45.7 A3.7,3.7 0 0 0 69.6,38.3 Z" />
+</vector>

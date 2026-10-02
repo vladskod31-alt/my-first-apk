@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ splash screen API. The icon layer is the 2.8.7 mark drawn inside
+         the 66dp safe zone, so the system splash shows the whole logo; the previous
+         release inherited the theme and drew the broken adaptive icon on a dark
+         window, which users saw as a black screen with no logo. -->
+    <style name="AppLaunchTheme" parent="AppTheme">
+        <item name="android:windowBackground">@drawable/splash_window</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_field</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/splash_disc</item>
+        <item name="android:windowSplashScreenAnimationDuration">1000</item>
+        <item name="android:statusBarColor">@color/splash_field</item>
+        <item name="android:navigationBarColor">@color/splash_field</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>
