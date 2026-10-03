@@ -1,0 +1,44 @@
+name: Publish verified 2.8.8 assets
+
+on:
+  push:
+    branches: ['arena/01a1013d-my-first-apk']
+    paths: ['.github/workflows/publish-288.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      # Publish the exact, immutable, already signed bytes in the release tag.
+      # Do not rebuild or replace the signing identity inside this workflow.
+      - uses: actions/checkout@v4
+        with:
+          ref: v2.8.8
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify checksum, signature and package
+        run: |
+          set -euo pipefail
+          (cd downloads && sha256sum -c SHA256SUMS.txt)
+          TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$TOOLS/apksigner" verify --verbose --print-certs downloads/LIBO-2.8.8.apk | tee /tmp/signature.txt
+          grep -q '2407e225945bae942bb0408078943f3adcbeb775a94e6418be70df3d659ff96a' /tmp/signature.txt
+          "$TOOLS/zipalign" -c 4 downloads/LIBO-2.8.8.apk
+          "$TOOLS/aapt2" dump badging downloads/LIBO-2.8.8.apk | grep "name='app.libo.messenger' versionCode='20808' versionName='2.8.8'"
+          git diff --binary v2.8.7 v2.8.8 > LIBO-2.8.8.patch
+      - name: Upload verified APK, patch and reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v2.8.8 --clobber \
+            downloads/LIBO-2.8.8.apk downloads/SHA256SUMS.txt \
+            downloads/SIGNING.txt downloads/APK-INFO.txt \
+            downloads/ICON-VERIFICATION.json downloads/ICON-FROM-APK.png \
+            LIBO-2.8.8.patch
