@@ -1,0 +1,132 @@
+{
+  "apk": "LIBO-2.8.8.apk",
+  "sha256": "d40b42c4cdf64cf94ce100b4afa81dac3c4c1ef62daa0c04e3e4297de3ce6c45",
+  "checks": [
+    {
+      "path": "res/mipmap-mdpi/ic_launcher.png",
+      "size": [
+        48,
+        48
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-mdpi/ic_launcher_round.png",
+      "size": [
+        48,
+        48
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-mdpi/ic_launcher_foreground.png",
+      "size": [
+        108,
+        108
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-hdpi/ic_launcher.png",
+      "size": [
+        72,
+        72
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-hdpi/ic_launcher_round.png",
+      "size": [
+        72,
+        72
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-hdpi/ic_launcher_foreground.png",
+      "size": [
+        162,
+        162
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xhdpi/ic_launcher.png",
+      "size": [
+        96,
+        96
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xhdpi/ic_launcher_round.png",
+      "size": [
+        96,
+        96
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "size": [
+        216,
+        216
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxhdpi/ic_launcher.png",
+      "size": [
+        144,
+        144
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxhdpi/ic_launcher_round.png",
+      "size": [
+        144,
+        144
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "size": [
+        324,
+        324
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxxhdpi/ic_launcher.png",
+      "size": [
+        192,
+        192
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "size": [
+        192,
+        192
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "size": [
+        432,
+        432
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "web_icon_matches": true,
+      "dex_and_web_assets": true,
+      "launcher_references_adaptive_resource": true
+    }
+  ],
+  "device_install_tested": false
+}

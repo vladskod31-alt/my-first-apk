@@ -1,0 +1,81 @@
+name: Отчёт об ошибке
+description: Что сломалось в LIBO — версия, устройство, шаги и ожидания
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо за отчёт! Чем точнее данные ниже, тем быстрее исправление.
+        Для уязвимостей безопасности этот шаблон не используется: см. SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Версия LIBO
+      description: Номер версии из «Настройки» внизу или тег релиза
+      placeholder: 2.3.0 / v2.3.0
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Версия Android и модель устройства
+      placeholder: Android 13, Samsung A52
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Откуда установлен APK
+      options:
+        - Основная ссылка (downloads/ тега)
+        - Зеркало (release-asset)
+        - Сборка своими руками
+        - Другое (укажите в описании)
+    validations:
+      required: true
+  - type: dropdown
+    id: network
+    attributes:
+      label: Подключение
+      options:
+        - Публичный signaling и STUN (по умолчанию)
+        - Свой signaling-сервер
+        - Свой signaling и TURN
+        - Не знаю
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      value: |
+        1. Открыл(а) …
+        2. Написал(а) …
+        3. Увидел(а) …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемое поведение
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Фактическое поведение
+      description: Текст ошибки, статус соединения, что показали оба устройства
+    validations:
+      required: true
+  - type: input
+    id: checksum
+    attributes:
+      label: Контрольная сумма APK (если известна)
+      description: Помогает убедиться, что файл не повреждён при скачивании
+      placeholder: первые 16 символов SHA-256
+  - type: textarea
+    id: extra
+    attributes:
+      label: Дополнительно
+      description: Скриншоты, логиcat, частота повтора, работало ли раньше

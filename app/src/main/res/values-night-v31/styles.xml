@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night + Android 12+: same splash rules with the dark palette. Without this
+         folder a dark-mode device would resolve AppLaunchTheme from values-night
+         (which predates the splash attributes) and fall back to a plain window. -->
+    <style name="AppLaunchTheme" parent="AppTheme">
+        <item name="android:windowBackground">@drawable/splash_window</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_field</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/splash_disc</item>
+        <item name="android:windowSplashScreenAnimationDuration">1000</item>
+        <item name="android:statusBarColor">@color/splash_field</item>
+        <item name="android:navigationBarColor">@color/splash_field</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>
