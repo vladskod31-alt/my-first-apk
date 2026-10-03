@@ -41,3 +41,7 @@ adb logcat -d -s AndroidRuntime
 ```
 
 Не використовуйте `adb uninstall` до резервного копіювання: видалення знищує Keystore/ідентичність. CI debug має суфікс пакета `.beta` та інший сертифікат, ніж завантажуваний release APK.
+
+## GitHub runner
+
+Gradle `assembleDebug`, web/unit/e2e та аудит секретів підтверджені в CI. Неблокувальний Android lint **завершився кодом 1**; зелений загальний статус не означає успішний lint. Див. [повний звіт](docs/VALIDATION-2.8.8.md).

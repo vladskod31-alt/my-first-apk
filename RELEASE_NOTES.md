@@ -42,3 +42,11 @@
 - Ключ 2.8.7 недоступний, тому встановлення поверх старого APK з іншим сертифікатом Android відхилить. До видалення старого застосунку експортуйте текст і збережіть фото окремо. Експорт не переносить ключі, фото й налаштування; імпорт — архів лише для читання. Після видалення Android Keystore і стара ідентичність втрачаються.
 
 Попередній тег `v2.8.7` не змінювався. [Інструкція](https://github.com/vladskod31-alt/my-first-apk/blob/arena/01a1013d-my-first-apk/docs/NEARBY.md).
+
+## Додаткова CI-перевірка та публікація
+
+GitHub runner підтвердив checksum/підпис і завантажив усі 7 вкладень, включно з APK та `.patch`. [Публікація](https://github.com/vladskod31-alt/my-first-apk/actions/runs/37117267405).
+
+[CI](https://github.com/vladskod31-alt/my-first-apk/actions/runs/37117267426): Gradle `assembleDebug`, 40 unit, 13 e2e та аудит секретів успішні. **Android lint завершився кодом 1**, але успадкований `continue-on-error` не блокує CI. Причину ще не встановлено — не заявляємо lint-clean. Фізичне встановлення не тестувалось.
+
+Короткий About-опис репозиторію змінити не дозволили права інтеграції (403); README/changelog/release notes/PR оновлені. [Повний звіт](https://github.com/vladskod31-alt/my-first-apk/blob/arena/01a1013d-my-first-apk/docs/VALIDATION-2.8.8.md).
