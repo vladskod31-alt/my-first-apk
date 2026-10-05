@@ -878,3 +878,7 @@ button:not(:disabled):active, .settings-action:active, .chat-row:active { transf
 :root[data-orbit='ocean'] { --accent:#11868d; --accent-hover:#106b72; --accent-text:#11868d; --accent-soft:#11868d20; }
 :root[data-orbit='sunset'] { --accent:#b45a37; --accent-hover:#994328; --accent-text:#b45a37; --accent-soft:#b45a3720; }
 @media(prefers-reduced-motion:no-preference){.orbit-hero > span { display:inline-block; animation:orbit-float 4s ease-in-out infinite; }@keyframes orbit-float { 50% { transform:translateY(-5px) rotate(8deg); } }}
+
+/* Explicit scroll container + vh fallback for Android WebViews without dvh. */
+.dialog { max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; }
+#settings-dialog > #open-orbit { margin: 14px 0; border-radius: 14px; background: var(--accent-soft); }

@@ -59,8 +59,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: assembleDebug
         run: ./gradlew --no-daemon assembleDebug
-      - name: Android lint (не блокирует, пока SDK-окружение стабилизируется)
-        continue-on-error: true
+      - name: Android lint
         run: ./gradlew --no-daemon lintDebug
       - name: Summarize lint errors accurately
         if: always()
