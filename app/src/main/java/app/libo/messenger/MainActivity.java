@@ -143,13 +143,19 @@ public final class MainActivity extends Activity {
                 photoCallback = callback;
                 Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 pick.addCategory(Intent.CATEGORY_OPENABLE);
-                pick.setType("image/*");
-                pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp"});
+                String accepts = String.join(",", params.getAcceptTypes());
+                if (accepts.contains("json")) {
+                    pick.setType("*/*");
+                    pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "text/plain", "application/octet-stream"});
+                } else if (accepts.contains("image/")) {
+                    pick.setType("image/*");
+                    pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp"});
+                } else pick.setType("*/*");
                 try { startActivityForResult(pick, PICK_PHOTO); }
                 catch (ActivityNotFoundException error) {
                     photoCallback.onReceiveValue(null);
                     photoCallback = null;
-                    showToast("На устройстве нет приложения для выбора фотографий.");
+                    showToast("На пристрої немає застосунку для вибору файлів.");
                 }
                 return true;
             }

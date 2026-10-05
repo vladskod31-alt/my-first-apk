@@ -59,6 +59,15 @@ jobs:
       - name: Android lint (не блокирует, пока SDK-окружение стабилизируется)
         continue-on-error: true
         run: ./gradlew --no-daemon lintDebug
+      - name: Summarize lint errors accurately
+        if: always()
+        run: python3 scripts/lint-summary.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-lint-report
+          path: app/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: LIBO-debug-APK

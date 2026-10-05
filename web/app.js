@@ -1,4 +1,5 @@
 import qrcode from 'qrcode-generator';
+import { setupOrbit } from './lib/orbit-ui.mjs';
 import { setupNearby } from './lib/nearby-ui.mjs';
 import { Store } from './lib/storage.mjs';
 import { Transport } from './lib/transport.mjs';
@@ -41,6 +42,7 @@ const timeFormat = new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-d
 const dateFormat = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long' });
 let toastTimer;
 let foreground = true;           // Android activity visibility (2.8.7 notifications)
+let orbit = null;
 let calls = null;
 let bt = null;                   // Bluetooth P2P manager (Android only)
 let pendingOpenChat = null;
@@ -1154,6 +1156,7 @@ function openDialog(id) {
   if (id === 'blocked-dialog') renderBlocked();
   if (id === 'about-dialog') {
     const features = [
+      FEATURES.orbit, FEATURES.wallet, FEATURES.ads,
       FEATURES.nearby, FEATURES.calls, FEATURES.nfc, FEATURES.artwork,
       FEATURES.delivered,
       FEATURES.folders,
@@ -1616,6 +1619,7 @@ async function setLock(pin) {
 function showLock() {
   if (state.locked || !lockState()) return Promise.resolve();
   state.locked = true;
+  orbit?.hide();
   calls?.end('Застосунок заблоковано');
   closeDialogs(); closeChatMenu(); closeMessageActions();
   $('#lock-screen').hidden = false;
@@ -2182,6 +2186,7 @@ async function main() {
   window.LiboAndroid?.uiReady?.();
   window.LiboAndroid?.setSecureScreen?.(true);
   await showLock();
+  try { orbit = await setupOrbit({ openDialog, notify, locked: () => state.locked }); } catch { notify('Orbit недоступний: помилка локального сховища', true); }
   transport.start(state.profile, state.settings);
   bt = new BluetoothManager({ transport, onChange: () => { renderBluetooth(); renderHeader(); renderSidebar(); }, onDevices: renderBluetooth, onToast: notify });
   window.LiboBT = { onEvent: event => bt.onEvent(event) };

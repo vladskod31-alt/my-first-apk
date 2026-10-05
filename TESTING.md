@@ -1,4 +1,24 @@
-# Перевірка LIBO 2.8.8
+# Перевірка 2.8.9.1
+
+Локально пройшли **47 unit/API** і **17 Playwright** тестів. Команди: `npm ci && npm test && npm run test:e2e`. Окремі нові файли: `tests/orbit.test.mjs`, `tests/ads-api.test.mjs`, `tests/orbit2891.spec.mjs`.
+
+Покрито: атомарний бонус двох вкладок, збереження/баланс/недостатні кошти, UTC і повернення годинника, колекція/ліміт історії, Premium/строк/тема, згода до API-запитів, виключення remote images/SVG/script URL, pause/cap, Bearer auth і файловий CRUD, strict events, CORS/rate limit. WebRTC використовує синтетичне аудіо, не фізичний мікрофон.
+
+APK 2.8.9.1 зібрано fallback toolchain, перевірено apksigner v2/v3, zipalign, AAPT2 versionCode 2080901. `python3 scripts/verify-apk-icons.py artifacts/LIBO-2.8.9.1.apk` перевіряє 15 PNG та посилання launcher/splash; артефакти у `downloads/`. Скріншот `art/orbit-2891-preview.png` — браузер, не фізичний телефон.
+
+Додано окремий GitHub emulator smoke workflow для встановлення/запуску APK на Android 35. Наявність workflow сама по собі не означає пройдений тест: фактичний статус див. Actions. Фізичні Wi-Fi Direct/NFC, аудіо між телефонами, OEM launcher та production ad-server deployment не перевірені.
+
+Успадкований Android lint неблокувальний. Workflow тепер друкує конкретні XML-помилки як GitHub annotations і зберігає звіт; зелений загальний CI не означає lint-clean.
+
+## Додатковий ручний чекліст
+- [ ] JSON імпорт/експорт на Android через системний picker.
+- [ ] Мікрофон, Wi-Fi Direct і NFC на двох реальних телефонах.
+- [ ] Власний API через HTTPS, allowlist origin, токен лише на сервері, reverse proxy logs/limits.
+- [ ] Чисте встановлення без видалення важливих даних; відмова оновлення з іншим сертифікатом очікувана.
+- [ ] TalkBack, темна тема, великий шрифт, reduced motion, довгі рекламні тексти.
+
+## Історична перевірка 2.8.8
+
 
 ## Автоматизовано
 

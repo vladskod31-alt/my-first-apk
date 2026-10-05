@@ -1,0 +1,51 @@
+name: Android 35 APK install smoke
+on:
+  push:
+    branches: ['arena/01a1013d-my-first-apk']
+    paths:
+      - 'downloads/LIBO-2.8.9.1.apk'
+      - '.github/workflows/android-install.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Install exact signed APK and verify native launch plus rendered WebView
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            mkdir -p artifacts/install
+            (cd downloads && sha256sum -c SHA256SUMS.txt)
+            adb install downloads/LIBO-2.8.9.1.apk | tee artifacts/install/install.txt
+            adb shell pm grant app.libo.messenger android.permission.POST_NOTIFICATIONS
+            adb logcat -c
+            adb shell am start -W -n app.libo.messenger/.MainActivity | tee artifacts/install/launch.txt
+            sleep 15
+            adb shell pidof app.libo.messenger
+            adb shell uiautomator dump /sdcard/libo-window.xml
+            adb pull /sdcard/libo-window.xml artifacts/install/window.xml
+            adb logcat -d -s AndroidRuntime > artifacts/install/runtime.txt
+            grep -q 'Success' artifacts/install/install.txt
+            grep -q 'Status: ok' artifacts/install/launch.txt
+            grep -q 'Начать общение' artifacts/install/window.xml
+            if grep -q 'FATAL EXCEPTION' artifacts/install/runtime.txt; then cat artifacts/install/runtime.txt; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-35-install-report
+          path: artifacts/install/

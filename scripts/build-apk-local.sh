@@ -21,7 +21,7 @@ WORK="$ROOT/build/manual-apk"
 rm -rf "$WORK"
 mkdir -p "$WORK/res" "$WORK/java" "$WORK/classes" "$WORK/dex" "$ROOT/artifacts"
 export LIBO_VERSION
-LIBO_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")
+LIBO_VERSION=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionName\s+'([^']+)'/)[1]")
 export LIBO_VERSION_CODE
 LIBO_VERSION_CODE=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionCode\s+(\d+)/)[1]")
 if [ "$BUILD_TYPE" = release ]; then

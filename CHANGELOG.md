@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.8.9.1 — 2026-10-05 (experimental)
+
+- Added local Orbit Premium, fictional coins/stars, daily UTC grant, exchange, collectibles and bounded ledger; atomic cross-tab wallet transactions.
+- Added opt-in Ad Studio with schedules, weighted rotation, caps/cooldowns, CRUD, raster artwork and JSON import/export.
+- Added self-hosted Advertising API v1: validated feed/events, authenticated administration, atomic single-process persistence and basic rate limits. Not a hosted network or billing service.
+- Added 7 unit/API tests and 4 browser tests (47 unit/API + 17 browser total).
+- Fixed Android file chooser MIME handling and native ad-campaign JSON export.
+- Kept 2.8.8 icon, messaging and foreground calls. APK version 2.8.9.1, npm SemVer 2.8.9-1.
+- Explicit limits: virtual local currency only; no real payments/earnings, no Telegram affiliation, no groups/channels/cloud sync/stories/Bot API/video in this patch. New temporary signing certificate.
+
+
 ## 2.8.8 — 2026-10-03 (experimental)
 
 ### Added

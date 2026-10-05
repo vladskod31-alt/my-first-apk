@@ -13,7 +13,8 @@ apk=Path(sys.argv[1])
 aapt=os.environ.get('AAPT2', str(Path(os.environ['LIBO_TOOLCHAIN'])/'aapt2'))
 def dump(*args):return subprocess.check_output([aapt,'dump',*args,str(apk)],text=True)
 badging=dump('badging')
-assert "versionName='2.8.8'" in badging
+version=re.search(r"versionName\s+'([^']+)'",(root/'app/build.gradle').read_text()).group(1)
+assert f"versionName='{version}'" in badging
 assert "application-icon-160:'res/mipmap-anydpi-v26/ic_launcher.xml'" in badging
 assert "launchable-activity: name='app.libo.messenger.MainActivity'" in badging
 resources=dump('resources')

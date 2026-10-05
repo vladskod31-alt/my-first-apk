@@ -43,11 +43,11 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   // 2.8.1: the UI must not mention open source, source code hosting or GitHub.
   await page.locator('.quiet-button').click();
   const about = await page.locator('#about-dialog').innerText();
-  expect(about).toContain('2.8.8');
+  expect(about).toContain('2.8.9.1');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
-  expect(await page.locator('#about-features li').count()).toBe(35);
-  expect(await page.locator('#about-version').innerText()).toBe('2.8.8');
+  expect(await page.locator('#about-features li').count()).toBe(38);
+  expect(await page.locator('#about-version').innerText()).toBe('2.8.9.1');
   expect(errors).toEqual([]);
 });
 

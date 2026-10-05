@@ -1,10 +1,12 @@
 import express from 'express';
+import { adsApi } from '../server/ads-api.mjs';
 import http from 'node:http';
 import { createServer as createViteServer } from 'vite';
 import { ExpressPeerServer } from 'peer';
 
 const app = express();
 const httpServer = http.createServer(app);
+app.use('/api/ads/v1', adsApi());
 // Signaling rate limit (per client IP, sliding minute). The server only relays
 // SDP/ICE; it never sees keys or plaintext, but it should not be a free amplifier.
 const hits = new Map();

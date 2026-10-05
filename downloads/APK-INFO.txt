@@ -1,4 +1,4 @@
-package: name='app.libo.messenger' versionCode='20808' versionName='2.8.8' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'
+package: name='app.libo.messenger' versionCode='2080901' versionName='2.8.9.1' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'
 minSdkVersion:'26'
 targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'

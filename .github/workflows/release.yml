@@ -69,7 +69,7 @@ jobs:
         id: names
         run: |
           set -euo pipefail
-          VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")
+          VERSION=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionName\s+'([^']+)'/)[1]")
           SIGNED=${{ steps.sign.outputs.signed }}
           if [ "$SIGNED" = true ]; then SRC=libo-signed.apk; else SRC=libo-unsigned.apk; fi
           cp "$SRC" "LIBO-$VERSION.apk"

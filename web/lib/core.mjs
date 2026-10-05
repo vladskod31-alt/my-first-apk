@@ -1,12 +1,15 @@
-export const VERSION = '2.8.8';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.8/LIBO-2.8.8.apk';
+export const VERSION = '2.8.9.1';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.9.1/LIBO-2.8.9.1.apk';
 // 2.8.1: the in-app interface no longer mentions code hosting; the About screen
 // describes the product, its version and its feature set instead.
 export const FEATURES = {
+  orbit: 'Orbit Premium: віртуальна підписка на 7 днів, палітри й відсутність рекламного блоку. Без платежів.',
+  wallet: 'Монети та зірки LIBO: щоденний бонус, історія, косметична колекція. Локальні, без грошової вартості.',
+  ads: 'Рекламна студія: локальні кампанії, розклад, ліміти, JSON і власний HTTPS API. Покази лише за згодою.',
   nearby: 'Wi-Fi LAN: локальний канал за IP; експериментальний Wi-Fi Direct у Android.',
   calls: 'Голосові виклики: прийняти, відхилити, mute. Обидва учасники мають тримати LIBO відкритим.',
   nfc: 'NFC NDEF-мітки: запис і читання публічного запрошення з підтвердженням. Не Android Beam.',
-  artwork: 'Нова іконка 2.8.8 у launcher, adaptive icon, splash і вебінтерфейсі.',
+  artwork: 'Нова іконка 2.8.9.1 у launcher, adaptive icon, splash і вебінтерфейсі.',
   delivered: 'Двойные галочки: ✓ — сохранено у собеседника, ✓✓ — прочитано.',
   folders: 'Папки чатов: «Личные» и «Работа» — свои вкладки в списке чатов.',
   forward: 'Пересылка сообщений в любой чат и в «Избранное» с пометкой «Переслано от …».',
@@ -17,7 +20,7 @@ export const FEATURES = {
   multiselect: 'Мультивыбор: пакетное удаление для обоих и пересылка нескольких сообщений.',
   search: 'Глобальный поиск по чатам и сообщениям с переходом к найденному.',
   mute: 'Без звука для отдельного контакта — значок в списке чатов.',
-  // 2.8.8: E2EE architecture and twenty Telegram-style additions.
+  // 2.8.9.1: E2EE architecture and twenty Telegram-style additions.
   e2ee: 'Сквозное шифрование: X25519 + Ed25519, Double Ratchet, ChaCha20-Poly1305; номер безопасности и контроль смены ключа.',
   vault: 'Зашифрованное хранилище: история и ключи устройства под AES-256-GCM, ключ — в Android Keystore.',
   format: 'Форматирование текста: **жирный**, __курсив__, `моно`, ~~зачёркнутый~~.',
@@ -331,7 +334,7 @@ export function toPacket(message) {
   return packet;
 }
 
-// 2.8.8 text formatting (Telegram-style markdown subset) rendered to a safe DOM
+// 2.8.9.1 text formatting (Telegram-style markdown subset) rendered to a safe DOM
 // fragment: **bold**, __italic__, `mono`, ~~strike~~, ||spoiler||. Nothing is parsed
 // as HTML; every literal chunk becomes a text node.
 const FORMAT_RE = /(\*\*(.+?)\*\*|__(.+?)__|`([^`]+?)`|~~(.+?)~~|\|\|(.+?)\|\|)/gs;

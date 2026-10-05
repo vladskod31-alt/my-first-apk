@@ -23,3 +23,7 @@ artifacts/
 # Python
 __pycache__/
 *.pyc
+
+# 2.8.9.1 release mirror and private ad-server configuration
+!downloads/LIBO-2.8.9.1.apk
+ads-data/
