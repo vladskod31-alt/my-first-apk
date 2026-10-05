@@ -1,6 +1,6 @@
 {
   "apk": "LIBO-2.8.9.1.apk",
-  "sha256": "bcd405ab3aa75d70c9141aeebeb2cfeb6967711368582a8eaacba76f2b1e47f5",
+  "sha256": "12c1b54d8907ad7dea4909f07178e765a0dba1f2925d47ecb6c6c0295b78bd75",
   "checks": [
     {
       "path": "res/mipmap-mdpi/ic_launcher.png",

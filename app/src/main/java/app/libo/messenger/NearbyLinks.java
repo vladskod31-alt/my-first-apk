@@ -124,7 +124,7 @@ final class NearbyLinks {
         }catch(Exception ignored){}
         return data.toString();
     }
-    String[] permissions(){return new String[]{Build.VERSION.SDK_INT>=33 ? Manifest.permission.NEARBY_WIFI_DEVICES : Manifest.permission.ACCESS_FINE_LOCATION};}
+    String[] permissions(){return Build.VERSION.SDK_INT>=33 ? new String[]{Manifest.permission.NEARBY_WIFI_DEVICES} : new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION};}
     boolean permitted(){for(String p:permissions())if(activity.checkSelfPermission(p)!=PackageManager.PERMISSION_GRANTED)return false;return true;}
     final WifiP2pManager.ActionListener result = new WifiP2pManager.ActionListener(){
         public void onSuccess(){event("status","message","Запит Wi-Fi Direct надіслано");}

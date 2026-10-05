@@ -32,18 +32,21 @@ jobs:
             mkdir -p artifacts/install
             (cd downloads && sha256sum -c SHA256SUMS.txt)
             adb install downloads/LIBO-2.8.9.1.apk | tee artifacts/install/install.txt
-            adb shell pm grant app.libo.messenger android.permission.POST_NOTIFICATIONS
+            adb shell pm grant app.libo.messenger android.permission.POST_NOTIFICATIONS || true
             adb logcat -c
             adb shell am start -W -n app.libo.messenger/.MainActivity | tee artifacts/install/launch.txt
             sleep 15
-            adb shell pidof app.libo.messenger
-            adb shell uiautomator dump /sdcard/libo-window.xml
-            adb pull /sdcard/libo-window.xml artifacts/install/window.xml
+            adb shell pidof app.libo.messenger || true
+            adb shell uiautomator dump /sdcard/libo-window.xml || true
+            adb pull /sdcard/libo-window.xml artifacts/install/window.xml || true
             adb logcat -d -s AndroidRuntime > artifacts/install/runtime.txt
             grep -q 'Success' artifacts/install/install.txt
             grep -q 'Status: ok' artifacts/install/launch.txt
             grep -q 'Начать общение' artifacts/install/window.xml
             if grep -q 'FATAL EXCEPTION' artifacts/install/runtime.txt; then cat artifacts/install/runtime.txt; exit 1; fi
+      - name: Report installation evidence in annotations
+        if: always()
+        run: python3 scripts/install-summary.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

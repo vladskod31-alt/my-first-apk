@@ -12,6 +12,8 @@ uses-permission: name='android.permission.ACCESS_FINE_LOCATION' maxSdkVersion='3
 uses-permission: name='android.permission.BLUETOOTH_CONNECT'
 uses-permission: name='android.permission.BLUETOOTH_SCAN' usesPermissionFlags='neverForLocation'
 uses-permission: name='android.permission.BLUETOOTH_ADVERTISE'
+uses-permission: name='android.permission.USE_BIOMETRIC'
+uses-permission: name='android.permission.ACCESS_COARSE_LOCATION' maxSdkVersion='32'
 uses-permission: name='android.permission.RECORD_AUDIO'
 uses-permission: name='android.permission.MODIFY_AUDIO_SETTINGS'
 uses-permission: name='android.permission.ACCESS_WIFI_STATE'

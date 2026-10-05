@@ -474,7 +474,7 @@ public final class MainActivity extends Activity {
                                     | android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL)
                             .build();
                     prompt.authenticate(new CancellationSignal(), getMainExecutor(), biometricCallback());
-                } else if (Build.VERSION.SDK_INT >= 28) {
+                } else if (Build.VERSION.SDK_INT >= 29) {
                     BiometricPrompt prompt = new BiometricPrompt.Builder(MainActivity.this)
                             .setTitle("LIBO заблокирован")
                             .setSubtitle("Подтвердите личность, чтобы открыть переписку")
@@ -641,6 +641,7 @@ public final class MainActivity extends Activity {
         return generator.generateKey();
     }
 
+    @android.annotation.TargetApi(28)
     private BiometricPrompt.AuthenticationCallback biometricCallback() {
         return new BiometricPrompt.AuthenticationCallback() {
             @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) { reportBiometric(true); }

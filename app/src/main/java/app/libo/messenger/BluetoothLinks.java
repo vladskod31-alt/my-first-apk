@@ -79,7 +79,7 @@ final class BluetoothLinks {
         if (Build.VERSION.SDK_INT >= 31) {
             return new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_ADVERTISE};
         }
-        return new String[]{Manifest.permission.ACCESS_FINE_LOCATION};
+        return new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION};
     }
 
     boolean hasPermissions() {

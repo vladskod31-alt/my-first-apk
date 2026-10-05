@@ -10,5 +10,5 @@ else:
     for issue in tree.findall('issue'):
         if issue.get('severity') not in ['Error','Fatal']:continue
         loc=issue.find('location')
-        message=(issue.get('id','')+': '+issue.get('message','')).replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+        message=((loc.get('file','')+':'+loc.get('line','')+' ') if loc is not None else '')+(issue.get('id','')+': '+issue.get('message','')).replace('%','%25').replace('\r','%0D').replace('\n','%0A')
         print('::warning::'+message)
