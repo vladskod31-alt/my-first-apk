@@ -6,9 +6,9 @@
 
 APK 2.8.9.1 зібрано fallback toolchain, перевірено apksigner v2/v3, zipalign, AAPT2 versionCode 2080901. `python3 scripts/verify-apk-icons.py artifacts/LIBO-2.8.9.1.apk` перевіряє 15 PNG та посилання launcher/splash; артефакти у `downloads/`. Скріншот `art/orbit-2891-preview.png` — браузер, не фізичний телефон.
 
-Додано окремий GitHub emulator smoke workflow для встановлення/запуску APK на Android 35. Наявність workflow сама по собі не означає пройдений тест: фактичний статус див. Actions. Фізичні Wi-Fi Direct/NFC, аудіо між телефонами, OEM launcher та production ad-server deployment не перевірені.
+Android 35 emulator smoke **пройдено**: встановлення підписаного APK, native launch, WebView, профіль та екран Orbit. Run: https://github.com/vladskod31-alt/my-first-apk/actions/runs/37303373445. Це не тест кожної дії студії на Android. Фізичні Wi-Fi Direct/NFC, аудіо між телефонами, OEM launcher та production ad-server deployment не перевірені.
 
-Успадкований Android lint неблокувальний. Workflow тепер друкує конкретні XML-помилки як GitHub annotations і зберігає звіт; зелений загальний CI не означає lint-clean.
+Помилки Android lint виправлені, lintDebug пройдено; тепер він блокує CI при помилках. Workflow друкує XML-помилки як GitHub annotations і зберігає звіт.
 
 ## Додатковий ручний чекліст
 - [ ] JSON імпорт/експорт на Android через системний picker.

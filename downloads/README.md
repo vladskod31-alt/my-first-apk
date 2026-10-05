@@ -12,3 +12,5 @@ Android 8.0+ із сучасним WebView, `app.libo.messenger`, versionCode 20
 4. Після встановлення: Налаштування → Orbit Premium. Валюта віртуальна; реклама й аналітика вимкнені за замовчуванням.
 
 Фізичні пристрої, Direct/NFC та production-рекламний сервер не протестовані. Це experimental prerelease, не Google Play-публікація. [Межі випуску](../docs/TELEGRAM-SCOPE.md).
+
+Android 35 emulator: підписаний APK встановлено, запущено, Orbit відкрито — [успішний run](https://github.com/vladskod31-alt/my-first-apk/actions/runs/37303373445). Фізичні пристрої й повний UI не перевірені.

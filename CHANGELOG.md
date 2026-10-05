@@ -7,6 +7,8 @@
 - Added self-hosted Advertising API v1: validated feed/events, authenticated administration, atomic single-process persistence and basic rate limits. Not a hosted network or billing service.
 - Added 7 unit/API tests and 4 browser tests (47 unit/API + 17 browser total).
 - Fixed Android file chooser MIME handling and native ad-campaign JSON export.
+- Fixed biometric/location permission/API compatibility and Bluetooth enable/discovery permission exceptions; Android lint is now a required passing CI step.
+- Passed signed APK install/native launch/Orbit screen smoke on Android 35 emulator; stabilized WebView modal geometry without transform entrance animations.
 - Kept 2.8.8 icon, messaging and foreground calls. APK version 2.8.9.1, npm SemVer 2.8.9-1.
 - Explicit limits: virtual local currency only; no real payments/earnings, no Telegram affiliation, no groups/channels/cloud sync/stories/Bot API/video in this patch. New temporary signing certificate.
 
