@@ -4,6 +4,7 @@ on:
     branches: ['arena/01a1013d-my-first-apk']
     paths:
       - 'downloads/LIBO-2.8.9.1.apk'
+      - 'scripts/android-ui-smoke.py'
       - '.github/workflows/android-install.yml'
   workflow_dispatch:
 permissions:

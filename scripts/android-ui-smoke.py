@@ -11,8 +11,10 @@ def capture(name):
 def tap(tree,text):
     for node in tree.iter('node'):
         label=node.get('text','')+' '+node.get('content-desc','')
-        bounds=list(map(int,re.findall(r'\d+',node.get('bounds',''))))
-        if text in label and len(bounds)==4 and bounds[3]>bounds[1] and bounds[2]>bounds[0]:
+        bounds=list(map(int,re.findall(r'-?\d+',node.get('bounds',''))))
+        if text in label:
+            print('Target:',repr(label),'bounds:',bounds,flush=True)
+        if text in label and len(bounds)==4 and 0<=bounds[1]<bounds[3]<=1920 and 0<=bounds[0]<bounds[2]<=1080:
             adb('shell','input','tap',str((bounds[0]+bounds[2])//2),str((bounds[1]+bounds[3])//2));return True
     return False
 tree=capture('home.xml')

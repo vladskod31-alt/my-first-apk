@@ -117,7 +117,7 @@ final class BluetoothLinks {
         myId = id;
         if (!enabled()) {
             try { activity.startActivityForResult(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), REQUEST_ENABLE); }
-            catch (Exception ignored) { }
+            catch (SecurityException denied) { } catch (Exception ignored) { }
             return false;
         }
         if (server != null) return true;
@@ -151,7 +151,7 @@ final class BluetoothLinks {
             Intent intent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
             intent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300);
             activity.startActivityForResult(intent, REQUEST_DISCOVERABLE);
-        } catch (Exception ignored) { }
+        } catch (SecurityException denied) { } catch (Exception ignored) { }
     }
 
     boolean scan() {
