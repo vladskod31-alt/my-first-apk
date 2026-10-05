@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 2.8.7: splash palette. The launch window and the Android 12+ splash screen
+         use these colours instead of the theme background, so the first frame a
+         user sees is the brand field with the logo, never black. -->
+    <color name="splash_field">#6D28D9</color>
+    <color name="splash_disc">#7C3AED</color>
+    <color name="splash_ring">#A78BFA</color>
+    <color name="app_field_light">#F7F7FB</color>
+    <color name="app_field_dark">#191920</color>
+</resources>

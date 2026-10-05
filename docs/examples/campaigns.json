@@ -1,0 +1,16 @@
+[
+  {
+    "id": "libo-demo",
+    "title": "Ваша перша кампанія",
+    "text": "Приклад для власного сервера. Замініть текст і посилання перед увімкненням.",
+    "sponsor": "Ваш бренд",
+    "url": "https://example.com",
+    "image": "",
+    "enabled": false,
+    "start": 0,
+    "end": 4102444800000,
+    "dailyCap": 3,
+    "cooldownMinutes": 30,
+    "weight": 1
+  }
+]

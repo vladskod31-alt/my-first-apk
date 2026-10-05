@@ -1,0 +1,132 @@
+{
+  "apk": "LIBO-2.8.9.1.apk",
+  "sha256": "f9aa6c69729dc5bc03cb18325f1fb83235851bea06fd90cf7bc6ea034ba74e25",
+  "checks": [
+    {
+      "path": "res/mipmap-mdpi/ic_launcher.png",
+      "size": [
+        48,
+        48
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-mdpi/ic_launcher_round.png",
+      "size": [
+        48,
+        48
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-mdpi/ic_launcher_foreground.png",
+      "size": [
+        108,
+        108
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-hdpi/ic_launcher.png",
+      "size": [
+        72,
+        72
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-hdpi/ic_launcher_round.png",
+      "size": [
+        72,
+        72
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-hdpi/ic_launcher_foreground.png",
+      "size": [
+        162,
+        162
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xhdpi/ic_launcher.png",
+      "size": [
+        96,
+        96
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xhdpi/ic_launcher_round.png",
+      "size": [
+        96,
+        96
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "size": [
+        216,
+        216
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxhdpi/ic_launcher.png",
+      "size": [
+        144,
+        144
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxhdpi/ic_launcher_round.png",
+      "size": [
+        144,
+        144
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "size": [
+        324,
+        324
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxxhdpi/ic_launcher.png",
+      "size": [
+        192,
+        192
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "size": [
+        192,
+        192
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "path": "res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "size": [
+        432,
+        432
+      ],
+      "source_pixels_match": true
+    },
+    {
+      "web_icon_matches": true,
+      "dex_and_web_assets": true,
+      "launcher_references_adaptive_resource": true
+    }
+  ],
+  "device_install_tested": false
+}
