@@ -42,7 +42,7 @@ jobs:
             adb logcat -d -s AndroidRuntime > artifacts/install/runtime.txt
             grep -q 'Success' artifacts/install/install.txt
             grep -q 'Status: ok' artifacts/install/launch.txt
-            python3 scripts/android-ui-smoke.py
+            python3 scripts/android-ui-smoke.py > artifacts/install/ui-smoke.txt 2>&1 || { cat artifacts/install/ui-smoke.txt; exit 1; }
             if grep -q 'FATAL EXCEPTION' artifacts/install/runtime.txt; then cat artifacts/install/runtime.txt; exit 1; fi
       - name: Report installation evidence in annotations
         if: always()
