@@ -74,6 +74,11 @@ final class BluetoothLinks {
     }
 
     boolean available() { return adapter != null; }
+    // Permission can be revoked between hasPermissions() and a platform call.
+    boolean enabled() {
+        try { return adapter != null && adapter.isEnabled(); }
+        catch (SecurityException denied) { return false; }
+    }
 
     String[] requiredPermissions() {
         if (Build.VERSION.SDK_INT >= 31) {
@@ -95,7 +100,7 @@ final class BluetoothLinks {
         JSONObject out = new JSONObject();
         try {
             out.put("available", adapter != null);
-            out.put("enabled", adapter != null && adapter.isEnabled());
+            out.put("enabled", adapter != null && enabled());
             out.put("permitted", adapter != null && hasPermissions());
             out.put("listening", server != null);
             out.put("links", links.size());
@@ -110,7 +115,7 @@ final class BluetoothLinks {
     synchronized boolean start(String id) {
         if (adapter == null || !PEER_ID.matcher(id).matches() || !hasPermissions()) return false;
         myId = id;
-        if (!adapter.isEnabled()) {
+        if (!enabled()) {
             try { activity.startActivityForResult(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), REQUEST_ENABLE); }
             catch (Exception ignored) { }
             return false;
@@ -150,7 +155,7 @@ final class BluetoothLinks {
     }
 
     boolean scan() {
-        if (adapter == null || !hasPermissions() || !adapter.isEnabled()) return false;
+        if (adapter == null || !hasPermissions() || !enabled()) return false;
         registerReceiver();
         try {
             JSONArray bonded = new JSONArray();

@@ -27,7 +27,10 @@ jobs:
       - name: Модульные тесты
         run: npm test
       - name: Браузерные сценарии
-        run: npm run test:e2e
+        run: PLAYWRIGHT_JSON_OUTPUT_FILE=test-results/report.json npm run test:e2e -- --reporter=list,json
+      - name: Summarize browser failures
+        if: always()
+        run: python3 scripts/browser-summary.py
       - name: Production-бандл веб-части
         run: npm run build
       - uses: actions/upload-artifact@v4
