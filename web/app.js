@@ -25,6 +25,7 @@ const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const svg = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const store = new Store();
+if (window.LiboAndroid) document.documentElement.dataset.native = 'android';
 const state = {
   profile: null, settings: null, chats: [], blocked: [], current: null,
   filter: 'all', network: 'connecting', networkDetail: '', contactStates: new Map(),

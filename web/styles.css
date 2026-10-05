@@ -882,3 +882,7 @@ button:not(:disabled):active, .settings-action:active, .chat-row:active { transf
 /* Explicit scroll container + vh fallback for Android WebViews without dvh. */
 .dialog { max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; }
 #settings-dialog > #open-orbit { margin: 14px 0; border-radius: 14px; background: var(--accent-soft); }
+
+/* Android WebView top-layer dialogs can expose zero accessibility bounds while
+   retaining a transformed entrance layer. Keep native modal geometry stable. */
+:root[data-native="android"] dialog[open] { animation: none !important; transform: none !important; }
