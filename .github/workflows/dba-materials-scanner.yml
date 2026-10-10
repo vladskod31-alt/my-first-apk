@@ -1,0 +1,26 @@
+name: Ruby CI
+
+on:
+  push:
+    paths:
+      - 'dba-materials-scanner/**'
+      - '.github/workflows/dba-materials-scanner.yml'
+  pull_request:
+    paths:
+      - 'dba-materials-scanner/**'
+      - '.github/workflows/dba-materials-scanner.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dba-materials-scanner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: dba-materials-scanner
+      - run: bundle exec rake test
