@@ -37,7 +37,15 @@ jobs:
           echo "/opt/gradle-8.9/bin" >> "$GITHUB_PATH"
 
       - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon --stacktrace assembleDebug 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          if-no-files-found: warn
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
