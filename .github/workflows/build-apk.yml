@@ -46,9 +46,9 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          grep -E "^e: |What went wrong|Could not|error:|FAILURE|Exception" -A3 "$RUNNER_TEMP/build.log" | head -c 3500 > "$RUNNER_TEMP/errs.txt" || true
-          tr '\n' '|' < "$RUNNER_TEMP/errs.txt" | sed 's/|/ ## /g' | while IFS= read -r line; do echo "::error title=GradleErrors::$line"; done
-          echo "::error::$(tail -c 1500 "$RUNNER_TEMP/build.log" | tr '\n' '|')"
+          LOG="$RUNNER_TEMP/build.log"
+          echo "log lines: $(wc -l < "$LOG" 2>/dev/null || echo missing)"
+          grep -n -E "FAILED|wrong|rror|xception|^\s*> |Could not|\.java:" "$LOG" | grep -v "^\s*[0-9]*:\s*at " | head -40 | cut -c1-400 | while IFS= read -r line; do echo "::error title=GradleErr::$line"; done
 
       - name: Upload build log on failure
         if: failure()
