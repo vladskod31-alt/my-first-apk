@@ -64,9 +64,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p libo-utility/dist
-          cp libo-utility/app/build/outputs/apk/debug/app-debug.apk libo-utility/dist/LIBO-Utility-1.0.1.apk
+          cp libo-utility/app/build/outputs/apk/debug/app-debug.apk libo-utility/dist/LIBO-Utility-1.0.2.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f libo-utility/dist/LIBO-Utility-1.0.1.apk
-          git commit -m "Add built LIBO Utility APK 1.0.1 [skip ci]"
+          git add -f libo-utility/dist/LIBO-Utility-1.0.2.apk
+          git commit -m "Add built LIBO Utility APK 1.0.2 [skip ci]"
           git push origin "HEAD:${GITHUB_REF_NAME}"

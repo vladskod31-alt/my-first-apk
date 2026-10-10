@@ -170,6 +170,8 @@ public class MainActivity extends Activity {
         mediaAdapter = new MediaAdapter();
         mediaGrid = new GridView(this);
         mediaGrid.setNumColumns(3);
+        mediaGrid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
+        mediaGrid.setSelector(android.R.color.transparent);
         mediaGrid.setVerticalSpacing(dp(6));
         mediaGrid.setHorizontalSpacing(dp(6));
         mediaGrid.setPadding(dp(2), dp(2), dp(2), dp(2));
