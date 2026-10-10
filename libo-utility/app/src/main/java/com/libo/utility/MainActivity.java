@@ -311,7 +311,7 @@ public class MainActivity extends Activity {
         int p = dp(16);
         form.setPadding(p, dp(8), p, 0);
 
-        final EditText etName = input("Ім'я", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_CAP_WORDS);
+        final EditText etName = input("Ім'я", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         final EditText etPhone = input("Номер телефону", InputType.TYPE_CLASS_PHONE);
         final EditText etNote = input("Нотатка (необов'язково)",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
