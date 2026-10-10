@@ -60,7 +60,6 @@ jobs:
           if-no-files-found: error
 
       - name: Save APK into repo (libo-utility/dist)
-        if: github.event_name == 'push'
         shell: bash
         run: |
           mkdir -p libo-utility/dist
