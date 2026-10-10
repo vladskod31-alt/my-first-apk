@@ -42,6 +42,14 @@ jobs:
           set -o pipefail
           gradle --no-daemon --stacktrace assembleDebug 2>&1 | tee "$RUNNER_TEMP/build.log"
 
+      - name: Show Gradle errors
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "^e: |What went wrong|Could not|error:|FAILURE|Exception" -A3 "$RUNNER_TEMP/build.log" | head -c 3500 > "$RUNNER_TEMP/errs.txt" || true
+          tr '\n' '|' < "$RUNNER_TEMP/errs.txt" | sed 's/|/ ## /g' | while IFS= read -r line; do echo "::error title=GradleErrors::$line"; done
+          echo "::error::$(tail -c 1500 "$RUNNER_TEMP/build.log" | tr '\n' '|')"
+
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4

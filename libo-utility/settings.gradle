@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LIBO Utility"
+rootProject.name = "libo-utility"
 include ':app'
