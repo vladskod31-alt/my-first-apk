@@ -47,8 +47,10 @@ jobs:
         shell: bash
         run: |
           LOG="$RUNNER_TEMP/build.log"
-          echo "log lines: $(wc -l < "$LOG" 2>/dev/null || echo missing)"
-          grep -n -E "FAILED|wrong|rror|xception|^\s*> |Could not|\.java:" "$LOG" | grep -v "^\s*[0-9]*:\s*at " | head -40 | cut -c1-400 | while IFS= read -r line; do echo "::error title=GradleErr::$line"; done
+          { sed -n '/What went wrong/,$p' "$LOG"; tail -n 30 "$LOG"; } | head -n 60 | sed 's/\t/ /g' > "$RUNNER_TEMP/errs.txt"
+          base64 -w 0 "$RUNNER_TEMP/errs.txt" > "$RUNNER_TEMP/errs.b64"
+          split -b 1100 "$RUNNER_TEMP/errs.b64" "$RUNNER_TEMP/part_"
+          for f in "$RUNNER_TEMP"/part_*; do echo "::error title=B64 $(basename "$f")::$(cat "$f")"; done
 
       - name: Upload build log on failure
         if: failure()
