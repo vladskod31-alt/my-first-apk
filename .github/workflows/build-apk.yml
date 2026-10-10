@@ -13,6 +13,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: libo-utility
@@ -56,3 +58,15 @@ jobs:
           name: libo-utility-debug-apk
           path: libo-utility/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Save APK into repo (libo-utility/dist)
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          mkdir -p libo-utility/dist
+          cp libo-utility/app/build/outputs/apk/debug/app-debug.apk libo-utility/dist/LIBO-Utility-1.0.1.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f libo-utility/dist/LIBO-Utility-1.0.1.apk
+          git commit -m "Add built LIBO Utility APK 1.0.1 [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
