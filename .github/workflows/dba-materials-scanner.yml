@@ -23,4 +23,24 @@ jobs:
           ruby-version: '3.3'
           bundler-cache: true
           working-directory: dba-materials-scanner
-      - run: bundle exec rake test
+      - name: Run tests
+        run: |
+          set +e
+          bundle exec rake test > /tmp/dba-scanner-test.log 2>&1
+          result=$?
+          cat /tmp/dba-scanner-test.log
+          if [ "$result" -ne 0 ]; then
+            python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          output = Path('/tmp/dba-scanner-test.log').read_text(errors='replace')[-6000:]
+          escaped = output.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Ruby test failure::{escaped}')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write('## Ruby test failure\n\n```text\n')
+              summary.write(output)
+              summary.write('\n```\n')
+          PY
+          fi
+          exit "$result"
