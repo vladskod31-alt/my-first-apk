@@ -62,10 +62,12 @@ jobs:
       - name: Save APK into repo (libo-utility/dist)
         shell: bash
         run: |
+          set -x
           mkdir -p libo-utility/dist
-          cp libo-utility/app/build/outputs/apk/debug/app-debug.apk libo-utility/dist/LIBO-Utility-1.0.1.apk
+          cp libo-utility/app/build/outputs/apk/debug/app-debug.apk libo-utility/dist/LIBO-Utility-1.0.1.apk 2>&1 || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f libo-utility/dist/LIBO-Utility-1.0.1.apk
-          git commit -m "Add built LIBO Utility APK 1.0.1 [skip ci]"
-          out=$(git push origin "HEAD:${GITHUB_REF_NAME}" 2>&1) || { echo "::error::push failed: $(echo "$out" | tr '\n' ' ' | cut -c1-400)"; exit 1; }
+          git add -f libo-utility/dist/LIBO-Utility-1.0.1.apk 2>&1 || true
+          git status --short 2>&1 | head -5 | tr '\n' ' ' | sed 's/^/::error::status /'; echo
+          git commit -m "Add built LIBO Utility APK 1.0.1 [skip ci]" 2>&1 | tail -3 | tr '\n' ' ' | sed 's/^/::error::commit /'; echo
+          git push origin "HEAD:${GITHUB_REF_NAME}" 2>&1 | tail -3 | tr '\n' ' ' | sed 's/^/::error::push /'; echo
