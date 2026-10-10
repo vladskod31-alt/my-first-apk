@@ -1,0 +1,72 @@
+name: Build LIBO Utility APK
+
+on:
+  push:
+    paths:
+      - 'libo-utility/**'
+      - '.github/workflows/build-apk.yml'
+  pull_request:
+    paths:
+      - 'libo-utility/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: libo-utility
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android platform and build tools
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Install Gradle 8.9
+        run: |
+          curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          sudo unzip -q /tmp/gradle.zip -d /opt
+          echo "/opt/gradle-8.9/bin" >> "$GITHUB_PATH"
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace assembleDebug 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          if-no-files-found: warn
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: libo-utility-debug-apk
+          path: libo-utility/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Save APK into repo (libo-utility/dist)
+        working-directory: .
+        shell: bash
+        run: |
+          mkdir -p libo-utility/dist
+          cp libo-utility/app/build/outputs/apk/debug/app-debug.apk libo-utility/dist/LIBO-Utility-1.0.2.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f libo-utility/dist/LIBO-Utility-1.0.2.apk
+          git commit -m "Add built LIBO Utility APK 1.0.2 [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
