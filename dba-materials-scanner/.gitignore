@@ -1,0 +1,6 @@
+.env
+.bundle/
+/data/
+/vendor/bundle/
+*.gem
+*.zip
