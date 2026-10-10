@@ -68,4 +68,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f libo-utility/dist/LIBO-Utility-1.0.1.apk
           git commit -m "Add built LIBO Utility APK 1.0.1 [skip ci]"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          out=$(git push origin "HEAD:${GITHUB_REF_NAME}" 2>&1) || { echo "::error::push failed: $(echo "$out" | tr '\n' ' ' | cut -c1-400)"; exit 1; }
