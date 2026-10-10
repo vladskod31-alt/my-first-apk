@@ -47,10 +47,9 @@ jobs:
         shell: bash
         run: |
           LOG="$RUNNER_TEMP/build.log"
-          { sed -n '/What went wrong/,$p' "$LOG"; tail -n 30 "$LOG"; } | head -n 60 | sed 's/\t/ /g' > "$RUNNER_TEMP/errs.txt"
-          base64 -w 0 "$RUNNER_TEMP/errs.txt" > "$RUNNER_TEMP/errs.b64"
-          split -b 1100 "$RUNNER_TEMP/errs.b64" "$RUNNER_TEMP/part_"
-          for f in "$RUNNER_TEMP"/part_*; do echo "::error title=B64 $(basename "$f")::$(cat "$f")"; done
+          { sed -n '/What went wrong/,$p' "$LOG"; tail -n 30 "$LOG"; } | head -n 60 > "$RUNNER_TEMP/errs.txt" || true
+          base64 "$RUNNER_TEMP/errs.txt" | tr -d '\n' | fold -w 900 | while IFS= read -r p; do echo "::error title=B64::$p"; done
+          exit 0
 
       - name: Upload build log on failure
         if: failure()
