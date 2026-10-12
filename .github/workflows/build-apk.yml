@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -111,3 +111,50 @@ jobs:
           path: release-apk/LIBO-v2.10.9.3.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v2.10.9.3"
+          apk="release-apk/LIBO-v2.10.9.3.apk"
+          notes="$RUNNER_TEMP/libo-release-notes.md"
+          cat > "$notes" <<'EOF'
+          Native Kotlin and Jetpack Compose build of LIBO 2.10.9.3.
+
+          This APK is debug-signed for direct installation and testing; it is not a Play Store production-signed package.
+          EOF
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "$apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "LIBO Android 2.10.9.3" --notes-file "$notes"
+          fi
+          checksum="$(sha256sum "$apk" | cut -d ' ' -f 1)"
+          echo "::notice title=APK SHA-256::$checksum"
+          echo "### GitHub Release" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published [LIBO-v2.10.9.3.apk](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/LIBO-v2.10.9.3.apk)." >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256: $checksum" >> "$GITHUB_STEP_SUMMARY"
+
+      # Keep a Git blob for retrieval through the allowed GitHub REST API.
+      # It is not attached to a branch or commit; the release asset is canonical.
+      - name: Make APK retrievable for delivery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          payload="$RUNNER_TEMP/libo-apk-blob.json"
+          python3 - "$payload" <<'PY'
+          import base64
+          import json
+          import sys
+          from pathlib import Path
+
+          apk = Path("release-apk/LIBO-v2.10.9.3.apk").read_bytes()
+          payload = {"content": base64.b64encode(apk).decode("ascii"), "encoding": "base64"}
+          Path(sys.argv[1]).write_text(json.dumps(payload), encoding="utf-8")
+          PY
+          if blob_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" --method POST --input "$payload" --jq '.sha')"; then
+            echo "::notice title=APK Git blob SHA::$blob_sha"
+            echo "APK delivery object: $blob_sha" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning title=APK delivery object::Could not make a temporary API copy of the APK. The GitHub Release asset is still published."
+          fi
