@@ -20,7 +20,7 @@ const state = {
   filter: 'all', network: 'connecting', networkDetail: '', contactStates: new Map(),
   typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
   lastSeen: new Map(), recording: null, archiveNotice: false,
-  folderTab: '', selection: null, ttl: 0, highlight: null,
+  folderTab: '', selection: null, ttl: 0, highlight: null, fabUnread: 0,
 };
 const ttlTimers = new Map();
 const locks = new Map();
@@ -78,6 +78,7 @@ const transport = new Transport({
       transport.send(id, { v: 1, type: 'ack', id: packet.id });
       state.typing.delete(id);
       if (fresh) {
+        if (state.current === id && !document.hidden && !isNearBottom()) state.fabUnread++;
         if (packet.ttl) scheduleExpiry(id, packet.id, packet.ttl, packet.at);
         renderSidebar();
         if (state.current === id) { renderMessages(); renderHeader(); sendReadReceipt(id); }
@@ -164,7 +165,7 @@ const transport = new Transport({
     });
     if (state.current === id) renderMessages(false);
   },
-  onSecurity(id) { if (state.current === id && $('#security-dialog').open) void openSecurity(); },
+  onSecurity(id) { if (state.current === id) { renderHeader(); if ($('#security-dialog').open) void openSecurity(); } },
   onMtDrop(id) {
     // A key generation change swallowed an envelope: let the queue retransmit at once.
     const chat = state.chats.find(item => item.id === id);
@@ -350,6 +351,11 @@ function renderHeader() {
   else if (state.lastSeen.get(chat.id)) presence.textContent = `Был(а) в сети в ${timeFormat.format(new Date(state.lastSeen.get(chat.id)))}`;
   else presence.textContent = 'Не подключён · откройте LIBO на обоих устройствах';
   presence.title = chat.id === 'saved' ? 'Заметки не передаются другим устройствам.' : `Код собеседника: LIBO:${chat.id}`;
+  $('#typing-dots').hidden = !(state.typing.get(chat.id) > Date.now());
+  const mtFingerprint = chat.id === 'saved' || chat.archive ? '' : transport.mtStatus(chat.id);
+  const mtChip = $('#mt-chip');
+  mtChip.hidden = !mtFingerprint;
+  mtChip.title = mtFingerprint ? `MT-слой активен: AES-256-GCM, отпечаток ключа ${mtFingerprint}` : '';
   $('#request-bar').hidden = !chat.request;
   $('#composer-zone').hidden = !!chat.request || !!chat.archive;
   $('#archive-bar').hidden = !chat.archive;
@@ -369,6 +375,22 @@ async function showVerifyCode() {
   $('#verify-value').textContent = await cachedVerify(state.profile.id, chat.id);
   $('#verify-peer-name').textContent = chat.name;
   openDialog('verify-dialog');
+}
+
+function isNearBottom() {
+  const box = $('#messages');
+  return box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+}
+
+function updateFab() {
+  const box = $('#messages');
+  const fab = $('#scroll-bottom');
+  if (isNearBottom()) state.fabUnread = 0;
+  const show = box.scrollHeight - box.clientHeight - box.scrollTop > 400;
+  fab.hidden = !show || !state.current;
+  const badge = fab.querySelector('span');
+  badge.textContent = state.fabUnread > 99 ? '99+' : String(state.fabUnread || '');
+  badge.hidden = !state.fabUnread;
 }
 
 function renderMessages(scroll = true) {
@@ -484,8 +506,8 @@ function renderMessages(scroll = true) {
     actions.innerHTML = svg('more'); actions.title = 'Действия с сообщением'; actions.setAttribute('aria-label', 'Действия с сообщением');
     row.append(bubble, actions); box.appendChild(row);
   }
-  if (scroll && nearBottom) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
-  else box.scrollTop = previousTop;
+  if (scroll && nearBottom) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; updateFab(); });
+  else { box.scrollTop = previousTop; updateFab(); }
 }
 
 function renderAttachment(message) {
@@ -752,6 +774,7 @@ async function openChat(id) {
   closeMessageSearch();
   setSelection(null);
   state.highlight = null;
+  state.fabUnread = 0;
   resetComposerExtras();
   $('#message-input').value = state.drafts[id] || '';
   updateComposer();
@@ -1417,6 +1440,26 @@ function bindEvents() {
     try { await changeChat(id, chat => { chat.request = false; }); renderHeader(); renderSidebar(); await flushPending(id); }
     catch { notify('Не удалось принять запрос.', true); }
   };
+  $('#scroll-bottom').onclick = () => {
+    state.fabUnread = 0;
+    const box = $('#messages');
+    box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
+    updateFab();
+  };
+  $('#messages').addEventListener('scroll', updateFab, { passive: true });
+  $('#messages').addEventListener('dblclick', event => {
+    const row = event.target.closest('[data-message-id]');
+    const chat = activeChat();
+    if (!row || !chat || chat.archive || chat.request || state.selection) return;
+    void actOnMessage('react', row.dataset.messageId, 'heart');
+  });
+  window.addEventListener('resize', () => { updateComposer(); updateFab(); });
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      updateComposer(); updateFab();
+      if (state.current) requestAnimationFrame(() => { const box = $('#messages'); box.scrollTop = box.scrollHeight; });
+    }, 250);
+  });
   $('#messages').onclick = event => {
     const chat = activeChat(); if (!chat) return;
     const voteButton = event.target.closest('[data-vote]');

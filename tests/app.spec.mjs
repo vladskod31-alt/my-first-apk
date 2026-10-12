@@ -280,6 +280,7 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await alice.locator('#security-button').click();
   await expect(alice.locator('#sec-mt')).toContainText('AES-256-GCM');
   await alice.locator('#security-dialog [data-close]').click();
+  await expect(alice.locator('#mt-chip')).toBeVisible();
   // Forwarding: Alice forwards her text to Saved with a «Переслано» label.
   await send(alice, 'перешли меня');
   await expect(bob.locator('.message-text').filter({ hasText: 'перешли меня' })).toBeVisible();
@@ -296,5 +297,36 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await expect(bob.locator('.ttl-chip').first()).toBeVisible({ timeout: 20000 });
   await expect(alice.locator('.message-text').filter({ hasText: 'миг' })).toBeHidden({ timeout: 25000 });
   await expect(bob.locator('.message-deleted').first()).toBeVisible({ timeout: 20000 });
+  expect(errors).toEqual([]);
+});
+
+test('screen auto-fit: narrow, landscape and fab, double-tap reaction', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await ready(page);
+  await page.locator('#nav-saved').click();
+  for (let i = 1; i <= 30; i++) await send(page, `строка ${i}`);
+  // Narrow phone: no horizontal overflow, composer reachable.
+  await page.setViewportSize({ width: 320, height: 560 });
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.locator('#composer')).toBeVisible();
+  // Landscape phone: composer and header stay compact and visible.
+  await page.setViewportSize({ width: 740, height: 360 });
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.locator('#composer')).toBeVisible();
+  await expect(page.locator('.composer-hint')).toBeHidden();
+  // Back to desktop: the scroll fab appears away from bottom and jumps down.
+  await page.setViewportSize({ width: 1365, height: 900 });
+  await page.waitForTimeout(400);
+  await page.locator('#messages').evaluate(box => { box.scrollTop = 0; });
+  await expect(page.locator('#scroll-bottom')).toBeVisible();
+  await page.locator('#scroll-bottom').click();
+  await page.waitForTimeout(700);
+  await expect(page.locator('#scroll-bottom')).toBeHidden();
+  // Double-tap sets a heart reaction without opening the actions menu.
+  await page.locator('.message-row').last().dblclick();
+  await expect(page.locator('.reaction-chip').first()).toBeVisible();
   expect(errors).toEqual([]);
 });

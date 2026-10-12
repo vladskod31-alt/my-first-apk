@@ -6,7 +6,7 @@
 напрямую между двумя устройствами по WebRTC: без сервера переписки, без регистрации по
 телефону и без облачной истории. Личный код устройства — единственный адрес.
 
-Текущая версия: **2.8.0** (тестовый релиз для Android 8.0+). Актуальные ссылки на
+Текущая версия: **2.8.9.8** (тестовый релиз для Android 8.0+). Актуальные ссылки на
 скачивание, контрольные суммы и отпечаток подписи — в
 [RELEASE_NOTES.md](RELEASE_NOTES.md) и в
 [релизах GitHub](https://github.com/vladskod31-alt/my-first-apk/releases).
@@ -14,12 +14,12 @@
 ## Скачать APK
 
 - Основная ссылка (каталог `downloads/` тега `v2.3.0`):
-  [LIBO-2.3.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.0/downloads/LIBO-2.8.0.apk)
-- Зеркало (release-asset): [LIBO-2.3.0.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.0/LIBO-2.8.0.apk)
+  [LIBO-2.3.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.9.8/downloads/LIBO-2.8.9.8.apk)
+- Зеркало (release-asset): [LIBO-2.3.0.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.9.8/LIBO-2.8.9.8.apk)
 - Контрольные суммы: [SHA256SUMS.txt](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.3.0/downloads/SHA256SUMS.txt)
 
 ```text
-SHA-256 LIBO-2.8.0.apk = 0f4adca0189137df77e76683e7d6db2638e8bda384b117523cdbb789c57e3cfa
+SHA-256 LIBO-2.8.9.8.apk = f4e241b4e4686cc82f4e98764fe16a86b57f4e2272093fd9877c46be9ec17f41
 ```
 
 Полный порядок установки для Android 8.0/8.1, 9, 10–12 и 13+ — в разделе «Установка»
@@ -33,6 +33,9 @@ SHA-256 LIBO-2.8.0.apk = 0f4adca0189137df77e76683e7d6db2638e8bda384b117523cdbb78
 - Голосовые сообщения, файлы и короткие видео, правки, удаление для обоих, закрепы,
   реакции LIBO SVG-emoji, близкие контакты, статус «был(а) в сети», архивы из резервных
   копий, кнопка-щит со сводкой безопасности.
+- 2.8.9.8: автоподстройка под экран (dvh, safe-area, clamp-типографика, узкие и
+  ландшафтные раскладки, центрирование на широких), кнопка «вниз» со счётчиком,
+  двойной тап-реакция, точки «печатает…», чип MT в шапке, фокус-кольца.
 - 2.8.0: MT-слой защиты в стиле MTProto 2.0 (ECDH P-256 + AES-256-GCM, защита от
   повторов, отпечаток ключа в диалоге безопасности), папки чатов, пересылка,
   секретный таймер, галочки прочтения, опросы, код-замок PIN, фоны переписки,

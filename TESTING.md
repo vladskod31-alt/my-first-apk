@@ -1,4 +1,4 @@
-# Проверка LIBO 2.8.0
+# Проверка LIBO 2.8.9.8
 
 Дата прогона: 12 сентября 2026. Среда: Linux x64; Node.js 22.22.3; Chromium 143
 (пакет `@sparticuz/chromium@143.0.4` из npm, без внешних загрузок браузеров);
@@ -37,7 +37,7 @@ lint выполняются в GitHub Actions, а не локально.
 23. poll tally and vote merge are pure and bounded
 24. 2.8.0 packets: poll message, ttl bounds, forward label, read marker (новое в 2.3.0)
 
-## Браузерные сценарии: 8 из 8 (`npm run test:e2e`)
+## Браузерные сценарии: 9 из 9 (`npm run test:e2e`)
 
 Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signaling `peer` на том же
 порту разработки. Сценарии:
@@ -69,7 +69,11 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
 8. **polls, forwarding, read receipts, MT layer and secret timer between two clients** —
    опрос с голосованием и живым итогом, пересылка в «Избранное» с пометкой, галочки
    прочтения ✓✓, активный MT-слой AES-256-GCM в диалоге безопасности и исчезновение
-   секретного сообщения по таймеру на обоих устройствах.
+   секретного сообщения по таймеру на обоих устройствах, а также чип «MT» в шапке.
+9. **screen auto-fit: narrow, landscape and fab, double-tap reaction** — 320×560 и
+   740×360 без горизонтального скролла с видимым компоновщиком, ландшафт скрывает
+   подсказку, кнопка «вниз» появляется вдали от низа и возвращает список, двойной
+   тап ставит реакцию-сердце без меню действий.
 
 ## Проверки APK
 
@@ -81,15 +85,15 @@ Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signali
   Полный вывод сохраняется в `artifacts/SIGNING.txt`.
 - `zipalign -c 4` проходит; целостность ZIP и состав APK проверены разбором архива.
 - `aapt2 dump badging` (вывод в `artifacts/APK-INFO.txt`): пакет `app.libo.messenger`,
-  versionCode 20800, versionName 2.8.0, minSdk 26, targetSdk 35, единственное разрешение
+  versionCode 20898, versionName 2.8.9.8, minSdk 26, targetSdk 35, единственное разрешение
   `android.permission.INTERNET`, запускаемая активность
   `app.libo.messenger.MainActivity`, иконка `mipmap-anydpi-v26/ic_launcher.xml` во всех
   плотностях, в assets входят `index.html`, JS/CSS-бандл, шрифты WOFF2, `icon.svg`,
   `icon-192.png`, `icon-512.png` и `third-party-notices.txt`.
 - Контрольная сумма APK: `artifacts/SHA256SUMS.txt` и `downloads/SHA256SUMS.txt`
-  (значения совпадают): `0f4adca0189137df77e76683e7d6db2638e8bda384b117523cdbb789c57e3cfa`.
+  (значения совпадают): `f4e241b4e4686cc82f4e98764fe16a86b57f4e2272093fd9877c46be9ec17f41`.
 - Иконки 2.8.0: плоский дуотон 1:1 (legacy PNG во всех плотностях, адаптивные слои, монохромный слой) присутствует
-- Подпись 2.8.0: новый ключ RSA-4096 после ротации, сертификат `f4e4b3e5e1cb0c102ca27273f86126b976149ea8850be3396e80c6549992dba4`
+- Подпись 2.8.0: новый ключ RSA-4096 после ротации, сертификат 2.8.0 `f4e4b3e5…dba4`; с 2.8.9.8 — `e39564d2e28b4a284e21453519cf62e76165d3b2d6d73dec8c13f5dbffa21c6f` (кейстор в `.secrets/`, вне Git)
   в APK; веб-фавикон и `icon-512.png` входят в assets.
 
 ## Что не подтверждено

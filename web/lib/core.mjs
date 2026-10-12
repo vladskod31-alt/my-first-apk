@@ -1,6 +1,6 @@
-export const VERSION = '2.8.0';
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.0/downloads/LIBO-2.8.0.apk';
-export const APK_URL_MIRROR = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.0/LIBO-2.8.0.apk';
+export const VERSION = '2.8.9.8';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.8.9.8/downloads/LIBO-2.8.9.8.apk';
+export const APK_URL_MIRROR = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.8.9.8/LIBO-2.8.9.8.apk';
 export const REPO_URL = 'https://github.com/vladskod31-alt/my-first-apk';
 export const MAX_TEXT = 4000;
 export const MAX_IMAGE_DATA = 1_400_000;
