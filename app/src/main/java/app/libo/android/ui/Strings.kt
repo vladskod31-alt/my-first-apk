@@ -28,7 +28,7 @@ private val ukrainian = mapOf(
     "contactCodeHint" to "Текстовий код можна скопіювати або надіслати. Він передає лише дані профілю й не створює мережеве з’єднання.",
     "aiSettings" to "Налаштування AI", "apiEndpoint" to "HTTPS API URL", "apiModel" to "Модель",
     "apiKey" to "API-ключ", "saveAiSettings" to "Зберегти налаштування AI", "apiMissing" to "Спочатку вкажіть HTTPS API URL, модель і ключ у налаштуваннях.",
-    "aiHint" to "Потрібен сумісний OpenAI Chat Completions API. Ключ шифрується Android Keystore; запити надсилаються вказаному вами провайдеру."
+    "aiHint" to "Потрібен сумісний OpenAI Chat Completions API. Ключ шифрується Android Keystore; запити надсилаються вказаному вами провайдеру.",
     "sendAiHint" to "Напишіть запит…", "aiError" to "Не вдалося отримати відповідь", "performance" to "Продуктивність",
     "version" to "Версія", "add" to "Додати", "share" to "Поділитися", "importCode" to "Вставте код контакту",
     "noResults" to "Нічого не знайдено", "password" to "Пароль", "currentPassword" to "Поточний пароль",
@@ -76,7 +76,7 @@ private val english = mapOf(
     "contactCodeHint" to "Copy or share this text code. It only carries profile details and does not create a network connection.",
     "aiSettings" to "AI settings", "apiEndpoint" to "HTTPS API URL", "apiModel" to "Model",
     "apiKey" to "API key", "saveAiSettings" to "Save AI settings", "apiMissing" to "Set an HTTPS API URL, model, and key in Settings first.",
-    "aiHint" to "Requires an OpenAI Chat Completions-compatible API. The key is encrypted with Android Keystore; prompts are sent to your configured provider."
+    "aiHint" to "Requires an OpenAI Chat Completions-compatible API. The key is encrypted with Android Keystore; prompts are sent to your configured provider.",
     "sendAiHint" to "Ask something…", "aiError" to "Could not get a response", "performance" to "Performance",
     "version" to "Version", "add" to "Add", "share" to "Share", "importCode" to "Paste contact code",
     "noResults" to "No results", "password" to "Password", "currentPassword" to "Current password",
@@ -124,7 +124,7 @@ private val russian = mapOf(
     "contactCodeHint" to "Текстовый код можно скопировать или отправить. Он передаёт только данные профиля и не создаёт сетевое соединение.",
     "aiSettings" to "Настройки AI", "apiEndpoint" to "HTTPS API URL", "apiModel" to "Модель",
     "apiKey" to "API-ключ", "saveAiSettings" to "Сохранить настройки AI", "apiMissing" to "Сначала укажите HTTPS API URL, модель и ключ в настройках.",
-    "aiHint" to "Нужен совместимый OpenAI Chat Completions API. Ключ шифруется Android Keystore; запросы отправляются указанному вами провайдеру."
+    "aiHint" to "Нужен совместимый OpenAI Chat Completions API. Ключ шифруется Android Keystore; запросы отправляются указанному вами провайдеру.",
     "sendAiHint" to "Напишите запрос…", "aiError" to "Не удалось получить ответ", "performance" to "Производительность",
     "version" to "Версия", "add" to "Добавить", "share" to "Поделиться", "importCode" to "Вставьте код контакта",
     "noResults" to "Ничего не найдено", "password" to "Пароль", "currentPassword" to "Текущий пароль",

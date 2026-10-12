@@ -25,12 +25,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -181,8 +181,9 @@ fun LiboApp(store: LiboStore) {
     }
 
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = maxWidth >= 840.dp
-        val compact = maxWidth < 360.dp
+        val layoutWidth = maxWidth
+        val wide = layoutWidth >= 840.dp
+        val compact = layoutWidth < 360.dp
         val selectedChat = state.chats.firstOrNull { it.id == selectedChatId }
         val isConversation = route == "main" && activeTab == "chats" && selectedChat != null
         val showBottomNavigation = route == "main" && selectedChat == null && !wide
@@ -322,7 +323,7 @@ fun LiboApp(store: LiboStore) {
                             }
                             else -> if (wide && activeTab == "chats") {
                                 Row(Modifier.fillMaxSize()) {
-                                    val listWidth = (maxWidth - 84.dp).coerceAtMost(390.dp).coerceAtLeast(280.dp)
+                                    val listWidth = (layoutWidth - 84.dp).coerceAtMost(390.dp).coerceAtLeast(280.dp)
                                     ChatListScreen(
                                         state = state,
                                         store = store,

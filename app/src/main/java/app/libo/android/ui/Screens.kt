@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -726,7 +725,7 @@ fun ChatAvatar(name: String, kind: ChatKind, size: androidx.compose.ui.unit.Dp) 
 
 @Composable
 private fun AttachmentLabel(attachment: Attachment, onClick: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().clickable(onClick).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(if (attachment.mimeType.startsWith("audio/")) Icons.Filled.VolumeUp else Icons.Filled.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
         Text(attachment.displayName, modifier = Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
