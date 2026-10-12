@@ -135,26 +135,12 @@ jobs:
           echo "Published [LIBO-v2.10.9.3.apk](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/LIBO-v2.10.9.3.apk)." >> "$GITHUB_STEP_SUMMARY"
           echo "SHA-256: $checksum" >> "$GITHUB_STEP_SUMMARY"
 
-      # Keep a Git blob for retrieval through the allowed GitHub REST API.
-      # It is not attached to a branch or commit; the release asset is canonical.
-      - name: Make APK retrievable for delivery
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Commit APK for direct repository delivery
         run: |
-          payload="$RUNNER_TEMP/libo-apk-blob.json"
-          python3 - "$payload" <<'PY'
-          import base64
-          import json
-          import sys
-          from pathlib import Path
-
-          apk = Path("release-apk/LIBO-v2.10.9.3.apk").read_bytes()
-          payload = {"content": base64.b64encode(apk).decode("ascii"), "encoding": "base64"}
-          Path(sys.argv[1]).write_text(json.dumps(payload), encoding="utf-8")
-          PY
-          if blob_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" --method POST --input "$payload" --jq '.sha')"; then
-            echo "::notice title=APK Git blob SHA::$blob_sha"
-            echo "APK delivery object: $blob_sha" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::warning title=APK delivery object::Could not make a temporary API copy of the APK. The GitHub Release asset is still published."
-          fi
+          mkdir -p distribution
+          cp release-apk/LIBO-v2.10.9.3.apk distribution/LIBO-v2.10.9.3.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add distribution/LIBO-v2.10.9.3.apk
+          git commit -m "Add installable LIBO v2.10.9.3 APK"
+          git push origin "HEAD:$GITHUB_REF_NAME"
