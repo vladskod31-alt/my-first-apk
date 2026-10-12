@@ -55,7 +55,49 @@ jobs:
           "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
 
       - name: Build debug-signed APK
-        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+        id: gradle
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee gradle-build.log
+
+      - name: Surface Gradle failure details
+        if: steps.gradle.outcome == 'failure'
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          lines = Path("gradle-build.log").read_text(errors="replace").splitlines()
+          pattern = re.compile(
+              r"(?:^e: |^w: |error:|FAILURE:|What went wrong:|"
+              r"Execution failed for task|Unresolved reference|Compilation error|Caused by:)"
+          )
+          details = [line.strip() for line in lines if pattern.search(line)]
+          if not details:
+              details = lines[-25:]
+          details = [line[:400] for line in details[-30:]]
+          excerpt = "\n".join(details)
+          escaped = excerpt.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error title=Gradle build failure::{escaped}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("### Gradle build failure\n\n```text\n")
+              summary.write(excerpt + "\n```\n")
+          PY
+
+      - name: Upload Gradle failure log
+        if: steps.gradle.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: LIBO-v2.10.9.3-build-log
+          path: gradle-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail workflow if Gradle failed
+        if: steps.gradle.outcome == 'failure'
+        run: exit 1
 
       - name: Name APK for download
         run: |
