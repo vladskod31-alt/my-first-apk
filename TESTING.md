@@ -1,124 +1,134 @@
-# Проверка LIBO 2.8.1
+# Перевірка LIBO 2.9.10.3
 
-Дата прогона: 12 сентября 2026. Среда: Linux x64; Node.js 22.22.3; Chromium 143
-(пакет `@sparticuz/chromium@143.0.4` из npm, без внешних загрузок браузеров);
-OpenJDK Temurin JRE 17.0.17+10 (из npm-пакета `@node-plantuml-2/jre-linux-x64@1.1.8`);
-инструменты Android (`aapt2`, `ecj`, `d8`, `apksigner`, `zipalign`, `android.jar` 35) из
-внешних зеркал с закреплёнными SHA-256 в `scripts/toolchain-sources.json`. Gradle и SDK
-Android в этой среде недоступны (домены загрузок заблокированы), поэтому Gradle-сборка и
-lint выполняются в GitHub Actions, а не локально.
+**Дата:** 14 жовтня 2026 · **середовище:** Linux x64, Node.js 22, Playwright Chromium,
+Temurin JRE 17.0.17+10. Це фактичний звіт, а не список запланованих перевірок.
 
-## Модульные тесты: 24 из 24 (`npm test`)
+## Пройдено
 
-Фреймворк `node:test`, файлы `tests/core.test.mjs`. Названия проверок:
+| Команда / перевірка | Результат | Що саме підтверджує |
+| --- | --- | --- |
+| `npm test` | **30 / 30 passed** | packet schemas, crypto envelope, hash/base64, streamed files, resume position, SHA-256 reject, profile/deep-link bounds |
+| `npm run build` | **passed** | Vite production bundle (`42 modules`) |
+| `npm run test:e2e` | **11 / 11 passed** | UI, real local PeerJS + WebRTC DataChannel, offline text queue, multi-chunk files, sender reconnect/resume |
+| `./scripts/build-apk-local.sh` | **passed** | AAPT2 → ECJ → D8 → zipalign → apksigner; release APK generated |
+| `zipalign -c 4` / `apksigner verify --verbose --print-certs` | **passed** | APK alignment and v2/v3 signature |
+| `aapt2 dump badging` | **passed** | package/version/minSdk/permissions in generated APK |
 
-1. random peer identities are valid and distinct
-2. accepts full contact codes, case and harmless surrounding whitespace
-3. rejects partial, URL, HTML, self-invoking or overlong codes
-4. names and file names are bounded
-5. validates and copies message packets without arbitrary fields
-6. rejects invalid packet types and protocol versions
-7. message IDs, text, timestamps and limits are mandatory
-8. allows bounded raster photos; rejects remote images and SVG
-9. replies are copied and bounded
-10. ACKs only acknowledge well-formed message IDs
-11. hello must identify a LIBO peer, typing must be boolean
-12. outgoing serialization excludes local state
-13. HTTPS signaling uses the correct host, port and path
-14. rejects insecure signaling, embedded secrets and URL injection
-15. HTTP only allowed for same-origin local development
-16. TURN needs a valid URL and credentials
-17. text exports never leak identity, TURN credentials or photo bytes
-18. verification code is stable, symmetric and unambiguous (новое в 2.3.0)
-19. verification code depends on both identities
-20. 2.5.0 control packets validate and reject malformed input (edit/delete/pin/react)
-21. attachments are bounded and mime-checked (voice/video/file, лимиты base64)
-22. mt session seals, rejects replays and tampering, shares fingerprint
-23. poll tally and vote merge are pure and bounded
-24. 2.8.1 packets: poll message, ttl bounds, forward label, read marker
+## Node/unit tests — 30/30
 
-## Браузерные сценарии: 8 из 8 (`npm run test:e2e`)
+`node --test tests/*.test.mjs` виконує `tests/core.test.mjs` та
+`tests/attachments.test.mjs`.
 
-Playwright + Chromium, файл `tests/app.spec.mjs`, локальный signaling `peer` на том же
-порту разработки. Сценарии:
+Окремо нове для 2.9.10.3:
 
-1. **real welcome, no invented contacts, valid QR and version; no open-source claims in UI** —
-   пустой старт без вымышленных контактов, личный код формата `LIBO:libo-…`, валидный
-   SVG-QR, экран «О LIBO» без упоминаний открытого кода, версия 2.8.1, список из десяти
-   возможностей, отсутствие ошибок страницы.
-2. **saved messages, literal HTML, drafts, search, theme and reload** — «Избранное»,
-   внедрённый `<img onerror>` остаётся текстом и не исполняется, черновики переживают
-   перезагрузку, поиск, переключение темы. В 2.3.0 дополнительно: в «Избранном» пункт
-   «Код сверки» скрыт.
-3. **mobile navigation, input validation, profile and no horizontal overflow** — экран
-   360 px, навигация назад, отклонение некорректного кода контакта, отсутствие
-   горизонтальной прокрутки.
-4. **text export contains notes but never private contact identity** — скачанный JSON
-   содержит заметки, но не личный код профиля и не TURN-пароли.
-5. **two independent clients exchange text, delivery ACK, reply and real photo** — два
-   изолированных браузерных контекста соединяются по настоящему WebRTC DataChannel через
-   локальный signaling: текст, статус «доставлено» после сохранения у получателя, ответ с
-   цитатой, фотография в base64 декодируется в `img`. В 2.3.0 дополнительно: код сверки
-   одинаков на обеих сторонах и соответствует формату `XXXX XXXX XXXX`.
-6. **offline queue survives sender reload and is delivered exactly once after reconnect** —
-   сообщение, написанное при закрытом получателе, переживает перезагрузку отправителя и
-   доставляется ровно один раз после возвращения получателя.
-7. **backup import becomes read-only archive and close contacts stay on top** — импорт
-   JSON-копии создаёт архив только для чтения с плашкой, звезда поднимает контакт выше
-   обычных чатов. Сценарий 5 дополнительно проверяет реакции, закреп с панелью с обеих
-   сторон, правку с отметкой «изменено», удаление для обоих и доставку файла с именем.
-8. **polls, forwarding, read receipts, MT layer and secret timer between two clients** —
-   опрос с голосованием и живым итогом, пересылка в «Избранное» с пометкой, галочки
-   прочтения ✓✓, активный MT-слой AES-256-GCM в диалоге безопасности и исчезновение
-   секретного сообщения по таймеру на обоих устройствах.
+1. metadata-only streamed attachment приймається лише з valid file id, MIME, size,
+   chunk count та SHA-256; oversized chunk/hash/limit відхиляються;
+2. `file-chunk`, receipt, state, ACK, username, profile, mention і strict `libo://`
+   packet validation;
+3. binary base64 round trip та deterministic SHA-256 Blob;
+4. outgoing resume: peer повідомляє `next=1`, передавач надсилає тільки chunks 1 і 2,
+   а state стає `delivered` лише після `file-ack`;
+5. incoming chunks зберігаються, збираються, перевіряються SHA-256 та ACK-аються тільки
+   після success;
+6. навмисно неправильний final SHA-256 дає `failed` + negative `file-ack`, не Delivered.
 
-## Проверки APK
+Існуючі 2.x перевірки також пройшли: identity/code bounds, XSS/literal message content,
+MIME/attachment guards, signaling/TURN validation, export privacy, SAS, packet controls,
+P-256/AES-GCM/replay checks, polls, TTL/read marker.
 
-- Сборка: `npm run build` → `scripts/build-apk-local.sh` (AAPT2 → ECJ → D8 → zipalign →
-  подпись).
-- `apksigner verify --verbose --print-certs`: схемы v2 и v3 подтверждены, v1 не требуется
-  для minSdk 26; сертификат `CN=LIBO Release, O=LIBO Messenger`, RSA-4096; SHA-256
-  сертификата `3bb3878c0b3dd9ec3a31905da3a22fd7730a72ca83cf9421e582f70b527510e0`.
-  Полный вывод сохраняется в `artifacts/SIGNING.txt`.
-- `zipalign -c 4` проходит; целостность ZIP и состав APK проверены разбором архива.
-- `aapt2 dump badging` (вывод в `artifacts/APK-INFO.txt`): пакет `app.libo.messenger`,
-  versionCode 20801, versionName 2.8.1, minSdk 26, targetSdk 35, единственное разрешение
-  `android.permission.INTERNET`, запускаемая активность
-  `app.libo.messenger.MainActivity`, иконка `mipmap-anydpi-v26/ic_launcher.xml` во всех
-  плотностях, в assets входят `index.html`, JS/CSS-бандл, шрифты WOFF2, `icon.svg`,
-  `icon-192.png`, `icon-512.png` и `third-party-notices.txt`.
-- Контрольная сумма APK: `artifacts/SHA256SUMS.txt` и `downloads/SHA256SUMS.txt`
-  (значения совпадают): `0f4adca0189137df77e76683e7d6db2638e8bda384b117523cdbb789c57e3cfa`.
-- Иконки 2.8.1: плоский дуотон 1:1 (набор 2.8.0 сохранён; legacy PNG во всех плотностях, адаптивные слои, монохромный слой)
-- Подпись 2.8.1: тот же релизный ключ RSA-4096, что и у 2.8.0 (ротация выполнена в 2.8.0), сертификат `f4e4b3e5e1cb0c102ca27273f86126b976149ea8850be3396e80c6549992dba4`
-  в APK; веб-фавикон и `icon-512.png` входят в assets.
+## Browser / WebRTC — 11/11
 
-## Что не подтверждено
+`npm run test:e2e` запускає локальний signaling server та Playwright сценарії з
+ізольованими browser contexts. Це справжні WebRTC DataConnection між двома сторінками на
+цьому host, не mock transport.
 
-- APK не запускался на физическом Android-телефоне и эмуляторе: в среде сборки нет SDK и
-  системного образа Android. Проверены подпись, упаковка, состав и содержимое APK, а
-  веб-часть проверена браузерными сценариями.
-- Gradle-сборка и Android lint локально не выполнялись (домены SDK недоступны из этой
-  среды); в GitHub Actions они выполняются на каждый push.
-- Публичный signaling `0.peerjs.com` и сценарии между разными мобильными операторами не
-  тестировались: браузерные сценарии используют локальный signaling и реальные
-  WebRTC-каналы на одном хосте.
-- Не заявляются: аудит безопасности, нагрузочное тестирование, фоновые push-уведомления,
-  автоматическая криптографическая проверка личности собеседника.
+1. чистий старт, QR, version/about і відсутність помилок сторінки;
+2. Saved, literal HTML (не виконується), draft/reload, basic search/theme;
+3. mobile 360 px, validation і відсутність horizontal overflow;
+4. text export не містить identity/TURN secret;
+5. два endpoint-и: text, receiver ACK, reply, image, reaction, pin, edit/delete, history
+   of edits і **70 KiB file через кілька 24 KiB chunks**. Sender `delivered` очікується
+   тільки після receiver verified file ACK;
+6. text offline queue переживає reload та доставляється рівно один раз;
+7. read-only archive import і близькі контакти;
+8. базовий P2P poll, forwarding, read receipt, MT-style session і TTL;
+9. multiline composer з long URL/@mention/emoji, music draft/card без Base64 payload UI;
+10. profile exchange, local username, mention/profile navigation, validated `libo://user`
+    і local `from:@… has:link` filter;
+11. **actual sender reconnect під час 1 MiB chunked transfer**: тест бачить `Передача`,
+    перезапускає sender transport, потім очікує `Получено и проверено` на peer і
+    `delivered` на sender. Цей сценарій перевіряє resume поверх реального локального
+    WebRTC endpoint.
 
-## Как повторить локально
+Ці тести не вимірюють мобільну мережу. Локальні timings у security dialog показують
+клієнтські мітки черги/доставки/ACK/read; вони не є latency SLA.
+
+## APK
+
+Для sandbox без Android SDK застосовано pinned fallback toolchain із
+`scripts/toolchain-sources.json`: android.jar API 35, AAPT2, ECJ, D8, apksigner і zipalign
+мають перевірені хеші; JRE 17 завантажено окремо поза репозиторієм.
+
+Фактичний результат `aapt2 dump badging` для 2.9.10.3:
+
+```text
+package: name='app.libo.messenger' versionCode='2091003' versionName='2.9.10.3'
+minSdkVersion:'26'
+targetSdkVersion:'35'
+uses-permission: name='android.permission.INTERNET'
+uses-permission: name='android.permission.POST_NOTIFICATIONS'
+launchable-activity: app.libo.messenger.MainActivity
+```
+
+`apksigner` підтвердив v2 і v3 та один RSA-4096 signer:
+
+```text
+CN=LIBO Release, O=LIBO Messenger
+certificate SHA-256: a1b522d513f569a6c081ec12e4aeaab9cf3dbcd394b70b6f26ee779cc2d91910
+```
+
+APK: `LIBO-2.9.10.3.apk`, **305,531 B**, SHA-256
+`235a3292c4f0d0a906bef47dcf214da5324a1e23a23f3f9971c4d5818a1ae0c5`. Команда build кладе
+той самий хеш у `artifacts/SHA256SUMS.txt`; release mirror — у `downloads/SHA256SUMS.txt`.
+
+### Android compile warnings
+
+ECJ успішно зібрав `MainActivity.java` і `ReminderReceiver.java`. Є лише warnings про
+Android deprecated API compatibility calls (`setAllowFileAccessFromFileURLs`, system bar
+API та pre-O `Notification.Builder`); compile error немає.
+
+## Що не перевірено / не заявляється
+
+- `./gradlew assembleDebug` **не дійшов до build**, бо Gradle wrapper намагався завантажити
+  `gradle-8.9-bin.zip` з `services.gradle.org`, а sandbox отримав SSL handshake EOF. Це не
+  замінює успішний fallback compile, але означає, що Gradle/lint результату тут немає.
+- APK не встановлювався на фізичний Android або emulator. Тому `ACTION_OPEN_DOCUMENT`,
+  `ACTION_CREATE_DOCUMENT` streaming save, Android `AlarmManager`, POST_NOTIFICATIONS,
+  intent-dispatch і media codec behavior compiled/inspected, але **не device-verified**.
+- Відновлення transfer перевірене в unit simulation і локальному two-browser reconnect;
+  не перевірено на мобільному NAT, kill/restart WebView під час transfer чи 100 MiB файл.
+- Реальні audio/video call endpoint-и, live stream, channels, server topics/anti-spam/
+  sessions, global account/username search і server TTL не існують у цій архітектурі, тому
+  для них немає «passed» тесту.
+- Незалежний security audit, penetration/load test, production TURN і foreground/push
+  delivery не виконувалися.
+
+## Як повторити
 
 ```sh
 npm ci
 npm test
-npm run test:e2e
 npm run build
-node scripts/bootstrap-toolchain.mjs   # Linux x64; нужны gh, tar, Node 22
-# export JAVA_HOME=<путь из вывода>, LIBO_TOOLCHAIN=<путь из вывода>
+npm run test:e2e
+
+node scripts/bootstrap-toolchain.mjs
+export JAVA_HOME='<значення з виводу>'
+export LIBO_TOOLCHAIN='<значення з виводу>'
 ./scripts/build-apk-local.sh
-python3 scripts/scan-secrets.py
+
+# якщо є встановлені JDK/SDK і доступ до Gradle/Maven:
+./gradlew assembleDebug
 ```
 
-Логи: вывод `npm test` и `npm run test:e2e` перечисляет каждую проверку; в GitHub Actions
-логи и артефакты прикреплены к прогону workflow; результаты подписи и упаковки APK
-сохраняются в `artifacts/SIGNING.txt` и `artifacts/APK-INFO.txt`.
+Перевіряти Android APK треба також на API 26, 29, 33 і 35: picker/save, дозвіл
+notifications, deep link, large audio/video, interrupt/resume, low-storage та codec fallback.

@@ -5,8 +5,11 @@ import {
   normalizePeerCode, makePeerId, normalizeName, validatePacket, parseSignalingUrl,
   makeIceServers, textExport, MAX_TEXT, MAX_IMAGE_DATA, MAX_ATT_DATA, safeFilename, initials, toPacket, verificationCode,
   makeEditPacket, makeDeletePacket, makePinPacket, makeReactPacket,
-  mergePollVote, pollTally, REACTIONS,
+  mergePollVote, pollTally, REACTIONS, VERSION, FILE_CHUNK_SIZE, MAX_AUDIO_FILE_SIZE,
+  normalizeUsername, parseLiboLink, makeLiboLink, makeFileId, CAPABILITIES,
+  makeFileChunkPacket, makeFileReceiptPacket, makeFileStatePacket, makeFileAckPacket,
 } from '../web/lib/core.mjs';
+import { bytesToBase64, base64ToBytes, sha256Blob } from '../web/lib/attachments.mjs';
 
 const peerId = 'libo-0123456789abcdef0123456789abcdef';
 const message = { v: 1, type: 'message', id: '01234567-89ab-cdef-0123-456789abcdef', text: 'Привет! 👋', at: 1788591600000 };
@@ -188,7 +191,7 @@ test('poll tally and vote merge are pure and bounded', () => {
   assert.equal(validatePacket({ v: 1, type: 'pollvote', pid: '01234567-89ab-cdef-0123-456789abcdef', opt: 9 }), null);
 });
 
-test('2.8.1 packets: poll message, ttl bounds, forward label, read marker', () => {
+test('2.9.10.3 packets: poll message, ttl bounds, forward label, read marker', () => {
   const id = '01234567-89ab-cdef-0123-456789abcdef';
   const poll = validatePacket({ v: 1, type: 'message', id, text: '', at: 5, att: { kind: 'poll', q: 'Чай?', opts: ['Да', 'Нет'] } });
   assert.equal(poll.att.kind, 'poll');
@@ -203,4 +206,53 @@ test('2.8.1 packets: poll message, ttl bounds, forward label, read marker', () =
   assert.equal(validatePacket({ v: 1, type: 'read', upTo: 123 }).upTo, 123);
   assert.equal(validatePacket({ v: 1, type: 'read', upTo: -1 }), null);
   assert.equal(validatePacket({ v: 1, type: 'mt-hello', pub: 'AAAA' }).pub, 'AAAA');
+});
+
+
+test('2.9.10.3 validates secure chunked file metadata and bounded control packets', () => {
+  const id = '01234567-89ab-cdef-0123-456789abcdef';
+  const fileId = makeFileId();
+  const size = FILE_CHUNK_SIZE * 2 + 7;
+  const att = {
+    kind: 'audio', fileId, name: 'трек.mp3', mime: 'audio/mpeg', size,
+    chunkSize: FILE_CHUNK_SIZE, totalChunks: 3, sha256: 'a'.repeat(64),
+    dur: 12_345,
+  };
+  const packet = validatePacket({ v: 1, type: 'message', id, text: '', at: 44, att });
+  assert.equal(packet.att.fileId, fileId);
+  assert.equal(packet.att.data, undefined, 'new metadata must not contain a giant data URL');
+  assert.equal(packet.att.totalChunks, 3);
+  assert.ok(validatePacket(makeFileChunkPacket(fileId, 0, 'QUJDRA==')));
+  assert.deepEqual(validatePacket(makeFileReceiptPacket(fileId, 0)), makeFileReceiptPacket(fileId, 0));
+  assert.deepEqual(validatePacket(makeFileStatePacket(fileId, 2)), makeFileStatePacket(fileId, 2));
+  assert.deepEqual(validatePacket(makeFileAckPacket(fileId, true)), makeFileAckPacket(fileId, true));
+  assert.equal(validatePacket({ v: 1, type: 'file-chunk', fileId, index: 0, data: 'x'.repeat(40_000) }), null);
+  assert.equal(validatePacket({ v: 1, type: 'message', id, text: '', at: 44, att: { ...att, size: MAX_AUDIO_FILE_SIZE + 1, totalChunks: Math.ceil((MAX_AUDIO_FILE_SIZE + 1) / FILE_CHUNK_SIZE) } }), null);
+  assert.equal(validatePacket({ v: 1, type: 'message', id, text: '', at: 44, att: { ...att, sha256: 'wrong' } }), null);
+});
+
+test('2.9.10.3 usernames, profiles, mentions and deep links stay bounded', () => {
+  assert.equal(VERSION, '2.9.10.3');
+  assert.equal(normalizeUsername('@Vlad_31'), 'vlad_31');
+  assert.equal(normalizeUsername('12bad'), '');
+  const link = makeLiboLink('user', peerId);
+  assert.equal(link, `libo://user/${peerId}`);
+  assert.deepEqual(parseLiboLink(link), { type: 'user', id: peerId });
+  assert.equal(parseLiboLink('libo://user/not-a-peer'), null);
+  const hello = validatePacket({
+    v: 1, type: 'hello', id: peerId, name: 'Аня', caps: CAPABILITIES,
+    profile: { username: 'anya', bio: 'Привіт', status: 'away', avatar: '' },
+  });
+  assert.equal(hello.profile.username, 'anya');
+  assert.equal(hello.profile.status, 'away');
+  const mention = validatePacket({ ...message, mentions: [{ type: 'mention', userId: peerId, username: 'anya' }] });
+  assert.deepEqual(mention.mentions, [{ type: 'mention', userId: peerId, username: 'anya' }]);
+});
+
+test('chunk encoding and SHA-256 preserve binary bytes without a data URL', async () => {
+  const bytes = new Uint8Array([0, 1, 2, 3, 251, 252, 253, 254, 255]);
+  const encoded = bytesToBase64(bytes);
+  assert.deepEqual([...base64ToBytes(encoded)], [...bytes]);
+  const digest = await sha256Blob(new Blob([bytes]));
+  assert.equal(digest, '141429fd79e45a4abc2b001732de4c7e07d33ca09575aa30c3d8254aee86d897');
 });

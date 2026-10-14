@@ -40,14 +40,14 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   await expect(page.locator('#invite-qr svg')).toHaveCount(1);
   await expect(page.locator('#invite-qr svg path, #invite-qr svg rect')).not.toHaveCount(0);
   await page.locator('#invite-dialog [data-close]').click();
-  // 2.8.1: the UI must not mention open source, source code hosting or GitHub.
+  // 2.9.10.3: the UI must not mention open source, source code hosting or GitHub.
   await page.locator('.quiet-button').click();
   const about = await page.locator('#about-dialog').innerText();
-  expect(about).toContain('2.8.1');
+  expect(about).toContain('2.9.10.3');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
   expect(await page.locator('#about-features li').count()).toBe(10);
-  expect(await page.locator('#about-version').innerText()).toBe('2.8.1');
+  expect(await page.locator('#about-version').innerText()).toBe('2.9.10.3');
   expect(errors).toEqual([]);
 });
 
@@ -185,15 +185,20 @@ test('two independent clients exchange text, delivery ACK, reply and real photo'
   await alice.locator('#edit-save').click();
   await expect(bob.locator('.message-text').first()).toContainText('(изменено)');
   await expect(bob.locator('.edited-mark').first()).toBeVisible();
+  await alice.locator('.edited-mark').first().click();
+  await expect(alice.locator('#edit-history-dialog')).toBeVisible();
+  await expect(alice.locator('#edit-history-list')).toContainText('Привет с первого устройства!');
+  await alice.locator('#edit-history-dialog [data-close]').click();
   await alice.locator('.message-row').first().hover();
   await alice.locator('.message-row').first().locator('.message-actions-button').click();
   await alice.locator('#message-actions [data-act="delete"]').click();
   await alice.locator('#confirm-action').click();
   await expect(bob.locator('.message-deleted').first()).toBeVisible();
-  // File attachment (generic kind) reaches the peer and downloads by name.
+  // A 70 KiB generic file crosses several 24 KiB acknowledged chunks; Delivered below
+  // therefore means the peer reassembled and SHA-256-verified the whole Blob.
   await alice.locator('#file-input').setInputFiles({
     name: 'note.txt', mimeType: 'text/plain',
-    buffer: Buffer.from('резервная заметка для проверки файла'),
+    buffer: Buffer.alloc(70 * 1024, 7),
   });
   await expect(alice.locator('#attachment-preview')).toBeVisible();
   await alice.locator('#send-button').click();
@@ -305,4 +310,85 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   await expect(alice.locator('.message-text').filter({ hasText: 'миг' })).toBeHidden({ timeout: 25000 });
   await expect(bob.locator('.message-deleted').first()).toBeVisible({ timeout: 20000 });
   expect(errors).toEqual([]);
+});
+
+test('2.9.10.3 composer keeps multiline text horizontal and prepares a music attachment without Base64 UI', async ({ page }) => {
+  await ready(page);
+  await page.locator('#nav-saved').click();
+  const input = page.locator('#message-input');
+  await input.fill('Перший рядок — довгий URL https://example.test/' + 'a'.repeat(180));
+  await input.press('Enter');
+  await input.type('Другий рядок @username 😀');
+  await expect(input).toHaveValue(/\nДругий рядок @username 😀$/);
+  await expect(input).toHaveCSS('writing-mode', 'horizontal-tb');
+  await page.locator('#send-button').click();
+  await expect(page.locator('.message-text')).toContainText('Другий рядок @username 😀');
+  await page.locator('#file-input').setInputFiles({
+    name: 'demo-track.mp3', mimeType: 'audio/mpeg', buffer: Buffer.alloc(70 * 1024, 7),
+  });
+  await expect(page.locator('#audio-kind-dialog')).toBeVisible();
+  await page.locator('#audio-as-music').click();
+  await expect(page.locator('#attachment-preview')).toContainText('Музыка:');
+  await page.locator('#send-button').click();
+  await expect(page.locator('.att-music')).toBeVisible();
+  await expect(page.locator('.att-music')).toContainText('demo-track.mp3');
+  await expect(page.locator('.outgoing .message-status').last()).toHaveAttribute('data-status', 'local');
+});
+
+async function profileDetails(page, name, username, bio = '') {
+  await page.locator('#profile-button').click();
+  await page.locator('#profile-name').fill(name);
+  await page.locator('#profile-username').fill(username);
+  await page.locator('#profile-bio').fill(bio);
+  await page.locator('#settings-form').getByRole('button', { name: 'Сохранить изменения' }).click();
+  await expect(page.locator('#settings-dialog')).not.toBeVisible();
+}
+
+test('2.9.10.3 exchanges local profiles, resolves a known mention and opens a validated libo link', async ({ page: alice, browser }) => {
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5173' });
+  const bob = await context.newPage();
+  await ready(alice); await ready(bob);
+  await profileDetails(alice, 'Аня', 'anya_31', 'Тестовый профиль');
+  await profileDetails(bob, 'Богдан', 'bogdan_31');
+  const aliceCode = await code(alice);
+  await add(alice, await code(bob));
+  await bob.locator('.chat-row').filter({ hasText: 'Аня' }).click();
+  await bob.locator('#accept-request').click();
+  await bob.locator('#chat-avatar').click();
+  await expect(bob.locator('#contact-profile-name')).toHaveText('Аня');
+  await expect(bob.locator('#contact-profile-username')).toHaveText('@anya_31');
+  await expect(bob.locator('#contact-profile-bio')).toHaveText('Тестовый профиль');
+  await bob.locator('#profile-dialog [data-close]').click();
+  await send(bob, 'Привіт @anya_31 https://example.test/path');
+  await expect(alice.locator('.mention')).toHaveText('@anya_31');
+  await alice.locator('.mention').click();
+  await expect(alice.locator('#profile-dialog')).toBeVisible();
+  await alice.locator('#profile-dialog [data-close]').click();
+  await bob.evaluate(link => window.Libo.openLink(link), aliceCode.replace('LIBO:', 'libo://user/'));
+  await expect(bob.locator('#profile-dialog')).toBeVisible();
+  await bob.locator('#profile-dialog [data-close]').click();
+  await alice.locator('#message-search-toggle').click();
+  await alice.locator('#message-search').fill('from:@bogdan_31 has:link');
+  await expect(alice.locator('.message-text')).toContainText('https://example.test/path');
+  await context.close();
+});
+
+test('chunked file survives an actual sender reconnect and resumes to SHA-256 delivery', async ({ page: alice, browser }) => {
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5173' });
+  const bob = await context.newPage();
+  await ready(alice); await ready(bob);
+  await profile(alice, 'Отправитель файла'); await profile(bob, 'Получатель файла');
+  await add(alice, await code(bob));
+  await bob.locator('.chat-row').filter({ hasText: 'Отправитель файла' }).click();
+  await bob.locator('#accept-request').click();
+  await alice.locator('#file-input').setInputFiles({
+    name: 'resume-check.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(1024 * 1024, 19),
+  });
+  await alice.locator('#send-button').click();
+  await expect(alice.locator('[data-file-status]')).toContainText('Передача', { timeout: 20_000 });
+  await alice.locator('#reconnect').click();
+  await expect(bob.locator('.att-file-card')).toBeVisible({ timeout: 40_000 });
+  await expect(bob.locator('[data-file-status]')).toContainText('Получено и проверено', { timeout: 90_000 });
+  await expect(alice.locator('.outgoing .message-status').last()).toHaveAttribute('data-status', 'delivered', { timeout: 90_000 });
+  await context.close();
 });

@@ -482,7 +482,7 @@ h1, h2, h3, p { margin: 0; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
 
-/* ===== LIBO 2.8.1: folders, polls, secret timer, selection, wallpapers, lock ===== */
+/* ===== Legacy personal-chat controls: folders, polls, timer, selection, wallpapers, lock ===== */
 .folder-tabs { display: flex; gap: 6px; padding: 0 12px 8px; overflow-x: auto; scrollbar-width: none; }
 .folder-tab { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 999px; padding: 5px 11px; font: 600 12px/1 inherit; font-family: inherit; cursor: pointer; white-space: nowrap; }
 .folder-tab svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }
@@ -525,3 +525,71 @@ h1, h2, h3, p { margin: 0; }
 html[data-wall="dusk"] .messages { background: linear-gradient(160deg, color-mix(in srgb, var(--accent-soft) 70%, transparent), transparent 60%), var(--bg); }
 html[data-wall="mint"] .messages { background: radial-gradient(120% 90% at 85% -10%, color-mix(in srgb, #a5dacc 26%, transparent), transparent 60%), var(--bg); }
 html[data-wall="mono"] .messages { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--muted) 7%, transparent) 0 12px, transparent 12px 24px), var(--bg); }
+
+/* ===== LIBO 2.9.10.3: resilient multiline composer and streamed attachments ===== */
+#message-input {
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+  direction: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-y: auto;
+  min-width: 0;
+  max-height: 180px;
+}
+.message-text, .message-quote p, .attachment-info strong, .attachment-info span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.mention { display: inline; padding: 0; color: var(--accent-text); font: inherit; font-weight: 750; text-decoration: none; }
+.mention:hover { text-decoration: underline; }
+.mention-picker { position: absolute; z-index: 8; left: 42px; bottom: 91px; width: min(300px, calc(100% - 84px)); max-height: 210px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow); }
+.mention-picker button { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 10px; border-radius: 8px; text-align: left; }
+.mention-picker button:hover { background: var(--surface); }
+.mention-picker strong { font-size: 11px; color: var(--accent-text); }
+.mention-picker span { font-size: 10px; color: var(--muted); }
+.profile-avatar-editor { border: 0; background-color: transparent; cursor: pointer; overflow: hidden; }
+.profile-avatar-editor:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
+.profile-bio { resize: vertical; min-height: 62px; font-family: inherit; line-height: 1.5; }
+.contact-profile-head { display: flex; align-items: center; gap: 14px; margin: 3px 0 23px; }
+.contact-profile-head h2 { margin: 0; }
+.contact-profile-head .dialog-description { margin: 5px 0 0; }
+.attachment-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; width: min(100%, 330px); min-width: 220px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); margin-bottom: 5px; }
+.attachment-card.att-image { display: block; width: min(100%, 290px); padding: 0; overflow: hidden; background: var(--surface); }
+.attachment-card .message-photo { margin: 0; width: 100%; min-height: 100px; border-radius: 0; background: #17141d; }
+.attachment-card .message-photo img { width: 100%; max-height: 280px; object-fit: contain; }
+.attachment-placeholder { display: grid; min-height: 100px; place-items: center; color: #c7c0d4; font-size: 10px; }
+.attachment-type-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; background: var(--accent-soft); color: var(--accent-text); font-size: 19px; font-weight: 800; }
+.attachment-info { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+.attachment-info strong { font-size: 11px; line-height: 1.35; color: var(--text); }
+.attachment-info span { font-size: 9px; line-height: 1.45; color: var(--muted); }
+.attachment-media { grid-column: 1 / -1; min-width: 0; }
+.attachment-media audio { width: 100%; height: 34px; }
+.attachment-card .message-video { max-width: 100%; width: 100%; }
+.music-cover { grid-row: span 2; width: 44px; height: 44px; border-radius: 9px; object-fit: cover; }
+.attachment-card.att-music { grid-template-columns: auto auto minmax(0, 1fr); }
+.attachment-card.att-music .attachment-type-icon { display: none; }
+.attachment-transfer { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 70px auto auto auto; gap: 6px; align-items: center; }
+.attachment-transfer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8.5px; color: var(--muted); }
+.attachment-transfer progress { width: 70px; height: 5px; accent-color: var(--accent); }
+.attachment-transfer button { font-size: 8.5px; color: var(--accent-text); padding: 3px; white-space: nowrap; }
+.attachment-transfer button:hover { background: var(--accent-soft); border-radius: 5px; }
+.attachment-card > small[data-file-error] { grid-column: 1 / -1; color: #c06575; font-size: 8.5px; line-height: 1.4; }
+.media-fallback { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.reaction-glyph { font-size: 14px; line-height: 1; }
+.reaction-count { min-width: 7px; }
+.reminder-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.reminder-options button { padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--secondary); font-size: 11px; }
+.reminder-options button:hover { color: var(--accent-text); background: var(--accent-soft); }
+@media (max-width: 760px) {
+  #message-input { max-height: 160px; }
+  .mention-picker { left: 13px; bottom: 84px; width: calc(100% - 26px); }
+  .attachment-card { width: min(100%, 280px); }
+  .attachment-transfer { grid-template-columns: minmax(0, 1fr) 56px auto auto auto; }
+  .attachment-transfer progress { width: 56px; }
+}
+.edit-history-list { display: flex; flex-direction: column; gap: 9px; max-height: 42dvh; overflow: auto; }
+.edit-history-row { padding: 10px; border-radius: 10px; background: var(--surface); }
+.edit-history-row time { display: block; color: var(--muted); font-size: 9px; margin-bottom: 5px; }
+.edit-history-row p { color: var(--secondary); font-size: 11px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }

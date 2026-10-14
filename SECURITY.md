@@ -1,58 +1,92 @@
-# Безопасность LIBO
+# Безпека LIBO 2.9.10.3
 
-Документ описывает модель угроз, подпись сборок и порядок сообщения об уязвимостях
-версии 2.3.0. Это тестовый релиз с открытым исходным кодом; независимый аудит не
-проводился.
+Цей документ описує фактичну модель захисту тестової P2P-збірки. Незалежного
+криптографічного, mobile або penetration audit **не було**. Не використовуйте LIBO для
+даних, для яких потрібна audited E2EE, серверна retention policy або гарантоване видалення.
 
-## Модель угроз (кратко)
+## Модель загроз
 
-| Угроза | Что сделано | Что не сделано |
+| Ризик | Що є | Чого немає / межа |
 | --- | --- | --- |
-| Прослушивание канала | WebRTC/DTLS шифрует трафик между устройствами | Нет пост-квантовой стойкости, нет аудита |
-| Подмена собеседника (MITM signaling) | Код сверки (SAS) в меню чата: одинаковый код на обеих сторонах подтверждает пару личных кодов; инструкция сверки в RELEASE_NOTES.md | Нет автоматической криптографической проверки личности (TOFU-модель личного кода) |
-| Подмена APK | Релизная подпись v2+v3, опубликованный отпечаток сертификата, SHA-256 файла в SHA256SUMS.txt | Нет загрузки из Google Play с Play-подписью |
-| Вредоносный контент в сообщениях | Валидация пакетов: только литеральный текст, растровые фото base64 (JPEG/PNG/WebP), без SVG и внешних URL; внедрённый HTML не исполняется (проверено сценарием) | Нет антивирусной проверки фотографий |
-| Утечка локальных данных | Экспорт JSON не включает личный код, TURN-пароли и фотографии; `allowBackup=false`, правила извлечения данных запрещают перенос | Локальная база IndexedDB/WebView не зашифрована отдельно |
-| Метка личности | Личный код случаен (UUID), имена задают сами пользователи | Нет привязки к телефону или почте и не нужно |
-| Сетевые метаданные | Можно поднять свой signaling/TURN (docs/SELF_HOSTING.md) | При публичных серверах они видят факт и время соединения, IP раскрывается при прямом P2P |
+| Пасивне прослуховування P2P каналу | WebRTC DTLS; optional application envelope на ECDH P-256 + AES-256-GCM | Немає незалежного audit або формальної E2EE заяви |
+| Replay/tamper у application envelope | монотонні message ids, AES-GCM validation, unit tests tamper/replay | не замінює audited protocol analysis |
+| MITM / помилковий peer code | SAS/verification code для пари, QR/full peer code | немає automatic identity verification, public key directory або TOFU key-change warning |
+| Вредоносний message/file packet | allowlisted schema, bounded strings/IDs/chunks, MIME/size/index/hash checks, no arbitrary state spread | MIME не є antivirus; user file content не сканується |
+| Partial/corrupt streamed file | IndexedDB chunk receipt після commit; complete size + SHA-256 before file ACK | не перевірено на disk quota/process kill/mobile packet loss at 100 MiB |
+| XSS у тексті | DOM будується через `textContent`; Playwright перевіряє literal HTML | user все ще має обережно відкривати зовнішні URL/документи |
+| Android bridge abuse | WebView завантажує bundled local origin; CSP; external main-frame URL відкривається зовні; bridge input bounded | native paths не тестувалися на фізичних Android ROM |
+| Локальна втрата даних | `allowBackup=false`, Android data extraction rules, export excludes peer id/TURN secret/photo bytes | IndexedDB/WebView storage не шифрується окремо at rest |
+| Network metadata | можливий own signaling/TURN | public signaling/TURN бачить connection metadata; direct P2P відкриває IP peer’ам |
+| Account/device compromise | PIN UI та OS lock можуть приховати UI | PIN не шифрує local database; немає device session list/revocation |
 
-## Подпись сборок
+## Transport та crypto: точна заява
 
-- Релизный ключ: RSA-4096, SHA256withRSA, срок действия 30 лет, создан 12.09.2026 вне Git.
-- Отпечаток SHA-256 сертификата 2.3.0:
-  `3bb3878c0b3dd9ec3a31905da3a22fd7730a72ca83cf9421e582f70b527510e0`
-- Отпечаток SHA-1: `b847eccfc02aefa45909ffeb6b3aae4b1bc93352`
-- Проверка файла: `apksigner verify --verbose --print-certs LIBO-2.3.0.apk` (сверьте
-  `Signer #1 certificate SHA-256 digest`), либо сведения о сертификате в установщике
-  Android, либо `keytool -printcert` для извлечённого сертификата.
-- Ключ не хранится в репозитории: `.gitignore` запрещает `*.jks`, `*.keystore`, `*.p12`,
-  `.env*`. В CI подпись берётся из секретов `LIBO_KEYSTORE_BASE64`,
-  `LIBO_KEYSTORE_PASSWORD`, `LIBO_KEY_ALIAS`; без них `release.yml` публикует сборку
-  без подписи с явной пометкой.
-- У 2.0.0-beta.1 был другой ключ (debug) и пакет `app.libo.messenger.beta`: обновление
-  «поверх» невозможно по замыслу, см. примечание об установке в RELEASE_NOTES.md.
+1. WebRTC DataChannel має DTLS transport protection.
+2. LIBO також має власний **MT-style** packet envelope: ephemeral ECDH P-256, AES-256-GCM,
+   SHA-256-derived fields, anti-replay counter та visible pair fingerprint.
+3. Node/unit і browser e2e перевіряють negotiation, symmetric fingerprint, tampering і
+   replay rejection.
+4. Ця схема не є реалізацією Telegram MTProto 2.0 і не проходила незалежного аудиту.
+   Тому UI/документація не повинні заявляти «Encrypted/E2EE» як доведену властивість;
+   точніше казати «WebRTC DTLS; optional tested-but-unaudited application envelope».
+5. Якщо peer стара версія не підтримує envelope/capability, direct transport не слід
+   описувати як активний MT layer.
 
-### Ротация ключа
+## Вкладення
 
-1. Создайте новый keystore и сохраните его вне Git (файл + пароль в секреты CI).
-2. Опубликуйте новый отпечаток в RELEASE_NOTES.md и SECURITY.md до публикации APK.
-3. Смените пакет приложения или явно предупредите, что обновление потребует
-   переустановки: Android не принимает APK с другим ключом поверх установленного.
-4. Старый ключ отзовите из документации, но не удаляйте исторические релизы: их
-   подписи нужны для проверки уже скачанных файлов.
+- Message metadata для new streamed attachment має `fileId`, filename, normalized MIME,
+  size, chunk size/count і SHA-256; file Blob не вкладається як giant base64 message.
+- Wire chunk максимум 24 KiB binary (base64-encoded лише для DataConnection packet),
+  `file-receipt` посилається тільки після persisted chunk.
+- Receiver відмовляється від invalid `fileId`, chunk index/size, MIME/category, total size
+  та final hash. `Delivered` для файлу залежить від success `file-ack` після reassembly.
+- Ліміти: image 12 MiB; voice 5 MiB / 60 s; audio/music/video/document 100 MiB. Вони
+  клієнтські/protocol limits, не server quotas.
+- Схвалення MIME не робить файл безпечним. Завантажені документи відкривайте на власний
+  ризик; LIBO не має antivirus/sandbox document viewer.
 
-## Аудит секретов
+## Android WebView і native bridge
 
-`python3 scripts/scan-secrets.py` перебирает все blob'ы всех веток и тегов и ищет PEM-ключи,
-JKS/PKCS#12-контейнеры, буквенные пароли, токены GitHub и ключи AWS. Результат на
-12.09.2026: 54 blob'а, находок нет. Ссылки вида `-storepass env:NAME` считаются
-безопасными (пароль берётся из окружения, а не из файла).
+- Локальний origin: `https://appassets.androidplatform.net`; file URL access вимкнено,
+  mixed content вимкнено, CSP `default-src 'self'` з media/blob allowance.
+- `LiboAndroid` надає лише bounded copy/share/text export, native save chunks, reminder,
+  theme callbacks; remote main-frame navigation відкривається у зовнішньому browser.
+- `ACTION_OPEN_DOCUMENT` повертає тільки user-selected content URI. Збереження через
+  `ACTION_CREATE_DOCUMENT` пише small bridge chunks з JS backpressure і native byte counter
+  звіряє exact declared Blob size; Blob не передається як `file://` URL.
+- `libo://` приймає лише strict host/path без query/fragment у Java і повторно
+  валідовується у JS. Channel links не виконують серверну дію.
+- Ці твердження compile-reviewed; device/ROM behavior ще не тестовано.
 
-## Сообщение об уязвимости
+## APK 2.9.10.3
 
-Не создавайте публичное issue для уязвимостей. Напишите приватно владельцу репозитория
-через GitHub (кнопка «Report a security vulnerability» на странице Security репозитория,
-если включена private vulnerability reporting, либо личное сообщение владельцу), указав:
-версию приложения и тег релиза, способ воспроизведения, затронутый компонент
-(`web/`, `app/`, протокол), оценку воздействия. Подтверждение — в течение недели;
-исправление публикуется релизом с пометкой security и обновлением этого файла.
+```text
+Package: app.libo.messenger
+Version: 2.9.10.3 (2091003)
+Signer DN: CN=LIBO Release, O=LIBO Messenger
+Signer certificate SHA-256: a1b522d513f569a6c081ec12e4aeaab9cf3dbcd394b70b6f26ee779cc2d91910
+APK schemes verified: v2, v3
+```
+
+Перевірка:
+
+```sh
+sha256sum -c downloads/SHA256SUMS.txt
+apksigner verify --verbose --print-certs downloads/LIBO-2.9.10.3.apk
+```
+
+Ключ/пароль не лежать у repository. Цей sandbox-generated signer не слід вважати тим самим
+ключем попередніх release без ручного certificate comparison; див. `RELEASE_NOTES.md`.
+
+## Повідомлення про вразливість
+
+Не публікуйте exploit/secret у відкритому issue. Скористайтеся приватним GitHub security
+reporting для repository (якщо ввімкнено) або зверніться до його власника приватно. Додайте:
+
+- exact version/tag та APK SHA-256;
+- Android/browser/WebView версію;
+- мінімальні відтворювані кроки;
+- уражений компонент (`web/`, transport, attachment, Android bridge);
+- impact і, за можливості, безпечний proof of concept.
+
+Не надсилайте власні keys, історію повідомлень, TURN credential або повні приватні backups.

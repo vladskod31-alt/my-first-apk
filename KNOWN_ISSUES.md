@@ -1,127 +1,110 @@
-# Известные ограничения LIBO 2.5.0 и план работ
+# Відомі обмеження LIBO 2.9.10.3
 
-Формат записи: ограничение → причина → что сделано сейчас → план. Список обновляется
-каждым релизом; сообщения о новых проблемах принимаются по шаблону
-`.github/ISSUE_TEMPLATE/bug_report.yml`.
+Це список реальних меж current P2P/local-first архітектури. Відсутність функції не
+позначена як «тимчасово доступна» і не маскується UI-кнопкою.
 
-## 1. Нет фоновых push-уведомлений
+## 1. Лише 1:1 P2P, без server-side identity
 
-- **Причина:** сообщения передаются напрямую между устройствами (WebRTC DataChannel),
-  а фоновый режим Android останавливает JavaScript в WebView. FCM-сервера и облачной
-  истории в проекте нет осознанно: они вернули бы центральный сервер переписки.
-- **Сейчас:** оба собеседника держат приложение открытым; исходящие сообщения ждут в
-  очереди и уходят после возвращения получателя; статус «✓✓» означает сохранение у
-  получателя. Ограничение явно указано в релизе, в приложении («Оба собеседника должны
-  быть в приложении») и в этом файле.
-- **План:** foreground-служба с постоянным уведомлением для удержания соединения
-  (без FCM), затем — опциональный ретранслятор уведомлений по желанию пользователя.
+- **Причина:** PeerJS у проєкті — signaling; немає database/auth/API server.
+- **Зараз:** особистий `libo-…` peer id, QR та direct WebRTC DataChannel. Profile/username
+  надсилаються лише відомому peer під час hello. Username колізія перевіряється тільки
+  серед контактів на одному пристрої.
+- **Немає:** реєстрації за номером/e-mail, глобального пошуку людей, глобальної
+  унікальності username, server-side contacts, presence або account recovery.
+- **Напрям:** окремий opt-in backend/federation із чіткою privacy model, не прихована
+  «магічна» заміна P2P.
 
-## 2. Личность собеседника не проверяется криптографически автоматически
+## 2. Немає груп, каналів, topics або live stream
 
-- **Причина:** у устройств нет заранее общих доверенных ключей; личный код передаётся
-  пользователем (модель TOFU).
-- **Сейчас:** код сверки (SAS) в меню чата: одинаковая строка `XXXX XXXX XXXX` на обоих
-  устройствах подтверждает пару личных кодов; описана процедура сверки по доверенному
-  каналу (RELEASE_NOTES.md, раздел «Сверка собеседника»).
-- **План:** показ отпечатка ключа при первом контакте с явным предупреждением при его
-  изменении; по возможности — сверка по QR при личной встрече.
+- **Причина:** це потребує membership, moderation, history/fan-out і media infrastructure.
+- **Зараз:** базовий poll та reactions працюють між двома peer’ами. `libo://channel/...`
+  розпізнається як формат, але чесно повідомляє, що потребує серверної редакції.
+- **Немає:** channel QR/join, roles, threaded topics, live audio/video, replay, viewer count
+  або anti-spam для спільнот.
 
-## 3. Публичные signaling и STUN по умолчанию
+## 3. Немає WebRTC дзвінків чи screen sharing
 
-- **Причина:** нужна работа «из коробки» без настройки серверов.
-- **Сейчас:** по умолчанию `0.peerjs.com` и STUN Google/Cloudflare; в настройках можно
-  указать свой signaling и TURN; инструкция и примеры конфигурации —
-  `docs/SELF_HOSTING.md`. Публичные серверы видят только метаданные соединений.
-- **План:** мастер первичной настройки с предложением своего сервера; документация
-  развёртывания одним файлом (docker-compose).
+- **Причина:** проєкт використовує DataConnection, не `getUserMedia`/media PeerConnection
+  lifecycle з ICE restart, permissions, device switching і call signalling.
+- **Зараз:** аудіо/відеофайли — це attachments із `<audio>`/`<video>` playback, не calls.
+- **Немає:** audio call, video call, screen share, ringtone, call accept/reject, call quality
+  metrics або reconnect UI. Відповідно немає call endpoint/e2e test.
 
-## 4. APK не запускался на физическом устройстве в среде сборки
+## 4. Немає delivery, коли peer/app закритий
 
-- **Причина:** в среде сборки нет SDK Android и образа эмулятора, домены загрузок
-  заблокированы.
-- **Сейчас:** проверены подпись (v2+v3), упаковка, состав APK; веб-часть покрыта 6
-  браузерными сценариями, включая настоящий WebRTC-обмен; в CI добавлены Gradle-сборка и
-  lint.
-- **План:** прогоны на эмуляторе в CI (после восстановления доступа к образам), отчёт
-  тестировщиков на реальных устройствах через шаблон issue.
+- **Причина:** немає mailbox server, FCM або foreground service.
+- **Зараз:** outgoing queue живе локально та повторює dispatch після повернення peer’а;
+  browser e2e підтверджує text queue після sender reload. Обидва пристрої мають бути
+  доступні для live delivery/file transfer.
+- **Немає:** background push, reliable offline server delivery чи multi-device sync.
 
-## 5. Загрузка бинарных release-assets из среды сборки недоступна
+## 5. Temporary messages не видаляються сервером
 
-- **Причина:** `uploads.github.com` обрывает соединение из этой сети (три повтора
-  12.09.2026 без ответа).
-- **Сейчас:** APK публикуется двумя способами: каталог `downloads/` тега (основная
-  ссылка) и release-asset (зеркало, загружается в CI с повторами).
-- **План:** публикация assets из GitHub Actions (там сеть GitHub доступна), ручная
-  загрузка как запасной путь.
+- **Причина:** server TTL відсутній.
+- **Зараз:** локальні timers у кожного peer’а; довгі TTL re-arm-яться щогодини, а restart
+  schedule відновлюється з local history.
+- **Ризик:** offline peer не отримує delete одразу; локальна clock manipulation може
+  змінити момент видалення. Це не legal/forensic deletion guarantee.
 
-## 6. Нет звонков, групп, регистрации по телефону, восстановления аккаунта
+## 6. Streamed files мають перевірений protocol, але не production soak-tested
 
-- **Причина:** цель версии — надёжная переписка один на один без сервера.
-- **Сейчас:** ограничение указано в релизе и в приложении.
-- **План:** групповые чаты рассматриваются после устойчивого фонового режима; звонки —
-  отдельный проект.
+- **Зараз:** Blob/chunks у IndexedDB, 24 KiB sequential receipts, reconnect resume,
+  SHA-256/size ACK, cancel/resume, 100 MiB maximum for audio/music/video/document;
+  e2e тестує 1 MiB sender reconnect та unit тестує SHA failure.
+- **Не перевірено:** 100 MiB на low-end Android, WebView process kill у середині transfer,
+  мобільний NAT/TURN, quota exhaustion, battery/background constraints і multi-hour loss.
+- **Codec:** MIME допустимий не гарантує playback. Unsupported codec показує fallback download.
 
-## 7. Локальная база не зашифрована отдельно
+## 7. Android native bridge compiled, але не device-tested
 
-- **Причина:** IndexedDB/хранилище WebView не дают прозрачного шифрования без ключа,
-  который всё равно лежал бы на устройстве.
-- **Сейчас:** данные не покидают устройство, бэкапы Android отключены
-  (`allowBackup=false`), очистка данных приложения удаляет всё.
-- **План:** шифрование содержимого сообщений ключом, производным от пользовательского
-  пароля, с понятной процедурой восстановления.
+- **Зараз:** APK компілюється з `ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT` bounded
+  save bridge, `libo://` intent filter та `AlarmManager` receiver; Android 13+ permission
+  request для notifications є в коді.
+- **Не перевірено:** реальний picker vendor ROM, URI permission behavior, exact alarm policy,
+  notification delivery/permission, background receiver, restore after reboot та codecs.
 
-## 8. Экспорт не включает фотографии и не импортируется обратно
+## 8. Нагадування локальні
 
-- **Причина:** экспорт задуман как текстовая копия для архива, а не как формат миграции.
-- **Сейчас:** экспорт JSON содержит тексты, даты, направления и имена файлов фото.
-- **План:** формат архива с фотографиями и импорт с проверкой контрольных сумм.
+- **Browser:** працюють лише доки page/runtime може виконати timer; notification потребує
+  дозволу та доступного browser API.
+- **Android:** ставиться local AlarmManager, але device verification ще не проведено.
+- **Немає:** server scheduled reminder, sync between devices або гарантія delivery після
+  force-stop/Doze policy.
 
-## 9. Серверные функции: регистрация по номеру, поиск людей, каналы, группы
+## 9. Локальна база не зашифрована at rest
 
-- **Причина:** LIBO спроектирован как P2P без центрального сервера переписки; номерной
-  поиск и каналы невозможны без каталога и ретранслятора.
-- **Сейчас:** добавление по личному коду, QR и системным меню; группы и каналы отсутствуют
-  осознанно, а не «сломаны».
-- **План:** опциональный федеративный каталог контактов по выбору пользователя (вне
-  ядра), групповые чаты после устойчивого фонового режима.
+- **Зараз:** WebRTC DTLS захищає transport; optional MT-style P-256/AES-GCM envelope
+  має protocol tests; Android backup вимкнений (`allowBackup=false`).
+- **Немає:** незалежного crypto audit, verified E2EE claim, hardware-backed identity,
+  encryption of IndexedDB/attachments at rest, secure recovery або key rotation UX.
+- **Рекомендація:** не зберігайте секрети, для яких потрібна audited E2EE/at-rest model.
 
-## 10. Лимит вложений 1,5 МБ и голосовые до 60 секунд
+## 10. Профіль/mention/search локальні, bookmarks без folders/tags
 
-- **Причина:** прямое P2P-сообщение передаётся одним пакетом DataChannel; большие
-  объекты требуют чанкинга с контрольными суммами, которого в протоколе v1 нет.
-- **Сейчас:** лимиты честно указаны в подсказках кнопок и отклоняются с понятной ошибкой.
-- **План:** протокол v2 с чанками и возобновлением передачи, после чего лимит вырастет
-  до десятков мегабайт.
+- **Зараз:** profile card, known-contact mentions, local search filters і «Збережене»
+  функціональні; history of edits локальна на кожній стороні.
+- **Немає:** global profile search, server uniqueness, shared contacts, bookmark folders/tags
+  або cross-device index. Filter results не можуть показати те, чого немає у local history.
 
-## 11. Архивы из резервных копий только для чтения
+## 11. Polls обмежені P2P 1:1
 
-- **Причина:** восстановленные чаты не имеют живого собеседника и личного кода пары;
-  отправка из архива выглядела бы отправкой «в никуда».
-- **Сейчас:** архив помечен плашкой, компоновщик скрыт, звезда и поиск работают.
-- **План:** импорт в живой чат при совпадении личного кода собеседника.
+- **Зараз:** до 8 options, vote та live tally між двома сторонами.
+- **Немає:** trustworthy anonymous accounting, multi-answer semantics, quiz correctness UX,
+  closing/retention policy, channel/group voting або server anti-fraud. Поля legacy packet
+  не слід трактувати як повноцінний server poll service.
 
-## 12. MT-слой — адаптация идей MTProto, а не протокол Telegram
+## 12. APK signing continuity
 
-- **Причина:** MTProto рассчитан на серверы Telegram; LIBO работает напрямую между
-  устройствами, поэтому дословное применение невозможно.
-- **Сейчас:** второй конверт поверх DTLS: ECDH P-256, AES-256-GCM, msg_key SHA-256,
-  монотонный msg_id против повторов; отпечаток ключа виден в диалоге безопасности.
-- **План:** независимый аудит схемы и, при необходимости, переход на X25519 +
-  AEAD с прямым соответствием спецификации MTProto 2.0 в части KDF.
+- **Зараз:** `downloads/LIBO-2.9.10.3.apk` має перевірений RSA-4096 v2/v3 signature,
+  fingerprint наведено у `RELEASE_NOTES.md`.
+- **Ризик:** ключ sandbox build не підтверджено як продовження попереднього release key;
+  Android може вимагати uninstall/reinstall. Private keystore і password ніколи не
+  потрапляють у Git.
 
-## 13. Ротация ключа подписи в 2.8.0
+## 13. Gradle/lint та device matrix
 
-- **Причина:** кейстор выпусков до 2.6.0 хранился вне Git на сборочной машине и
-  потерян при её сбросе; подписать новый выпуск старым ключом невозможно.
-- **Сейчас:** новый RSA-4096 ключ, отпечаток опубликован в RELEASE_NOTES.md;
-  установка 2.8.0 требует удаления старой версии после экспорта копии.
-- **План:** кейстор и пароль передать в секреты CI (HOW-TO-STORE-KEY.md), чтобы
-  ключ больше не жил на одной машине и не мог быть потерян снова.
-
-## 14. Код-замок не шифрует базу сообщений
-
-- **Причина:** замок проверяет PIN при запуске (PBKDF2-SHA256, 120 000 итераций),
-  но IndexedDB остаётся открытой для других приложений с root-доступом.
-- **Сейчас:** замок скрывает содержимое от случайного доступа к устройству.
-- **План:** шифрование покоя для сообщений и вложений отдельным ключом, производным
-  от PIN, с миграцией существующих баз.
+- **Зараз:** fallback AAPT2/ECJ/D8 build і APK verification пройшли.
+- **Не пройшло:** Gradle wrapper не зміг завантажити Gradle distribution у sandbox
+  (`services.gradle.org` SSL EOF), тому немає локального Gradle lint result.
+- **Потрібно перед production:** CI з pinned JDK/SDK, emulator API 26/29/33/35, фізичні
+  devices, WebView matrix, TURN/mobile network, accessibility та storage tests.

@@ -1,5 +1,5 @@
 import Peer from 'peerjs';
-import { parseSignalingUrl, makeIceServers, validatePacket } from './core.mjs';
+import { CAPABILITIES, parseSignalingUrl, makeIceServers, validatePacket } from './core.mjs';
 import { MtSession } from './mtproto.mjs';
 
 export class Transport {
@@ -52,10 +52,7 @@ export class Transport {
     });
     peer.on('error', error => {
       if (peer !== this.peer || this.stopped) return;
-      if (error.type === 'peer-unavailable') {
-        // PeerJS reports this at the peer level; expired connections are removed by their timer.
-        return;
-      }
+      if (error.type === 'peer-unavailable') return;
       if (error.type === 'unavailable-id') {
         this.events.onState('error', 'Этот личный код уже открыт на другом экране. Закройте другую вкладку и подключитесь снова.');
         return;
@@ -87,6 +84,14 @@ export class Transport {
     return true;
   }
 
+  helloPacket() {
+    const profile = {
+      username: this.profile.username || '', bio: this.profile.bio || '',
+      status: this.profile.status || 'online', avatar: this.profile.avatar || '',
+    };
+    return { v: 1, type: 'hello', id: this.profile.id, name: this.profile.name, caps: CAPABILITIES, profile };
+  }
+
   bind(connection, incoming) {
     const id = connection.peer;
     if (!this.events.isAllowed(id) || connection.label !== 'libo-v2' || this.connections.size + this.attempts.size > 24) {
@@ -113,39 +118,17 @@ export class Transport {
     }, 15_000);
     connection.on('open', () => {
       if (this.stopped) { connection.close(); return; }
-      connection.send({ v: 1, type: 'hello', id: this.profile.id, name: this.profile.name });
+      connection.send(this.helloPacket());
     });
-    let count = 0;
-    let startedAt = Date.now();
-    connection.on('data', async raw => {
-      if (Date.now() - startedAt > 10_000) { count = 0; startedAt = Date.now(); }
-      if (++count > 160) { connection.close(); return; }
-      const data = validatePacket(raw);
-      if (!data) { connection.close(); return; }
-      if (data.type === 'hello') {
-        if (data.id !== id) { connection.close(); return; }
-        clearTimeout(timeout);
-        this.timers.delete(timeout);
-        connection.liboHello = true;
-        this.attempts.delete(id);
-        this.connections.set(id, connection);
-        // Do not process messages until the contact record has been persisted.
-        connection.liboReady = Promise.resolve(this.events.onHello(id, data.name));
-        try {
-          await connection.liboReady;
-          if (this.connections.get(id) !== connection || !connection.open) return;
-          this.events.onContactState(id, 'online');
-          this.events.onConnected(id);
-          void this.startMt(connection);
-        } catch {
-          connection.close();
-          this.events.onStorageError();
-        }
-        return;
-      }
-      if (!connection.liboHello) { connection.close(); return; }
-      try { await connection.liboReady; } catch { return; }
-      await this.dispatch(id, data, connection);
+
+    // PeerJS emits data callbacks without waiting for an async handler. File metadata
+    // must commit before chunk 0 is accepted, so each data connection has one queue.
+    connection.liboQueue = Promise.resolve();
+    connection.rate = { at: Date.now(), controls: 0, chunks: 0 };
+    connection.on('data', raw => {
+      connection.liboQueue = connection.liboQueue
+        .then(() => this.receive(connection, id, raw, timeout))
+        .catch(() => { connection.close(); });
     });
     const close = () => {
       clearTimeout(timeout);
@@ -158,13 +141,49 @@ export class Transport {
     connection.on('error', () => { connection.close(); close(); });
   }
 
+  async receive(connection, id, raw, timeout) {
+    const data = validatePacket(raw);
+    if (!data) { connection.close(); return; }
+    const rate = connection.rate;
+    if (Date.now() - rate.at > 10_000) { rate.at = Date.now(); rate.controls = 0; rate.chunks = 0; }
+    if (data.type === 'file-chunk') {
+      // 1,000 x 24 KiB in ten seconds is a strict 2.4 MiB/s anti-flood ceiling,
+      // while remaining practical for a real 100 MB transfer over WebRTC.
+      if (++rate.chunks > 1000) { connection.close(); return; }
+    } else if (++rate.controls > 160) { connection.close(); return; }
+
+    if (data.type === 'hello') {
+      if (data.id !== id) { connection.close(); return; }
+      clearTimeout(timeout);
+      this.timers.delete(timeout);
+      connection.liboHello = true;
+      connection.caps = new Set(data.caps || []);
+      this.attempts.delete(id);
+      this.connections.set(id, connection);
+      // Do not process messages until the contact record has been persisted.
+      connection.liboReady = Promise.resolve(this.events.onHello(id, data.name, data.caps || [], data.profile || null));
+      try {
+        await connection.liboReady;
+        if (this.connections.get(id) !== connection || !connection.open) return;
+        this.events.onContactState(id, 'online');
+        this.events.onConnected(id);
+        void this.startMt(connection);
+      } catch {
+        connection.close();
+        this.events.onStorageError();
+      }
+      return;
+    }
+    if (!connection.liboHello) { connection.close(); return; }
+    try { await connection.liboReady; } catch { return; }
+    await this.dispatch(id, data, connection);
+  }
+
   isOpen(id) { const conn = this.connections.get(id); return !!(conn?.open && conn.liboHello); }
+  supports(id, capability) { return this.connections.get(id)?.caps?.has(capability) || false; }
 
   // MTProto-inspired layer: each side announces an ephemeral ECDH key once the chat is
   // hello-ready; older peers simply never answer, and the channel stays DTLS-only.
-  // The MT session belongs to the peer, not to a single connection: WebRTC links can
-  // be replaced while the chat lives on, and a per-connection key would desynchronise
-  // the pair. A new public key from the peer starts a new generation for both sides.
   async startMt(connection) {
     const id = connection.peer;
     try {
@@ -205,45 +224,44 @@ export class Transport {
       const session = connection.mtSession;
       if (!session?.ready) return;
       const inner = await session.open(data);
-      if (!inner) {
-        this.events.onMtDrop?.(id);
-        return;
-      }
+      if (!inner) { this.events.onMtDrop?.(id); return; }
       const packet = validatePacket(inner);
       if (!packet) return;
-      if (packet.type !== 'mt' && packet.type !== 'mt-hello' && packet.type !== 'hello') {
-        await this.dispatch(id, packet, connection);
-      }
+      if (packet.type !== 'mt' && packet.type !== 'mt-hello' && packet.type !== 'hello') await this.dispatch(id, packet, connection);
       return;
     }
     if (data.type === 'message') await this.events.onMessage(id, data);
-    if (data.type === 'ack') await this.events.onAck(id, data.id);
-    if (data.type === 'typing') this.events.onTyping(id, data.active);
-    if (data.type === 'edit') await this.events.onEdit(id, data);
-    if (data.type === 'delete') await this.events.onDelete(id, data.ids);
-    if (data.type === 'pin') await this.events.onPin(id, data.id, data.pinned);
-    if (data.type === 'react') await this.events.onReact(id, data.id, data.key, data.on);
-    if (data.type === 'read') await this.events.onRead?.(id, data.upTo);
-    if (data.type === 'pollvote') await this.events.onPollVote?.(id, data.pid, data.opt);
+    else if (data.type === 'ack') await this.events.onAck(id, data.id, data);
+    else if (data.type === 'typing') this.events.onTyping(id, data.active);
+    else if (data.type === 'edit') await this.events.onEdit(id, data);
+    else if (data.type === 'delete') await this.events.onDelete(id, data.ids);
+    else if (data.type === 'pin') await this.events.onPin(id, data.id, data.pinned);
+    else if (data.type === 'react') await this.events.onReact(id, data.id, data.key, data.on);
+    else if (data.type === 'read') await this.events.onRead?.(id, data.upTo, data.readAt);
+    else if (data.type === 'pollvote') await this.events.onPollVote?.(id, data.pid, data.opt);
+    else if (data.type === 'file-chunk') await this.events.onFileChunk?.(id, data);
+    else if (data.type === 'file-receipt') await this.events.onFileReceipt?.(id, data);
+    else if (data.type === 'file-resume') await this.events.onFileResume?.(id, data);
+    else if (data.type === 'file-state') await this.events.onFileState?.(id, data);
+    else if (data.type === 'file-complete') await this.events.onFileComplete?.(id, data);
+    else if (data.type === 'file-missing') await this.events.onFileMissing?.(id, data);
+    else if (data.type === 'file-ack') await this.events.onFileAck?.(id, data);
+    else if (data.type === 'file-cancel') await this.events.onFileCancel?.(id, data);
   }
 
   async send(id, data) {
     if (!this.isOpen(id)) return false;
     const connection = this.connections.get(id);
     try {
-      if (connection.mt && connection.mtSession?.ready && data.type !== 'mt-hello') {
-        connection.send(await connection.mtSession.seal(data));
-      } else connection.send(data);
+      if (connection.mt && connection.mtSession?.ready && data.type !== 'mt-hello') connection.send(await connection.mtSession.seal(data));
+      else connection.send(data);
       return true;
-    }
-    catch { return false; }
+    } catch { return false; }
   }
 
   updateProfile(profile) {
     this.profile = profile;
-    for (const id of this.connections.keys()) {
-      this.send(id, { v: 1, type: 'hello', id: profile.id, name: profile.name });
-    }
+    for (const id of this.connections.keys()) this.send(id, this.helloPacket());
   }
 
   closeContact(id) {
