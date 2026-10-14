@@ -104,7 +104,8 @@
 ## 13. Gradle/lint та device matrix
 
 - **Зараз:** fallback AAPT2/ECJ/D8 build і APK verification пройшли.
-- **Не пройшло:** Gradle wrapper не зміг завантажити Gradle distribution у sandbox
-  (`services.gradle.org` SSL EOF), тому немає локального Gradle lint result.
+- **Локально:** Gradle wrapper не зміг завантажити Gradle distribution у sandbox
+  (`services.gradle.org` SSL EOF). **CI:** GitHub Actions PR #12 успішно виконав Gradle build
+  і lint; подробиці в `TESTING.md`.
 - **Потрібно перед production:** CI з pinned JDK/SDK, emulator API 26/29/33/35, фізичні
   devices, WebView matrix, TURN/mobile network, accessibility та storage tests.

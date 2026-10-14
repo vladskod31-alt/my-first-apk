@@ -116,6 +116,7 @@ anonymous/quiz/close semantics потребують окремої сервер�
 
 На 14.10.2026 у Linux x64 пройшли `npm test` (30/30), `npm run build` та браузерні
 Playwright/WebRTC сценарії (11/11). Fallback APK пройшов ECJ/D8/AAPT2/zipalign та
-`apksigner verify` (v2/v3). `./gradlew` у sandbox на момент старту не мав JDK у PATH;
-фізичний Android і Android emulator не запускалися. Повна матриця, exact commands,
-обмеження та результати — [TESTING.md](TESTING.md).
+`apksigner verify` (v2/v3). Після push GitHub Actions PR #12 також успішно пройшов Gradle
+build/lint, module/browser tests і secret audit. Локальний `./gradlew` у sandbox не міг
+завантажити wrapper distribution; фізичний Android і Android emulator не запускалися.
+Повна матриця, exact commands, обмеження та результати — [TESTING.md](TESTING.md).

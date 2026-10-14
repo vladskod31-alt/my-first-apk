@@ -11,6 +11,7 @@ Temurin JRE 17.0.17+10. Це фактичний звіт, а не список �
 | `npm run build` | **passed** | Vite production bundle (`42 modules`) |
 | `npm run test:e2e` | **11 / 11 passed** | UI, real local PeerJS + WebRTC DataChannel, offline text queue, multi-chunk files, sender reconnect/resume |
 | `./scripts/build-apk-local.sh` | **passed** | AAPT2 → ECJ → D8 → zipalign → apksigner; release APK generated |
+| GitHub Actions PR #12: Gradle build + lint | **passed (1m31s)** | canonical Gradle/Android lint on CI after push |
 | `zipalign -c 4` / `apksigner verify --verbose --print-certs` | **passed** | APK alignment and v2/v3 signature |
 | `aapt2 dump badging` | **passed** | package/version/minSdk/permissions in generated APK |
 
@@ -62,6 +63,17 @@ P-256/AES-GCM/replay checks, polls, TTL/read marker.
 
 Ці тести не вимірюють мобільну мережу. Локальні timings у security dialog показують
 клієнтські мітки черги/доставки/ACK/read; вони не є latency SLA.
+
+## GitHub Actions result
+
+Після push commit `ffb54d5` усі checks PR [#12](https://github.com/vladskod31-alt/my-first-apk/pull/12)
+пройшли у run [38564219042](https://github.com/vladskod31-alt/my-first-apk/actions/runs/38564219042):
+
+- **Gradle build and lint** — passed, 1m31s;
+- **module + browser tests** — passed, 1m54s;
+- **Git-history secret audit** — passed, 7s.
+
+Це доповнює локальний fallback compile; CI не замінює тест на фізичному телефоні.
 
 ## APK
 
