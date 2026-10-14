@@ -8,8 +8,9 @@
 локально у IndexedDB/WebView. У проєкті **немає** сервера історії, облікових записів,
 каталогу користувачів або фонової доставки.
 
-Поточна версія: **2.9.10.3** · Android 8.0+ (API 26+) · пакет
-`app.libo.messenger` · `versionCode 2091003`.
+Поточна версія: **2.9.10.3 Standalone** · Android 8.0+ (API 26+) · пакет
+`app.libo.messenger.standalone` · `versionCode 2091003`. Це окремий Android package,
+тому він встановлюється поруч із legacy `app.libo.messenger` без signature conflict.
 
 > Це тестова P2P-збірка. Не називайте її серверним месенджером, E2EE-аудованим продуктом,
 > каналами, live stream або дзвінками: цих функцій у цій редакції немає.
@@ -19,13 +20,13 @@
 Після публікації тега [`v2.9.10.3`](https://github.com/vladskod31-alt/my-first-apk/tree/v2.9.10.3)
 основний файл лежить у його каталозі `downloads/`:
 
-- [LIBO-2.9.10.3.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.9.10.3/downloads/LIBO-2.9.10.3.apk)
+- [LIBO-2.9.10.3-standalone.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.9.10.3/downloads/LIBO-2.9.10.3-standalone.apk)
 - [SHA256SUMS.txt](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.9.10.3/downloads/SHA256SUMS.txt)
 
-Точний SHA-256, сертифікат збірки та застереження щодо оновлення описані в
-[RELEASE_NOTES.md](RELEASE_NOTES.md). Перед установкою з попередньої тестової збірки
-експортуйте текстову копію: APK 2.9.10.3 підписано іншим ключем цього середовища, тому
-Android може вимагати видалити стару програму.
+Точний SHA-256, сертифікат збірки та порядок інсталяції описані в
+[RELEASE_NOTES.md](RELEASE_NOTES.md). Це **не in-place update** legacy пакета: Standalone
+має власні local history/IndexedDB і може стояти поруч зі старим LIBO. За потреби
+експортуйте стару текстову копію та імпортуйте її вручну в новий застосунок.
 
 ## Що справді реалізовано в 2.9.10.3
 

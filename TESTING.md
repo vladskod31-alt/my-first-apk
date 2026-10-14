@@ -84,7 +84,7 @@ P-256/AES-GCM/replay checks, polls, TTL/read marker.
 Фактичний результат `aapt2 dump badging` для 2.9.10.3:
 
 ```text
-package: name='app.libo.messenger' versionCode='2091003' versionName='2.9.10.3'
+package: name='app.libo.messenger.standalone' versionCode='2091003' versionName='2.9.10.3'
 minSdkVersion:'26'
 targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
@@ -99,9 +99,11 @@ CN=LIBO Release, O=LIBO Messenger
 certificate SHA-256: a1b522d513f569a6c081ec12e4aeaab9cf3dbcd394b70b6f26ee779cc2d91910
 ```
 
-APK: `LIBO-2.9.10.3.apk`, **305,531 B**, SHA-256
-`235a3292c4f0d0a906bef47dcf214da5324a1e23a23f3f9971c4d5818a1ae0c5`. Команда build кладе
-той самий хеш у `artifacts/SHA256SUMS.txt`; release mirror — у `downloads/SHA256SUMS.txt`.
+APK: `LIBO-2.9.10.3-standalone.apk`, **305,531 B**, SHA-256
+`8b79151ed87efe4adde6b0269e14b83c175479b4af61af4fa6d8e05e01b08226`. Він має package
+`app.libo.messenger.standalone`, тому встановлюється поруч із legacy package без conflict.
+Команда build кладе той самий хеш у `artifacts/SHA256SUMS.txt`; release mirror — у
+`downloads/SHA256SUMS.txt`.
 
 ### Android compile warnings
 
@@ -111,9 +113,9 @@ API та pre-O `Notification.Builder`); compile error немає.
 
 ## Що не перевірено / не заявляється
 
-- `./gradlew assembleDebug` **не дійшов до build**, бо Gradle wrapper намагався завантажити
-  `gradle-8.9-bin.zip` з `services.gradle.org`, а sandbox отримав SSL handshake EOF. Це не
-  замінює успішний fallback compile, але означає, що Gradle/lint результату тут немає.
+- Локальний `./gradlew assembleDebug` у sandbox не дійшов до build, бо wrapper не зміг
+  завантажити `gradle-8.9-bin.zip` із `services.gradle.org` (SSL EOF). GitHub Actions
+  Gradle build/lint пройшов; це не замінює device test.
 - APK не встановлювався на фізичний Android або emulator. Тому `ACTION_OPEN_DOCUMENT`,
   `ACTION_CREATE_DOCUMENT` streaming save, Android `AlarmManager`, POST_NOTIFICATIONS,
   intent-dispatch і media codec behavior compiled/inspected, але **не device-verified**.

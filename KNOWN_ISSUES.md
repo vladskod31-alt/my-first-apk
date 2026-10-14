@@ -95,11 +95,11 @@
 
 ## 12. APK signing continuity
 
-- **Зараз:** `downloads/LIBO-2.9.10.3.apk` має перевірений RSA-4096 v2/v3 signature,
-  fingerprint наведено у `RELEASE_NOTES.md`.
-- **Ризик:** ключ sandbox build не підтверджено як продовження попереднього release key;
-  Android може вимагати uninstall/reinstall. Private keystore і password ніколи не
-  потрапляють у Git.
+- **Зараз:** `downloads/LIBO-2.9.10.3-standalone.apk` має перевірений RSA-4096 v2/v3
+  signature та інший package ID `app.libo.messenger.standalone`, тому може стояти поруч із
+  legacy app без signature conflict.
+- **Ризик:** це окремий застосунок із окремим local storage, а не cryptographically trusted
+  in-place update legacy package. Private keystore і password ніколи не потрапляють у Git.
 
 ## 13. Gradle/lint та device matrix
 

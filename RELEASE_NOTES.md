@@ -1,8 +1,8 @@
 # LIBO 2.9.10.3 — тестовий Android/P2P release
 
-**Дата збірки:** 14 жовтня 2026 · **пакет:** `app.libo.messenger` · **мінімум:** Android
-8.0 / API 26 · **target/compile SDK:** 35 · **versionCode:** `2091003` · **versionName:**
-`2.9.10.3`.
+**Дата збірки:** 14 жовтня 2026 · **package:** `app.libo.messenger.standalone` ·
+**label:** `LIBO Standalone` · **мінімум:** Android 8.0 / API 26 · **target/compile SDK:**
+35 · **versionCode:** `2091003` · **versionName:** `2.9.10.3`.
 
 Це не серверний запуск LIBO. Це local-first 1:1 P2P build: PeerJS сигналізує з’єднання,
 а повідомлення та file chunks ідуть WebRTC DataChannel, коли обидва пристрої доступні.
@@ -11,16 +11,16 @@
 
 | Файл | Розмір | SHA-256 |
 | --- | ---: | --- |
-| `downloads/LIBO-2.9.10.3.apk` | 305,531 B (≈299 KiB) | `235a3292c4f0d0a906bef47dcf214da5324a1e23a23f3f9971c4d5818a1ae0c5` |
+| `downloads/LIBO-2.9.10.3-standalone.apk` | 305,531 B (≈299 KiB) | `8b79151ed87efe4adde6b0269e14b83c175479b4af61af4fa6d8e05e01b08226` |
 
 Після створення тега `v2.9.10.3` використовуйте:
 
 ```sh
-curl -fL -O https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.9.10.3/downloads/LIBO-2.9.10.3.apk
+curl -fL -O https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.9.10.3/downloads/LIBO-2.9.10.3-standalone.apk
 curl -fL -O https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.9.10.3/downloads/SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt
-# macOS: shasum -a 256 LIBO-2.9.10.3.apk
-# PowerShell: (Get-FileHash .\LIBO-2.9.10.3.apk -Algorithm SHA256).Hash
+# macOS: shasum -a 256 LIBO-2.9.10.3-standalone.apk
+# PowerShell: (Get-FileHash .\LIBO-2.9.10.3-standalone.apk -Algorithm SHA256).Hash
 ```
 
 ## Підпис та оновлення — важливо
@@ -34,17 +34,19 @@ APK Signature Schemes: v2 + v3 verified
 ```
 
 Ключ не доданий до Git і не є підтвердженим продовженням ключа попереднього 2.8.1 APK.
-Тому Android **не гарантує встановлення поверх 2.8.1**. Безпечна процедура:
+Замість небезпечної спроби оновлення з іншим signer цей файл має **новий package ID**
+`app.libo.messenger.standalone`. Тому Android встановлює його поруч із legacy
+`app.libo.messenger` і не показує помилку «пакет конфліктує з наявним пакетом».
 
-1. У старому застосунку виконайте «Експорт тексту» для потрібних чатів.
-2. Видаліть стару програму, якщо Android повідомляє про конфлікт підпису.
-3. Встановіть `LIBO-2.9.10.3.apk` і за потреби імпортуйте копію (вона відкривається як
-   read-only archive, не як жива серверна синхронізація).
+1. Встановіть `LIBO-2.9.10.3-standalone.apk` — видаляти старий LIBO не потрібно.
+2. На launcher з’явиться окремий ярлик **LIBO Standalone**.
+3. Дані двох package ізольовані. Якщо потрібна стара історія, у старому застосунку зробіть
+   «Експорт тексту», а в Standalone імпортуйте копію як read-only archive.
 
 Перевірити підпис самостійно:
 
 ```sh
-apksigner verify --verbose --print-certs LIBO-2.9.10.3.apk
+apksigner verify --verbose --print-certs LIBO-2.9.10.3-standalone.apk
 ```
 
 ## Що змінилося

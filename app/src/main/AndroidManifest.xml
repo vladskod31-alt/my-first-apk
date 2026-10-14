@@ -14,7 +14,7 @@
         android:enableOnBackInvokedCallback="false"
         android:theme="@style/AppTheme">
         <activity
-            android:name=".MainActivity"
+            android:name="app.libo.messenger.MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize">
@@ -30,7 +30,7 @@
             </intent-filter>
         </activity>
         <receiver
-            android:name=".ReminderReceiver"
+            android:name="app.libo.messenger.ReminderReceiver"
             android:exported="false" />
     </application>
 </manifest>

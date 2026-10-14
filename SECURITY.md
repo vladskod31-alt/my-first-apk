@@ -61,7 +61,8 @@
 ## APK 2.9.10.3
 
 ```text
-Package: app.libo.messenger
+Package: app.libo.messenger.standalone
+Label: LIBO Standalone
 Version: 2.9.10.3 (2091003)
 Signer DN: CN=LIBO Release, O=LIBO Messenger
 Signer certificate SHA-256: a1b522d513f569a6c081ec12e4aeaab9cf3dbcd394b70b6f26ee779cc2d91910
@@ -72,7 +73,7 @@ APK schemes verified: v2, v3
 
 ```sh
 sha256sum -c downloads/SHA256SUMS.txt
-apksigner verify --verbose --print-certs downloads/LIBO-2.9.10.3.apk
+apksigner verify --verbose --print-certs downloads/LIBO-2.9.10.3-standalone.apk
 ```
 
 Ключ/пароль не лежать у repository. Цей sandbox-generated signer не слід вважати тим самим

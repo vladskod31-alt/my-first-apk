@@ -3,7 +3,7 @@
 # SDK / Gradle repositories are unreachable (see scripts/toolchain-sources.json for
 # the pinned external toolchain). GitHub Actions uses Gradle; see .github/workflows.
 #
-# LIBO_BUILD_TYPE=release (default): package app.libo.messenger, debuggable=false,
+# LIBO_BUILD_TYPE=release (default): package app.libo.messenger.standalone, debuggable=false,
 #   signed with the release keystore in LIBO_KEYSTORE (v1+v2+v3).
 # LIBO_BUILD_TYPE=debug: legacy beta behaviour (package suffix .beta, debuggable=true).
 set -euo pipefail
@@ -25,11 +25,11 @@ LIBO_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','ut
 export LIBO_VERSION_CODE
 LIBO_VERSION_CODE=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionCode\s+(\d+)/)[1]")
 if [ "$BUILD_TYPE" = release ]; then
-  PACKAGE='app.libo.messenger'
+  PACKAGE='app.libo.messenger.standalone'
   DEBUGGABLE='false'
   DEBUG_FLAG='false'
 else
-  PACKAGE='app.libo.messenger.beta'
+  PACKAGE='app.libo.messenger.standalone.beta'
   DEBUGGABLE='true'
   DEBUG_FLAG='true'
 fi
