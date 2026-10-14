@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="LIBO">
+  <rect width="96" height="96" fill="#6d28d9"/>
+  <path d="M96 0v60L29 0Z" fill="#8b5cf6"/>
+  <path fill="#5b21b6" fill-rule="evenodd" d="M-40 136a179 179 0 1 0 0-358 179 179 0 0 0 0 358Zm0-32a147 147 0 1 1 0-294 147 147 0 0 1 0 294Z"/>
+  <path fill="#5b21b6" fill-rule="evenodd" d="M-40 136a101 101 0 1 0 0-202 101 101 0 0 0 0 202Zm0-34a67 67 0 1 1 0-134 67 67 0 0 1 0 134Z"/>
+  <circle cx="-40" cy="136" r="163" fill="none" stroke="#fff" stroke-width="2.4"/>
+  <circle cx="-40" cy="136" r="109" fill="none" stroke="#c4b5fd" stroke-width="1.6"/>
+  <circle cx="-40" cy="136" r="62" fill="none" stroke="#c4b5fd" stroke-width="1.4"/>
+  <g transform="rotate(33 48 44)">
+    <path d="M25 47 L43 34 M25 47 L43 60" stroke="#4d7c0f" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <path d="M22 44 L40 31 M22 44 L40 57" stroke="#84cc16" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <path d="M48 49 h10" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="60" cy="36" r="5.4" fill="#fff"/>
+    <path fill="#fff" fill-rule="evenodd" d="M66 30 h12 a7 7 0 0 1 7 7 v14 a7 7 0 0 1 -7 7 h-12 a7 7 0 0 1 -7 -7 v-14 a7 7 0 0 1 7 -7 Z M69 36 h7 v6 h-7 Z M69 46 h7 v6 h-7 Z"/>
+    <path fill="#fff" fill-rule="evenodd" d="M90 30 h6 a8 8 0 0 1 8 8 v12 a8 8 0 0 1 -8 8 h-6 a8 8 0 0 1 -8 -8 v-12 a8 8 0 0 1 8 -8 Z M90 38 h6 v8 h-6 Z"/>
+  </g>
+</svg>
