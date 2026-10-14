@@ -526,7 +526,7 @@ html[data-wall="dusk"] .messages { background: linear-gradient(160deg, color-mix
 html[data-wall="mint"] .messages { background: radial-gradient(120% 90% at 85% -10%, color-mix(in srgb, #a5dacc 26%, transparent), transparent 60%), var(--bg); }
 html[data-wall="mono"] .messages { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--muted) 7%, transparent) 0 12px, transparent 12px 24px), var(--bg); }
 
-/* ===== LIBO 2.9.10.3: resilient multiline composer and streamed attachments ===== */
+/* ===== LIBO 2.11.4.5: resilient multiline composer and streamed attachments ===== */
 #message-input {
   writing-mode: horizontal-tb;
   text-orientation: mixed;
@@ -593,3 +593,33 @@ html[data-wall="mono"] .messages { background: repeating-linear-gradient(45deg, 
 .edit-history-row { padding: 10px; border-radius: 10px; background: var(--surface); }
 .edit-history-row time { display: block; color: var(--muted); font-size: 9px; margin-bottom: 5px; }
 .edit-history-row p { color: var(--secondary); font-size: 11px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ===== LIBO 2.11.4.5: direct WebRTC calls ===== */
+.call-overlay { position: fixed; z-index: 85; inset: 0; display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom)); background: color-mix(in srgb, #16131f 68%, transparent); backdrop-filter: blur(10px); }
+.call-overlay[hidden] { display: none; }
+.call-card { width: min(430px, 100%); max-height: calc(100dvh - 40px); overflow: auto; display: flex; flex-direction: column; align-items: center; border: 1px solid color-mix(in srgb, var(--line) 80%, #fff); border-radius: 28px; padding: 26px; color: var(--text); background: var(--panel); box-shadow: 0 25px 100px #09071173; text-align: center; }
+.call-avatar { width: 74px; height: 74px; border-radius: 25px; font-size: 23px; margin-bottom: 14px; }
+.call-card h2 { font-size: 21px; letter-spacing: -.4px; }
+.call-state { min-height: 20px; margin-top: 7px; color: var(--accent-text); font-weight: 700; font-size: 13px; }
+.call-detail { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.call-media { position: relative; width: 100%; min-height: 150px; margin: 18px 0 8px; overflow: hidden; border-radius: 18px; background: #111019; }
+.call-media video { display: block; width: 100%; max-height: min(52dvh, 400px); min-height: 150px; object-fit: cover; background: #111019; }
+.call-media:not(.video) { min-height: 0; height: 0; margin: 0; overflow: hidden; }
+#call-local-video { position: absolute; right: 10px; bottom: 10px; width: min(32%, 120px); min-height: 0; max-height: 100px; border: 1px solid #ffffff66; border-radius: 11px; transform: scaleX(-1); }
+.call-actions { width: 100%; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.call-actions .primary-button { min-height: 43px; }
+.call-control, .call-end { min-width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--secondary); }
+.call-control svg, .call-end svg { width: 20px; height: 20px; }
+.call-control.active { color: #b83254; background: #fde8ee; border-color: #f3b7c8; }
+[data-theme="dark"] .call-control.active { color: #fecdd3; background: #5e1427; border-color: #831a35; }
+.call-end { padding: 0 13px; color: #fff; background: #c9445e; border-color: #c9445e; font: 700 12px/1 inherit; font-family: inherit; }
+.call-end:hover { background: #ad304a; }
+.call-caption { max-width: 310px; margin-top: 18px; color: var(--muted); font-size: 9px; line-height: 1.55; }
+.call-diagnostics { width: 100%; margin-top: 15px; padding: 12px; border-radius: 13px; background: var(--surface); text-align: left; }
+.call-diagnostics strong { display: block; margin-bottom: 7px; color: var(--secondary); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.call-diagnostics dl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.call-diagnostics dl div { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+.call-diagnostics dt, .call-diagnostics dd { margin: 0; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call-diagnostics dt { color: var(--muted); }
+.call-diagnostics dd { color: var(--secondary); font-weight: 650; }
+@media (max-width: 420px) { .chat-header-actions { gap: 3px; } .chat-header-actions #security-button { display: none; } .call-card { padding: 21px 16px; border-radius: 22px; } .call-actions { gap: 8px; } .call-end span { display: none; } .call-end { padding: 0; } }

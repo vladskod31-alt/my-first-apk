@@ -2,12 +2,23 @@ import Peer from 'peerjs';
 import { CAPABILITIES, parseSignalingUrl, makeIceServers, validatePacket } from './core.mjs';
 import { MtSession } from './mtproto.mjs';
 
+const CALL_KINDS = new Set(['audio', 'video']);
+
+function callKind(metadata) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return '';
+  return metadata.protocol === 'libo-call-v1' && CALL_KINDS.has(metadata.kind) ? metadata.kind : '';
+}
+
 export class Transport {
   constructor(events) {
     this.events = events;
     this.connections = new Map();
     this.attempts = new Map();
     this.mtSessions = new Map();
+    // One direct media call at a time. Calls deliberately use PeerJS MediaConnection,
+    // not a visual simulation or a message-packet status.
+    this.calls = new Map();
+    this.pendingCalls = new Map();
     this.timers = new Set();
     this.retryCount = 0;
   }
@@ -42,6 +53,7 @@ export class Transport {
       this.events.onReady();
     });
     peer.on('connection', conn => this.bind(conn, true));
+    peer.on('call', call => this.receiveCall(call));
     peer.on('disconnected', () => {
       if (peer !== this.peer || this.stopped) return;
       this.events.onState('offline');
@@ -82,6 +94,168 @@ export class Transport {
     const connection = this.peer.connect(id, { reliable: true, serialization: 'binary', label: 'libo-v2' });
     this.bind(connection, false);
     return true;
+  }
+
+  hasActiveCall() { return this.calls.size > 0 || this.pendingCalls.size > 0; }
+
+  canCall(id) {
+    return this.isOpen(id) && this.supports(id, 'calls-v1') && !this.hasActiveCall();
+  }
+
+  // The caller must have obtained a real MediaStream in response to a user gesture.
+  // "calling" ends only after an actual remote MediaStream arrives.
+  startCall(id, stream, kind) {
+    if (!CALL_KINDS.has(kind) || !stream?.getTracks || !this.canCall(id)) return false;
+    let call;
+    try {
+      call = this.peer.call(id, stream, { metadata: { protocol: 'libo-call-v1', kind } });
+    } catch { return false; }
+    if (!call) return false;
+    const record = { id, call, kind, direction: 'outgoing', status: 'calling', localStream: stream, remoteStream: null, finished: false, timeout: null };
+    this.calls.set(id, record);
+    this.bindCall(record);
+    this.reportCallState(record, 'calling');
+    // A ringing indication without an answer is not a connected call. Time out rather
+    // than leaving microphone/camera capture open forever.
+    record.timeout = setTimeout(() => this.finishCall(record, 'failed', 'Нет ответа от собеседника.', true), 45_000);
+    return true;
+  }
+
+  receiveCall(call) {
+    const id = call?.peer;
+    const kind = callKind(call?.metadata);
+    if (!id || !kind || !this.events.isAllowed(id) || !this.isOpen(id) || !this.supports(id, 'calls-v1') || this.hasActiveCall()) {
+      try { call?.close(); } catch { /* Nothing to clean up. */ }
+      return;
+    }
+    const record = { id, call, kind, direction: 'incoming', status: 'ringing', localStream: null, remoteStream: null, finished: false, timeout: null };
+    this.pendingCalls.set(id, record);
+    this.bindCall(record);
+    this.reportCallState(record, 'ringing');
+    this.events.onIncomingCall?.({ id, kind });
+    record.timeout = setTimeout(() => this.finishCall(record, 'ended', 'Время ожидания ответа истекло.', true), 30_000);
+  }
+
+  answerCall(id, stream) {
+    const record = this.pendingCalls.get(id);
+    if (!record || record.finished || !stream?.getTracks) return false;
+    this.pendingCalls.delete(id);
+    this.calls.set(id, record);
+    record.localStream = stream;
+    record.status = 'connecting';
+    try {
+      record.call.answer(stream);
+    } catch {
+      this.finishCall(record, 'failed', 'Не удалось принять WebRTC-вызов.', true);
+      return false;
+    }
+    this.reportCallState(record, 'connecting');
+    return true;
+  }
+
+  rejectCall(id, detail = 'Вызов отклонён.') {
+    const record = this.pendingCalls.get(id) || this.calls.get(id);
+    if (!record) return false;
+    this.finishCall(record, 'ended', detail, true);
+    return true;
+  }
+
+  endCall(id) {
+    const record = this.calls.get(id) || this.pendingCalls.get(id);
+    if (!record) return false;
+    this.finishCall(record, 'ended', 'Вызов завершён.', true);
+    return true;
+  }
+
+  bindCall(record) {
+    const { call } = record;
+    call.on('stream', stream => {
+      if (record.finished || !stream?.getTracks) return;
+      record.remoteStream = stream;
+      this.events.onCallStream?.(record.id, stream, record.kind);
+      this.reportCallState(record, 'connected');
+    });
+    call.on('close', () => {
+      if (!record.finished) this.finishCall(record, record.status === 'failed' ? 'failed' : 'ended', '', false);
+    });
+    call.on('error', error => {
+      if (!record.finished) this.finishCall(record, 'failed', error?.message || 'Ошибка WebRTC-вызова.', true);
+    });
+    // PeerJS exposes the underlying RTCPeerConnection. These events are the source of
+    // reconnecting/failed states and diagnostics; they are never inferred from UI time.
+    this.later(() => this.watchCallConnection(record), 0);
+  }
+
+  watchCallConnection(record) {
+    if (record.finished) return;
+    const peerConnection = record.call?.peerConnection;
+    // PeerJS can attach its RTCPeerConnection one task after the MediaConnection.
+    // Retry a few milliseconds later rather than losing true connection-state events.
+    if (!peerConnection) { this.later(() => this.watchCallConnection(record), 100); return; }
+    if (record.peerConnection === peerConnection) return;
+    record.peerConnection = peerConnection;
+    const update = () => {
+      if (record.finished) return;
+      const connectionState = peerConnection.connectionState || '';
+      const iceState = peerConnection.iceConnectionState || '';
+      if (connectionState === 'failed' || iceState === 'failed') {
+        this.finishCall(record, 'failed', 'WebRTC-соединение потеряно.', true);
+      } else if (connectionState === 'disconnected' || iceState === 'disconnected') {
+        this.reportCallState(record, 'reconnecting');
+      } else if (record.remoteStream && (connectionState === 'connected' || iceState === 'connected' || iceState === 'completed')) {
+        this.reportCallState(record, 'connected');
+      }
+    };
+    peerConnection.addEventListener?.('connectionstatechange', update);
+    peerConnection.addEventListener?.('iceconnectionstatechange', update);
+    update();
+  }
+
+  reportCallState(record, status, detail = '') {
+    if (record.finished) return;
+    record.status = status;
+    this.events.onCallState?.(record.id, status, detail, { kind: record.kind, direction: record.direction });
+  }
+
+  finishCall(record, status, detail = '', close = false) {
+    if (!record || record.finished) return;
+    record.finished = true;
+    if (record.timeout) clearTimeout(record.timeout);
+    if (this.calls.get(record.id) === record) this.calls.delete(record.id);
+    if (this.pendingCalls.get(record.id) === record) this.pendingCalls.delete(record.id);
+    if (close) {
+      try { record.call.close(); } catch { /* Closing an already closed PeerJS call is harmless. */ }
+    }
+    this.events.onCallState?.(record.id, status, detail, { kind: record.kind, direction: record.direction });
+    this.events.onCallEnded?.(record.id, status, detail, { kind: record.kind, direction: record.direction });
+  }
+
+  async callDiagnostics(id) {
+    const record = this.calls.get(id);
+    const peerConnection = record?.call?.peerConnection;
+    if (!peerConnection?.getStats) return null;
+    try {
+      const stats = await peerConnection.getStats();
+      let pair = null;
+      let inbound = null;
+      let remoteInbound = null;
+      for (const report of stats.values()) {
+        if (report.type === 'candidate-pair' && (report.selected || report.nominated) && !pair) pair = report;
+        if (report.type === 'inbound-rtp' && report.kind === 'audio' && !inbound) inbound = report;
+        if (report.type === 'remote-inbound-rtp' && report.kind === 'audio' && !remoteInbound) remoteInbound = report;
+      }
+      const secondsToMs = value => Number.isFinite(value) ? Math.round(value * 1000) : null;
+      const packetsLost = Number.isFinite(inbound?.packetsLost) ? inbound.packetsLost : null;
+      const packetsReceived = Number.isFinite(inbound?.packetsReceived) ? inbound.packetsReceived : null;
+      return {
+        connectionState: peerConnection.connectionState || 'unknown',
+        iceConnectionState: peerConnection.iceConnectionState || 'unknown',
+        signalingState: peerConnection.signalingState || 'unknown',
+        rttMs: secondsToMs(pair?.currentRoundTripTime ?? remoteInbound?.roundTripTime),
+        jitterMs: secondsToMs(inbound?.jitter),
+        packetsLost, packetsReceived,
+      };
+    } catch { return null; }
   }
 
   helloPacket() {
@@ -265,6 +439,7 @@ export class Transport {
   }
 
   closeContact(id) {
+    this.endCall(id);
     this.mtSessions.delete(id);
     this.connections.get(id)?.close();
     this.attempts.get(id)?.close();
@@ -278,10 +453,13 @@ export class Transport {
     this.timers.clear();
     this.reconnectTimer = null;
     this.retryCount = 0;
+    for (const record of [...this.calls.values(), ...this.pendingCalls.values()]) this.finishCall(record, 'ended', 'Соединение LIBO остановлено.', true);
     this.peer?.destroy();
     this.peer = null;
     this.connections.clear();
     this.attempts.clear();
     this.mtSessions.clear();
+    this.calls.clear();
+    this.pendingCalls.clear();
   }
 }

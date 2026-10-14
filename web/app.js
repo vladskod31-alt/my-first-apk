@@ -26,6 +26,9 @@ const state = {
   folderTab: '', selection: null, ttl: 0, highlight: null,
   transfers: new Map(), attachmentUrls: new Map(), attachmentPreviewUrl: '', pendingAudioFile: null, nativeSave: null,
   mentionTarget: null, reminders: [], attachmentRenderGeneration: 0,
+  // A call only exists while PeerJS has a live MediaConnection. No message state or
+  // decorative timer is used as a substitute for an actual WebRTC call.
+  call: null, callTerminalTimer: null,
 };
 const ttlTimers = new Map();
 const reminderTimers = new Map();
@@ -213,6 +216,33 @@ const transport = new Transport({
     const chat = state.chats.find(item => item.id === id);
     if (chat) for (const message of chat.messages) lastSent.delete(message.id);
     void flushPending(id);
+  },
+  onIncomingCall({ id, kind }) {
+    if (state.call) { transport.rejectCall(id, 'Линия занята.'); return; }
+    const chat = state.chats.find(item => item.id === id);
+    if (!chat) { transport.rejectCall(id, 'Неизвестный контакт.'); return; }
+    state.call = { peerId: id, kind, direction: 'incoming', status: 'ringing', detail: '', localStream: null, remoteStream: null, muted: false, cameraOff: false };
+    renderCall();
+  },
+  onCallState(id, status, detail = '', meta = {}) {
+    if (!state.call || state.call.peerId !== id) return;
+    state.call = { ...state.call, status, detail: detail || state.call.detail, kind: meta.kind || state.call.kind, direction: meta.direction || state.call.direction };
+    renderCall();
+  },
+  onCallStream(id, stream) {
+    if (!state.call || state.call.peerId !== id) return;
+    state.call = { ...state.call, remoteStream: stream, status: 'connected', detail: '' };
+    renderCall();
+    void refreshCallDiagnostics();
+  },
+  onCallEnded(id, status, detail = '', meta = {}) {
+    if (!state.call || state.call.peerId !== id) return;
+    const finished = { ...state.call, status, detail: detail || terminalCallDetail(status), kind: meta.kind || state.call.kind, direction: meta.direction || state.call.direction };
+    stopLocalCallStream(finished.localStream);
+    state.call = finished;
+    renderCall();
+    clearTimeout(state.callTerminalTimer);
+    state.callTerminalTimer = setTimeout(() => { if (state.call?.peerId === id) { state.call = null; renderCall(); renderHeader(); } }, 1800);
   },
   onStorageError() { notify('Не удалось сохранить контакт. Проверьте свободное место.', true); },
 });
@@ -572,6 +602,13 @@ function renderHeader() {
   $('#composer-zone').hidden = !!chat.request || !!chat.archive;
   $('#archive-bar').hidden = !chat.archive;
   $('#security-button').hidden = chat.id === 'saved' || !!chat.archive;
+  // Do not expose a call control until both online peers have advertised the call
+  // protocol and this browser/WebView can request real capture devices.
+  const callAvailable = chat.id !== 'saved' && !chat.archive && !chat.request
+    && !state.call && !!navigator.mediaDevices?.getUserMedia
+    && transport.isOpen(chat.id) && transport.supports(chat.id, 'calls-v1');
+  $('#audio-call-button').hidden = !callAvailable;
+  $('#video-call-button').hidden = !callAvailable;
   $('#block-contact').hidden = chat.id === 'saved';
   $('#verify-code').hidden = chat.id === 'saved' || !!chat.archive;
   $('#star-contact').hidden = chat.id === 'saved';
@@ -579,6 +616,194 @@ function renderHeader() {
   $('#composer-hint').textContent = chat.id === 'saved'
     ? 'Сохранено на этом устройстве. Последние 500 сообщений в чате.'
     : 'Оба собеседника в приложении · ✓ сохранено у собеседника, ✓✓ прочитано';
+}
+
+function terminalCallDetail(status) {
+  return {
+    ended: 'Дзвінок завершено.',
+    failed: 'Не вдалося встановити WebRTC-з’єднання.',
+  }[status] || '';
+}
+
+function callStateLabel(call) {
+  const kind = call.kind === 'video' ? 'відеодзвінок' : 'аудіодзвінок';
+  if (call.status === 'ringing') return `Вхідний ${kind}`;
+  if (call.status === 'calling') return `Викликаємо · ${kind}`;
+  if (call.status === 'connecting') return 'З’єднання WebRTC…';
+  if (call.status === 'connected') return 'З’єднано · WebRTC';
+  if (call.status === 'reconnecting') return 'WebRTC перепідключається…';
+  if (call.status === 'failed') return 'Не вдалося з’єднатися';
+  if (call.status === 'ended') return 'Дзвінок завершено';
+  return 'Підготовка виклику…';
+}
+
+function stopLocalCallStream(stream) {
+  try { stream?.getTracks?.().forEach(track => track.stop()); } catch { /* Device may have already stopped capture. */ }
+}
+
+function assignMediaStream(element, stream) {
+  if (!element || element.srcObject === stream) return;
+  element.srcObject = stream || null;
+  if (stream) void element.play().catch(() => { /* Playback still follows browser/WebView policy. */ });
+}
+
+function renderCall() {
+  const call = state.call;
+  const overlay = $('#call-overlay');
+  if (!call) {
+    overlay.hidden = true;
+    assignMediaStream($('#call-local-video'), null);
+    assignMediaStream($('#call-remote-video'), null);
+    assignMediaStream($('#call-remote-audio'), null);
+    $('#call-diagnostics').hidden = true;
+    return;
+  }
+  overlay.hidden = false;
+  const chat = state.chats.find(item => item.id === call.peerId);
+  paintAvatar($('#call-avatar'), { name: chat?.name || 'LIBO', id: call.peerId, avatar: chat?.avatar || '' });
+  $('#call-avatar').classList.add('call-avatar');
+  $('#call-name').textContent = chat?.name || 'Контакт LIBO';
+  $('#call-state').textContent = callStateLabel(call);
+  const detail = $('#call-detail');
+  detail.hidden = !call.detail;
+  detail.textContent = call.detail || '';
+  const incoming = call.direction === 'incoming' && call.status === 'ringing';
+  const terminal = ['ended', 'failed'].includes(call.status);
+  $('#call-accept').hidden = !incoming;
+  $('#call-end').querySelector('span').textContent = incoming ? 'Відхилити' : terminal ? 'Закрити' : 'Завершити';
+  $('#call-end').disabled = false;
+  const hasLocal = !!call.localStream;
+  const active = hasLocal && !terminal;
+  const mute = $('#call-mute');
+  const camera = $('#call-camera');
+  const diagnostics = $('#call-diagnostics-toggle');
+  mute.hidden = !active;
+  camera.hidden = !active || call.kind !== 'video';
+  diagnostics.hidden = !call.remoteStream || terminal;
+  mute.classList.toggle('active', !!call.muted);
+  camera.classList.toggle('active', !!call.cameraOff);
+  mute.setAttribute('aria-label', call.muted ? 'Увімкнути мікрофон' : 'Вимкнути мікрофон');
+  mute.title = mute.getAttribute('aria-label');
+  camera.setAttribute('aria-label', call.cameraOff ? 'Увімкнути камеру' : 'Вимкнути камеру');
+  camera.title = camera.getAttribute('aria-label');
+  const media = $('#call-media');
+  const showVideo = call.kind === 'video' && (call.localStream || call.remoteStream);
+  media.hidden = !showVideo;
+  media.classList.toggle('video', !!showVideo);
+  assignMediaStream($('#call-local-video'), call.localStream);
+  assignMediaStream($('#call-remote-video'), call.remoteStream);
+  assignMediaStream($('#call-remote-audio'), call.remoteStream);
+}
+
+async function requestCallStream(kind) {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Цей WebView не підтримує доступ до мікрофона або камери.');
+  const constraints = {
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    video: kind === 'video' ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+  };
+  return navigator.mediaDevices.getUserMedia(constraints);
+}
+
+async function startDirectCall(kind) {
+  const chat = activeChat();
+  if (!chat || chat.id === 'saved' || !transport.canCall(chat.id)) {
+    notify('Для дзвінка обидва контакти мають бути онлайн у LIBO 2.11.4.5.', true);
+    return;
+  }
+  clearTimeout(state.callTerminalTimer);
+  let stream;
+  try {
+    stream = await requestCallStream(kind);
+  } catch (error) {
+    notify(error?.name === 'NotAllowedError' ? 'Надайте LIBO доступ до мікрофона або камери в Android.' : (error?.message || 'Не вдалося отримати доступ до пристрою.'), true);
+    return;
+  }
+  // A permissions prompt may have left the chat or connection state changed.
+  if (!transport.canCall(chat.id)) {
+    stopLocalCallStream(stream);
+    notify('З’єднання з контактом змінилося. Спробуйте ще раз.', true);
+    return;
+  }
+  state.call = { peerId: chat.id, kind, direction: 'outgoing', status: 'calling', detail: '', localStream: stream, remoteStream: null, muted: false, cameraOff: false };
+  if (!transport.startCall(chat.id, stream, kind)) {
+    stopLocalCallStream(stream);
+    state.call = null;
+    renderCall();
+    notify('Не вдалося розпочати WebRTC-виклик.', true);
+    return;
+  }
+  renderCall(); renderHeader();
+}
+
+async function acceptIncomingCall() {
+  const call = state.call;
+  if (!call || call.direction !== 'incoming' || call.status !== 'ringing') return;
+  let stream;
+  try {
+    stream = await requestCallStream(call.kind);
+  } catch (error) {
+    transport.rejectCall(call.peerId, 'Доступ до мікрофона або камери не надано.');
+    notify(error?.name === 'NotAllowedError' ? 'Доступ до мікрофона або камери не надано.' : 'Не вдалося відкрити пристрій.', true);
+    return;
+  }
+  if (!transport.answerCall(call.peerId, stream)) {
+    stopLocalCallStream(stream);
+    notify('Виклик уже завершився.', true);
+    return;
+  }
+  state.call = { ...state.call, localStream: stream, status: 'connecting', detail: '' };
+  renderCall(); renderHeader();
+}
+
+function endCurrentCall() {
+  const call = state.call;
+  if (!call) return;
+  if (!transport.endCall(call.peerId)) {
+    stopLocalCallStream(call.localStream);
+    state.call = null;
+    renderCall(); renderHeader();
+  }
+}
+
+function toggleCallMute() {
+  const call = state.call;
+  const tracks = call?.localStream?.getAudioTracks?.() || [];
+  if (!call || !tracks.length) return;
+  const muted = tracks.some(track => track.enabled);
+  tracks.forEach(track => { track.enabled = !muted; });
+  state.call = { ...call, muted };
+  renderCall();
+}
+
+function toggleCallCamera() {
+  const call = state.call;
+  const tracks = call?.localStream?.getVideoTracks?.() || [];
+  if (!call || !tracks.length) return;
+  const cameraOff = tracks.some(track => track.enabled);
+  tracks.forEach(track => { track.enabled = !cameraOff; });
+  state.call = { ...call, cameraOff };
+  renderCall();
+}
+
+function formatCallMetric(value) { return Number.isFinite(value) ? `${value} мс` : '—'; }
+
+async function refreshCallDiagnostics() {
+  const call = state.call;
+  if (!call?.remoteStream || ['ended', 'failed'].includes(call.status)) return;
+  const diagnostics = await transport.callDiagnostics(call.peerId);
+  if (!diagnostics || state.call?.peerId !== call.peerId) return;
+  $('#call-diag-connection').textContent = diagnostics.connectionState || '—';
+  $('#call-diag-ice').textContent = diagnostics.iceConnectionState || '—';
+  $('#call-diag-rtt').textContent = formatCallMetric(diagnostics.rttMs);
+  $('#call-diag-jitter').textContent = formatCallMetric(diagnostics.jitterMs);
+  $('#call-diag-loss').textContent = diagnostics.packetsLost == null || diagnostics.packetsReceived == null
+    ? '—' : `${diagnostics.packetsLost}/${diagnostics.packetsLost + diagnostics.packetsReceived}`;
+}
+
+async function showCallDiagnostics() {
+  const panel = $('#call-diagnostics');
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) await refreshCallDiagnostics();
 }
 
 async function showVerifyCode() {
@@ -1366,7 +1591,7 @@ async function sendMessage(event) {
   const id = chat.id;
   const attachment = state.attachment;
   if (isChunkedAttachment(attachment) && id !== 'saved' && transport.isOpen(id) && !transport.supports(id, 'chunk-files-v1')) {
-    notify('У собеседника старая версия LIBO. Для файлов до 100 МБ обновите оба приложения до 2.9.10.3.', true);
+    notify('У собеседника старая версия LIBO. Для файлов до 100 МБ обновите оба приложения до 2.11.4.5.', true);
     return;
   }
   const createdAt = Date.now();
@@ -1420,14 +1645,14 @@ async function flushPending(id) {
   try {
     await changeChat(id, next => {
       next.messages = next.messages.map(m => {
-        if (unsupported.has(m.id)) return { ...m, status: 'failed', attachmentError: 'Собеседник не поддерживает передачу частями. Нужна версия 2.9.10.3.' };
+        if (unsupported.has(m.id)) return { ...m, status: 'failed', attachmentError: 'Собеседник не поддерживает передачу частями. Нужна версия 2.11.4.5.' };
         return sent.has(m.id) && m.status === 'queued'
           ? { ...m, status: 'sent', timing: { ...(m.timing || {}), sendStartedAt: Date.now() } }
           : m;
       });
     });
     if (state.current === id) renderMessages(false);
-    if (unsupported.size) notify('Файл не отправлен: собеседнику нужно обновить LIBO до 2.9.10.3.', true);
+    if (unsupported.size) notify('Файл не отправлен: собеседнику нужно обновить LIBO до 2.11.4.5.', true);
   } catch { notify('Не удалось сохранить статус отправки.', true); }
 }
 
@@ -1464,7 +1689,7 @@ function openDialog(id) {
     const features = [
       FEATURES.delivery, FEATURES.files, FEATURES.profile, FEATURES.mentions,
       FEATURES.drafts, FEATURES.reactions, FEATURES.polls, FEATURES.links,
-      FEATURES.security, FEATURES.search,
+      FEATURES.security, FEATURES.search, FEATURES.calls,
     ];
     $('#about-features').innerHTML = features.map(text => `<li>${text}</li>`).join('');
   }
@@ -2100,6 +2325,7 @@ function playMessageSound(chatId = null) {
 }
 
 function handleBack() {
+  if (state.call) { endCurrentCall(); return true; }
   if (state.selection) { setSelection(null); return true; }
   const open = $('dialog[open]');
   if (open) { open.close(); return true; }
@@ -2285,6 +2511,13 @@ function bindEvents() {
   $('#nav-chats').onclick = closeChat;
   $('#nav-saved').onclick = () => void openChat('saved');
   $('#chat-back').onclick = closeChat;
+  $('#audio-call-button').onclick = () => void startDirectCall('audio');
+  $('#video-call-button').onclick = () => void startDirectCall('video');
+  $('#call-accept').onclick = () => void acceptIncomingCall();
+  $('#call-end').onclick = endCurrentCall;
+  $('#call-mute').onclick = toggleCallMute;
+  $('#call-camera').onclick = toggleCallCamera;
+  $('#call-diagnostics-toggle').onclick = () => void showCallDiagnostics();
   for (const type of ['all', 'unread']) $(`#filter-${type}`).onclick = () => {
     state.filter = type;
     $$('.filter').forEach(button => { const active = button.id === `filter-${type}`; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
@@ -2606,6 +2839,8 @@ async function main() {
   }
   transport.start(state.profile, state.settings);
   setInterval(retryConnections, 6000);
+  // Reads RTCPeerConnection statistics only while a remote stream is live.
+  setInterval(() => { void refreshCallDiagnostics(); }, 2000);
 }
 
 main().catch(error => {

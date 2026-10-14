@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 export async function browserOptions() {
-  if (process.env.CHROMIUM_PATH) return { executablePath: process.env.CHROMIUM_PATH, args: ['--no-sandbox'], headless: true };
+  if (process.env.CHROMIUM_PATH) return { executablePath: process.env.CHROMIUM_PATH, args: ['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'], headless: true };
   const require = createRequire(import.meta.url);
   const packageRoot = path.resolve(path.dirname(require.resolve('@sparticuz/chromium')), '../..');
   const deps = path.join(os.tmpdir(), 'libo-chromium-libs-143');
@@ -19,7 +19,7 @@ export async function browserOptions() {
   const unsafeArgs = ['--single-process', '--disable-web-security', '--allow-running-insecure-content', '--disable-site-isolation-trials'];
   return {
     executablePath: await chromium.executablePath(),
-    args: chromium.args.filter(arg => !unsafeArgs.includes(arg)),
+    args: [...chromium.args.filter(arg => !unsafeArgs.includes(arg)), '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
     headless: true,
     env: { ...process.env, LD_LIBRARY_PATH: [path.join(deps, 'lib'), process.env.LD_LIBRARY_PATH].filter(Boolean).join(':') },
   };

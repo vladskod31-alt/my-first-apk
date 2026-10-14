@@ -1,148 +1,96 @@
-# Перевірка LIBO 2.9.10.3
+# Перевірка LIBO 2.11.4.5
 
-**Дата:** 14 жовтня 2026 · **середовище:** Linux x64, Node.js 22, Playwright Chromium,
-Temurin JRE 17.0.17+10. Це фактичний звіт, а не список запланованих перевірок.
+Дата локальної перевірки: **14 жовтня 2026**. Це evidence для конкретного
+`app.libo.messenger.standalone` APK, а не твердження про production service або всі пункти
+майбутньої roadmap.
 
-## Пройдено
+## Виконані перевірки
 
-| Команда / перевірка | Результат | Що саме підтверджує |
-| --- | --- | --- |
-| `npm test` | **30 / 30 passed** | packet schemas, crypto envelope, hash/base64, streamed files, resume position, SHA-256 reject, profile/deep-link bounds |
-| `npm run build` | **passed** | Vite production bundle (`42 modules`) |
-| `npm run test:e2e` | **11 / 11 passed** | UI, real local PeerJS + WebRTC DataChannel, offline text queue, multi-chunk files, sender reconnect/resume |
-| `./scripts/build-apk-local.sh` | **passed** | AAPT2 → ECJ → D8 → zipalign → apksigner; release APK generated |
-| GitHub Actions PR #12: Gradle build + lint | **passed (1m31s)** | canonical Gradle/Android lint on CI after push |
-| `zipalign -c 4` / `apksigner verify --verbose --print-certs` | **passed** | APK alignment and v2/v3 signature |
-| `aapt2 dump badging` | **passed** | package/version/minSdk/permissions in generated APK |
+| Команда / перевірка | Результат |
+| --- | --- |
+| `npm test` | **33/33 passed** |
+| `npm run build` | passed (Vite production bundle) |
+| `npm run test:e2e` | **12/12 passed** |
+| fallback AAPT2/ECJ/D8 build | passed; 11 pre-existing Android deprecation warnings |
+| `zipalign -c 4` | passed |
+| `apksigner verify --verbose --print-certs` | v2 + v3 passed |
+| `aapt2 dump badging` | package/version/permissions below confirmed |
+| `sha256sum -c downloads/SHA256SUMS.txt` | all listed APK files passed |
 
-## Node/unit tests — 30/30
+## Що покривають тести
 
-`node --test tests/*.test.mjs` виконує `tests/core.test.mjs` та
-`tests/attachments.test.mjs`.
+### Unit tests
 
-Окремо нове для 2.9.10.3:
+- P2P message validation, bounded text/mentions/profiles/deep links, MT session replay/tamper
+  rejection, attachment MIME/limits, chunk encoding/SHA-256 and transfer resume/ACK.
+- `calls.test.mjs`: outgoing call має тільки `calling` до приходу remote `MediaStream`; incoming
+  call лишається `ringing` до explicit accept + capture stream; MediaConnection з невірним
+  protocol відхиляється без UI state.
 
-1. metadata-only streamed attachment приймається лише з valid file id, MIME, size,
-   chunk count та SHA-256; oversized chunk/hash/limit відхиляються;
-2. `file-chunk`, receipt, state, ACK, username, profile, mention і strict `libo://`
-   packet validation;
-3. binary base64 round trip та deterministic SHA-256 Blob;
-4. outgoing resume: peer повідомляє `next=1`, передавач надсилає тільки chunks 1 і 2,
-   а state стає `delivered` лише після `file-ack`;
-5. incoming chunks зберігаються, збираються, перевіряються SHA-256 та ACK-аються тільки
-   після success;
-6. навмисно неправильний final SHA-256 дає `failed` + negative `file-ack`, не Delivered.
+### Browser integration
 
-Існуючі 2.x перевірки також пройшли: identity/code bounds, XSS/literal message content,
-MIME/attachment guards, signaling/TURN validation, export privacy, SAS, packet controls,
-P-256/AES-GCM/replay checks, polls, TTL/read marker.
+Playwright створює два незалежні клієнти та проходить text/ACK/read/reply/edit/delete/reaction,
+offline queue/reconnect, profiles/mentions/links, polls, TTL, chunked file resume і current
+call flow. Для audio call тесту Chromium запускається з fake capture devices:
 
-## Browser / WebRTC — 11/11
+1. Alice/Bob підключаються через local PeerJS.
+2. Alice стартує audio call, Bob бачить real incoming MediaConnection і explicit accept.
+3. Обидва клієнти чекають `Connected` **лише після** remote `MediaStream`.
+4. Тест перевіряє remote audio `srcObject`, mute та end.
 
-`npm run test:e2e` запускає локальний signaling server та Playwright сценарії з
-ізольованими browser contexts. Це справжні WebRTC DataConnection між двома сторінками на
-цьому host, не mock transport.
+Це реальний локальний WebRTC integration test, але fake device != фізичний Android microphone,
+camera, WebView або mobile NAT.
 
-1. чистий старт, QR, version/about і відсутність помилок сторінки;
-2. Saved, literal HTML (не виконується), draft/reload, basic search/theme;
-3. mobile 360 px, validation і відсутність horizontal overflow;
-4. text export не містить identity/TURN secret;
-5. два endpoint-и: text, receiver ACK, reply, image, reaction, pin, edit/delete, history
-   of edits і **70 KiB file через кілька 24 KiB chunks**. Sender `delivered` очікується
-   тільки після receiver verified file ACK;
-6. text offline queue переживає reload та доставляється рівно один раз;
-7. read-only archive import і близькі контакти;
-8. базовий P2P poll, forwarding, read receipt, MT-style session і TTL;
-9. multiline composer з long URL/@mention/emoji, music draft/card без Base64 payload UI;
-10. profile exchange, local username, mention/profile navigation, validated `libo://user`
-    і local `from:@… has:link` filter;
-11. **actual sender reconnect під час 1 MiB chunked transfer**: тест бачить `Передача`,
-    перезапускає sender transport, потім очікує `Получено и проверено` на peer і
-    `delivered` на sender. Цей сценарій перевіряє resume поверх реального локального
-    WebRTC endpoint.
-
-Ці тести не вимірюють мобільну мережу. Локальні timings у security dialog показують
-клієнтські мітки черги/доставки/ACK/read; вони не є latency SLA.
-
-## GitHub Actions result
-
-Після push commit `ffb54d5` усі checks PR [#12](https://github.com/vladskod31-alt/my-first-apk/pull/12)
-пройшли у run [38564219042](https://github.com/vladskod31-alt/my-first-apk/actions/runs/38564219042):
-
-- **Gradle build and lint** — passed, 1m31s;
-- **module + browser tests** — passed, 1m54s;
-- **Git-history secret audit** — passed, 7s.
-
-Це доповнює локальний fallback compile; CI не замінює тест на фізичному телефоні.
-
-## APK
-
-Для sandbox без Android SDK застосовано pinned fallback toolchain із
-`scripts/toolchain-sources.json`: android.jar API 35, AAPT2, ECJ, D8, apksigner і zipalign
-мають перевірені хеші; JRE 17 завантажено окремо поза репозиторієм.
-
-Фактичний результат `aapt2 dump badging` для 2.9.10.3:
+## APK metadata
 
 ```text
-package: name='app.libo.messenger.standalone' versionCode='2091003' versionName='2.9.10.3'
+package: name='app.libo.messenger.standalone'
+versionCode='2110405'
+versionName='2.11.4.5'
 minSdkVersion:'26'
 targetSdkVersion:'35'
-uses-permission: name='android.permission.INTERNET'
-uses-permission: name='android.permission.POST_NOTIFICATIONS'
-launchable-activity: app.libo.messenger.MainActivity
+application-label:'LIBO Standalone'
+uses-permission: android.permission.INTERNET
+uses-permission: android.permission.RECORD_AUDIO
+uses-permission: android.permission.CAMERA
+uses-permission: android.permission.POST_NOTIFICATIONS
 ```
 
-`apksigner` підтвердив v2 і v3 та один RSA-4096 signer:
+APK: `downloads/LIBO-2.11.4.5-standalone.apk`, **313,723 B**,
+SHA-256 `1f123853534ec28c484772dc1daf3555114b6c50659577dad3035093e0c8a40b`.
+
+Signer certificate SHA-256:
 
 ```text
-CN=LIBO Release, O=LIBO Messenger
-certificate SHA-256: a1b522d513f569a6c081ec12e4aeaab9cf3dbcd394b70b6f26ee779cc2d91910
+a1b522d513f569a6c081ec12e4aeaab9cf3dbcd394b70b6f26ee779cc2d91910
 ```
 
-APK: `LIBO-2.9.10.3-standalone.apk`, **305,531 B**, SHA-256
-`8b79151ed87efe4adde6b0269e14b83c175479b4af61af4fa6d8e05e01b08226`. Він має package
-`app.libo.messenger.standalone`, тому встановлюється поруч із legacy package без conflict.
-Команда build кладе той самий хеш у `artifacts/SHA256SUMS.txt`; release mirror — у
-`downloads/SHA256SUMS.txt`.
+`apksigner` reported v2/v3 `true`; v1/v3.1/v4 are not used. `zipalign -c 4` passed.
 
-### Android compile warnings
+## Android compile and permission review
 
-ECJ успішно зібрав `MainActivity.java` і `ReminderReceiver.java`. Є лише warnings про
-Android deprecated API compatibility calls (`setAllowFileAccessFromFileURLs`, system bar
-API та pre-O `Notification.Builder`); compile error немає.
+The fallback toolchain compiled `MainActivity.java` and `ReminderReceiver.java` successfully.
+The 11 compiler warnings are Android deprecated compatibility/system-bar APIs that predate the
+call implementation; no compile error occurred.
 
-## Що не перевірено / не заявляється
+`MainActivity` accepts a WebView `PermissionRequest` only from
+`https://appassets.androidplatform.net`, only for audio/video capture, and only after matching
+Android runtime `RECORD_AUDIO`/`CAMERA` permission. Any other resource or origin is denied.
 
-- Локальний `./gradlew assembleDebug` у sandbox не дійшов до build, бо wrapper не зміг
-  завантажити `gradle-8.9-bin.zip` із `services.gradle.org` (SSL EOF). GitHub Actions
-  Gradle build/lint пройшов; це не замінює device test.
-- APK не встановлювався на фізичний Android або emulator. Тому `ACTION_OPEN_DOCUMENT`,
-  `ACTION_CREATE_DOCUMENT` streaming save, Android `AlarmManager`, POST_NOTIFICATIONS,
-  intent-dispatch і media codec behavior compiled/inspected, але **не device-verified**.
-- Відновлення transfer перевірене в unit simulation і локальному two-browser reconnect;
-  не перевірено на мобільному NAT, kill/restart WebView під час transfer чи 100 MiB файл.
-- Реальні audio/video call endpoint-и, live stream, channels, server topics/anti-spam/
-  sessions, global account/username search і server TTL не існують у цій архітектурі, тому
-  для них немає «passed» тесту.
-- Незалежний security audit, penetration/load test, production TURN і foreground/push
-  delivery не виконувалися.
+## Still not device-verified / not claimed
 
-## Як повторити
+- APK was not installed on a physical Android phone or emulator in this environment. Android
+  runtime permission UX, camera/microphone capture, backgrounding and long calls need device
+  tests on API 26/29/33/35.
+- TURN/mobile NAT/VPN route, call reconnection behavior and real codec/device matrix are not
+  verified. A configured TURN endpoint is required on restrictive networks.
+- Channel/group/live/SFU/roles/server sessions/global search/Orbix/Premium/AI/MLS/ML-KEM are
+  not implemented in this P2P build; see `ROADMAP_2.11.4.5.md`.
+- No independent security audit, penetration test, load test, production TURN, push or
+  foreground-call service was performed.
 
-```sh
-npm ci
-npm test
-npm run build
-npm run test:e2e
+## CI
 
-node scripts/bootstrap-toolchain.mjs
-export JAVA_HOME='<значення з виводу>'
-export LIBO_TOOLCHAIN='<значення з виводу>'
-./scripts/build-apk-local.sh
-
-# якщо є встановлені JDK/SDK і доступ до Gradle/Maven:
-./gradlew assembleDebug
-```
-
-Перевіряти Android APK треба також на API 26, 29, 33 і 35: picker/save, дозвіл
-notifications, deep link, large audio/video, interrupt/resume, low-storage та codec fallback.
+GitHub Actions on the pull request runs Gradle build/lint, the Node + browser suite, and a
+Git-history secret audit. Local Gradle wrapper cannot download Gradle in this sandbox because
+`services.gradle.org` returns an SSL EOF; the local fallback build above is used instead.

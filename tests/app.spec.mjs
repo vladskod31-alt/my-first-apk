@@ -40,14 +40,14 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   await expect(page.locator('#invite-qr svg')).toHaveCount(1);
   await expect(page.locator('#invite-qr svg path, #invite-qr svg rect')).not.toHaveCount(0);
   await page.locator('#invite-dialog [data-close]').click();
-  // 2.9.10.3: the UI must not mention open source, source code hosting or GitHub.
+  // 2.11.4.5: the UI must not mention open source, source code hosting or GitHub.
   await page.locator('.quiet-button').click();
   const about = await page.locator('#about-dialog').innerText();
-  expect(about).toContain('2.9.10.3');
+  expect(about).toContain('2.11.4.5');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
-  expect(await page.locator('#about-features li').count()).toBe(10);
-  expect(await page.locator('#about-version').innerText()).toBe('2.9.10.3');
+  expect(await page.locator('#about-features li').count()).toBe(11);
+  expect(await page.locator('#about-version').innerText()).toBe('2.11.4.5');
   expect(errors).toEqual([]);
 });
 
@@ -312,7 +312,7 @@ test('polls, forwarding, read receipts, MT layer and secret timer between two cl
   expect(errors).toEqual([]);
 });
 
-test('2.9.10.3 composer keeps multiline text horizontal and prepares a music attachment without Base64 UI', async ({ page }) => {
+test('streamed composer keeps multiline text horizontal and prepares a music attachment without Base64 UI', async ({ page }) => {
   await ready(page);
   await page.locator('#nav-saved').click();
   const input = page.locator('#message-input');
@@ -344,7 +344,7 @@ async function profileDetails(page, name, username, bio = '') {
   await expect(page.locator('#settings-dialog')).not.toBeVisible();
 }
 
-test('2.9.10.3 exchanges local profiles, resolves a known mention and opens a validated libo link', async ({ page: alice, browser }) => {
+test('local profiles resolve a known mention and open a validated libo link', async ({ page: alice, browser }) => {
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5173' });
   const bob = await context.newPage();
   await ready(alice); await ready(bob);
@@ -370,6 +370,40 @@ test('2.9.10.3 exchanges local profiles, resolves a known mention and opens a va
   await alice.locator('#message-search-toggle').click();
   await alice.locator('#message-search').fill('from:@bogdan_31 has:link');
   await expect(alice.locator('.message-text')).toContainText('https://example.test/path');
+  await context.close();
+});
+
+test('2.11.4.5 establishes an actual 1:1 WebRTC audio call after remote media arrives', async ({ page: alice, browser }) => {
+  const origin = 'http://127.0.0.1:5173';
+  await alice.context().grantPermissions(['microphone', 'camera'], { origin });
+  const context = await browser.newContext({ baseURL: origin });
+  await context.grantPermissions(['microphone', 'camera'], { origin });
+  const bob = await context.newPage();
+  const errors = [];
+  alice.on('pageerror', e => errors.push(e.message));
+  bob.on('pageerror', e => errors.push(e.message));
+  await ready(alice); await ready(bob);
+  await profile(alice, 'Аліса дзвінок'); await profile(bob, 'Боб дзвінок');
+  await add(alice, await code(bob));
+  await bob.locator('.chat-row').filter({ hasText: 'Аліса дзвінок' }).click();
+  await bob.locator('#accept-request').click();
+  await expect(alice.locator('#audio-call-button')).toBeVisible({ timeout: 20_000 });
+  await alice.locator('#audio-call-button').click();
+  await expect(alice.locator('#call-overlay')).toBeVisible();
+  await expect(alice.locator('#call-state')).toContainText('Викликаємо');
+  await expect(bob.locator('#call-overlay')).toBeVisible({ timeout: 20_000 });
+  await expect(bob.locator('#call-state')).toContainText('Вхідний');
+  await bob.locator('#call-accept').click();
+  // The UI does not say "connected" on request/answer alone: it waits for both
+  // MediaConnection instances to deliver their remote MediaStream.
+  await expect(alice.locator('#call-state')).toContainText('З’єднано', { timeout: 30_000 });
+  await expect(bob.locator('#call-state')).toContainText('З’єднано', { timeout: 30_000 });
+  expect(await alice.locator('#call-remote-audio').evaluate(element => Boolean(element.srcObject))).toBe(true);
+  await alice.locator('#call-mute').click();
+  await expect(alice.locator('#call-mute')).toHaveClass(/active/);
+  await alice.locator('#call-end').click();
+  await expect(alice.locator('#call-overlay')).toBeHidden({ timeout: 10_000 });
+  expect(errors).toEqual([]);
   await context.close();
 });
 

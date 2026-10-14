@@ -1,6 +1,6 @@
-export const VERSION = '2.9.10.3';
+export const VERSION = '2.11.4.5';
 // Standalone package avoids Android's signature conflict with legacy app.libo.messenger builds.
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.9.10.3/downloads/LIBO-2.9.10.3-standalone.apk';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/arena/3f1b3fb8-my-first-apk/downloads/LIBO-2.11.4.5-standalone.apk';
 
 // The limits below are the actual limits enforced by the browser client and packet
 // validator. Large attachments are held as Blobs in IndexedDB and travel in small,
@@ -31,7 +31,7 @@ export const REACTIONS = ['thumb', 'heart', 'laugh', 'surprise', 'sad', 'fire'];
 export const REACTION_EMOJI = {
   thumb: '👍', heart: '❤️', laugh: '😂', surprise: '😮', sad: '😢', fire: '🔥',
 };
-export const CAPABILITIES = Object.freeze(['chunk-files-v1', 'profiles-v1', 'mentions-v1', 'links-v1']);
+export const CAPABILITIES = Object.freeze(['chunk-files-v1', 'profiles-v1', 'mentions-v1', 'links-v1', 'calls-v1']);
 
 export const FEATURES = {
   delivery: 'Очередь офлайн и реальные статусы: отправлено, принято устройством, прочитано.',
@@ -44,6 +44,7 @@ export const FEATURES = {
   links: 'QR и безопасные ссылки libo://user/… для профиля и приглашения.',
   security: 'ECDH P-256 + AES-256-GCM поверх DTLS, с проверкой отпечатка пары.',
   search: 'Поиск по локальной истории, людям, вложениям и ссылкам с фильтрами.',
+  calls: 'Прямые 1:1 аудио- и видеозвонки WebRTC с реальными состояниями, mute/camera и diagnostics.',
 };
 
 const PEER_ID = /^libo-[a-f0-9]{32}$/;

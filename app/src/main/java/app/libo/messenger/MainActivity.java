@@ -20,6 +20,7 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -49,6 +50,7 @@ public final class MainActivity extends Activity {
     private static final int SAVE_EXPORT = 101;
     private static final int SAVE_ATTACHMENT = 102;
     private static final int REQUEST_NOTIFICATIONS = 103;
+    private static final int REQUEST_MEDIA = 104;
     private static final long MAX_SAVE_BYTES = 100L * 1024L * 1024L;
     private static final String CSP = "default-src 'self'; script-src 'self'; "
             + "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
@@ -57,6 +59,7 @@ public final class MainActivity extends Activity {
     private WebView webView;
     private FrameLayout root;
     private ValueCallback<Uri[]> fileCallback;
+    private PermissionRequest pendingMediaPermission;
     private byte[] pendingExport;
     private final Object saveLock = new Object();
     private OutputStream pendingSaveOutput;
@@ -121,6 +124,40 @@ public final class MainActivity extends Activity {
                     showToast("На устройстве нет приложения для выбора файлов.");
                 }
                 return true;
+            }
+
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                if (request == null || request.getOrigin() == null || !isLocal(request.getOrigin())) {
+                    if (request != null) request.deny();
+                    return;
+                }
+                boolean wantsAudio = false;
+                boolean wantsVideo = false;
+                for (String resource : request.getResources()) {
+                    if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wantsAudio = true;
+                    else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) wantsVideo = true;
+                    else { request.deny(); return; }
+                }
+                if (!wantsAudio && !wantsVideo) { request.deny(); return; }
+                if (pendingMediaPermission != null) { request.deny(); return; }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                        && ((wantsAudio && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                        || (wantsVideo && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED))) {
+                    pendingMediaPermission = request;
+                    ArrayList<String> permissions = new ArrayList<>();
+                    if (wantsAudio) permissions.add(Manifest.permission.RECORD_AUDIO);
+                    if (wantsVideo) permissions.add(Manifest.permission.CAMERA);
+                    requestPermissions(permissions.toArray(new String[0]), REQUEST_MEDIA);
+                    return;
+                }
+                grantMediaPermission(request);
+            }
+
+            @Override
+            public void onPermissionRequestCanceled(PermissionRequest request) {
+                if (pendingMediaPermission == request) pendingMediaPermission = null;
+                super.onPermissionRequestCanceled(request);
             }
         });
         webView.loadUrl(ORIGIN + "/index.html");
@@ -199,6 +236,24 @@ public final class MainActivity extends Activity {
         if (path.endsWith(".png")) return "image/png";
         if (path.endsWith(".json")) return "application/json";
         return "application/octet-stream";
+    }
+
+    // Only grant WebRTC capture resources requested by the bundled app origin and only
+    // after the matching Android runtime permission has been granted by the user.
+    private void grantMediaPermission(PermissionRequest request) {
+        if (request == null || request.getOrigin() == null || !isLocal(request.getOrigin())) { if (request != null) request.deny(); return; }
+        ArrayList<String> grants = new ArrayList<>();
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                    && (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)) {
+                grants.add(resource);
+            } else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                    && (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)) {
+                grants.add(resource);
+            }
+        }
+        if (grants.isEmpty()) request.deny();
+        else request.grant(grants.toArray(new String[0]));
     }
 
     private static String[] safeAcceptTypes(String[] values) {
@@ -379,6 +434,18 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_MEDIA) return;
+        PermissionRequest request = pendingMediaPermission;
+        pendingMediaPermission = null;
+        if (request == null) return;
+        boolean granted = true;
+        for (int result : grantResults) if (result != PackageManager.PERMISSION_GRANTED) { granted = false; break; }
+        if (granted) grantMediaPermission(request); else request.deny();
+    }
+
+    @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (request == PICK_FILE && fileCallback != null) {
@@ -481,6 +548,7 @@ public final class MainActivity extends Activity {
     @Override protected void onPause() { super.onPause(); if (webView != null) webView.onPause(); }
     @Override protected void onResume() { super.onResume(); if (webView != null) webView.onResume(); }
     @Override protected void onDestroy() {
+        if (pendingMediaPermission != null) { pendingMediaPermission.deny(); pendingMediaPermission = null; }
         if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
         pendingExport = null;
         clearPendingSave();

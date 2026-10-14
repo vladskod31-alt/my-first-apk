@@ -191,7 +191,7 @@ test('poll tally and vote merge are pure and bounded', () => {
   assert.equal(validatePacket({ v: 1, type: 'pollvote', pid: '01234567-89ab-cdef-0123-456789abcdef', opt: 9 }), null);
 });
 
-test('2.9.10.3 packets: poll message, ttl bounds, forward label, read marker', () => {
+test('P2P packets: poll message, ttl bounds, forward label, read marker', () => {
   const id = '01234567-89ab-cdef-0123-456789abcdef';
   const poll = validatePacket({ v: 1, type: 'message', id, text: '', at: 5, att: { kind: 'poll', q: 'Чай?', opts: ['Да', 'Нет'] } });
   assert.equal(poll.att.kind, 'poll');
@@ -209,7 +209,7 @@ test('2.9.10.3 packets: poll message, ttl bounds, forward label, read marker', (
 });
 
 
-test('2.9.10.3 validates secure chunked file metadata and bounded control packets', () => {
+test('chunked transfer validates secure chunked file metadata and bounded control packets', () => {
   const id = '01234567-89ab-cdef-0123-456789abcdef';
   const fileId = makeFileId();
   const size = FILE_CHUNK_SIZE * 2 + 7;
@@ -231,8 +231,9 @@ test('2.9.10.3 validates secure chunked file metadata and bounded control packet
   assert.equal(validatePacket({ v: 1, type: 'message', id, text: '', at: 44, att: { ...att, sha256: 'wrong' } }), null);
 });
 
-test('2.9.10.3 usernames, profiles, mentions and deep links stay bounded', () => {
-  assert.equal(VERSION, '2.9.10.3');
+test('2.11.4.5 keeps profiles, links and call capability bounded', () => {
+  assert.equal(VERSION, '2.11.4.5');
+  assert.ok(CAPABILITIES.includes('calls-v1'));
   assert.equal(normalizeUsername('@Vlad_31'), 'vlad_31');
   assert.equal(normalizeUsername('12bad'), '');
   const link = makeLiboLink('user', peerId);

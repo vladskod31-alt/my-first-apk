@@ -1,111 +1,82 @@
-# Відомі обмеження LIBO 2.9.10.3
+# Відомі обмеження LIBO 2.11.4.5
 
-Це список реальних меж current P2P/local-first архітектури. Відсутність функції не
-позначена як «тимчасово доступна» і не маскується UI-кнопкою.
+## 1. Це не server-backed messenger
 
-## 1. Лише 1:1 P2P, без server-side identity
+Чати — local-first 1:1 P2P. Немає account backend, persistent server queue, background
+message delivery, global user directory, server global search або push. `QUEUED` означає, що
+повідомлення локально очікує direct connection, а не прийняте сервером.
 
-- **Причина:** PeerJS у проєкті — signaling; немає database/auth/API server.
-- **Зараз:** особистий `libo-…` peer id, QR та direct WebRTC DataChannel. Profile/username
-  надсилаються лише відомому peer під час hello. Username колізія перевіряється тільки
-  серед контактів на одному пристрої.
-- **Немає:** реєстрації за номером/e-mail, глобального пошуку людей, глобальної
-  унікальності username, server-side contacts, presence або account recovery.
-- **Напрям:** окремий opt-in backend/federation із чіткою privacy model, не прихована
-  «магічна» заміна P2P.
+## 2. Calls мають реальний P2P scope
 
-## 2. Немає груп, каналів, topics або live stream
+Audio/video calls використовують actual WebRTC MediaConnection і `getUserMedia`, але only 1:1
+while both apps are open. Background incoming call, push/ringing service, call recording,
+multi-party, phone/SIP, deployed relay guarantee and automatic redial are absent. `Reconnecting`
+показується тільки коли RTCPeerConnection/ICE реально стає `disconnected`; terminal failure
+потребує manual retry.
 
-- **Причина:** це потребує membership, moderation, history/fan-out і media infrastructure.
-- **Зараз:** базовий poll та reactions працюють між двома peer’ами. `libo://channel/...`
-  розпізнається як формат, але чесно повідомляє, що потребує серверної редакції.
-- **Немає:** channel QR/join, roles, threaded topics, live audio/video, replay, viewer count
-  або anti-spam для спільнот.
+## 3. TURN/NAT
 
-## 3. Немає WebRTC дзвінків чи screen sharing
+STUN не гарантує з’єднання через strict NAT, VPN або частину mobile networks. Settings приймає
+explicit TURN URL/username/password, але проект не має власного production TURN, TTL credentials
+або relay SLA. Не обіцяйте relay fallback без розгорнутого TURN.
 
-- **Причина:** проєкт використовує DataConnection, не `getUserMedia`/media PeerConnection
-  lifecycle з ICE restart, permissions, device switching і call signalling.
-- **Зараз:** аудіо/відеофайли — це attachments із `<audio>`/`<video>` playback, не calls.
-- **Немає:** audio call, video call, screen share, ringtone, call accept/reject, call quality
-  metrics або reconnect UI. Відповідно немає call endpoint/e2e test.
+## 4. Android media device matrix
 
-## 4. Немає delivery, коли peer/app закритий
+APK compiled but not installed on physical Android/emulator here. `CAMERA`/`RECORD_AUDIO` are
+requested only on call start/accept; actual Android WebView permission prompt, microphone/camera,
+codec, Bluetooth and background behavior must be tested on API 26/29/33/35 devices.
 
-- **Причина:** немає mailbox server, FCM або foreground service.
-- **Зараз:** outgoing queue живе локально та повторює dispatch після повернення peer’а;
-  browser e2e підтверджує text queue після sender reload. Обидва пристрої мають бути
-  доступні для live delivery/file transfer.
-- **Немає:** background push, reliable offline server delivery чи multi-device sync.
+## 5. Calls are not an audited E2EE product
 
-## 5. Temporary messages не видаляються сервером
+WebRTC DTLS and the existing P-256/AES-GCM data-layer are not MLS, Key Transparency, ML-KEM,
+post-compromise security or an independent security audit. Local IndexedDB and backups are not
+encrypted at rest. Do not call the app MLS/E2EE-audited or device-bound secure storage.
 
-- **Причина:** server TTL відсутній.
-- **Зараз:** локальні timers у кожного peer’а; довгі TTL re-arm-яться щогодини, а restart
-  schedule відновлюється з local history.
-- **Ризик:** offline peer не отримує delete одразу; локальна clock manipulation може
-  змінити момент видалення. Це не legal/forensic deletion guarantee.
+## 6. Channels, groups, roles and moderation
 
-## 6. Streamed files мають перевірений protocol, але не production soak-tested
+No server-authoritative channel, group, membership, owner/admin/moderator role, permission,
+ban, slow mode, admin log, tag, analytics, scheduled channel post or Channel QR exists. A
+`libo://channel/...` link deliberately says a server edition is required.
 
-- **Зараз:** Blob/chunks у IndexedDB, 24 KiB sequential receipts, reconnect resume,
-  SHA-256/size ACK, cancel/resume, 100 MiB maximum for audio/music/video/document;
-  e2e тестує 1 MiB sender reconnect та unit тестує SHA failure.
-- **Не перевірено:** 100 MiB на low-end Android, WebView process kill у середині transfer,
-  мобільний NAT/TURN, quota exhaustion, battery/background constraints і multi-hour loss.
-- **Codec:** MIME допустимий не гарантує playback. Unsupported codec показує fallback download.
+## 7. Live
 
-## 7. Android native bridge compiled, але не device-tested
+No channel live stream, SFU, viewer count, large-audience relay, live chat, stream recording or
+LIVE state exists. The direct video call is not a live platform.
 
-- **Зараз:** APK компілюється з `ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT` bounded
-  save bridge, `libo://` intent filter та `AlarmManager` receiver; Android 13+ permission
-  request для notifications є в коді.
-- **Не перевірено:** реальний picker vendor ROM, URI permission behavior, exact alarm policy,
-  notification delivery/permission, background receiver, restore after reboot та codecs.
+## 8. Orbix/Premium/AI/Stories
 
-## 8. Нагадування локальні
+There is no real Orbix balance, charge/level/reward, Premium entitlement/payment, AI provider,
+voice/video transcription, translation, Stories or Creator/Discover service. They are not
+represented as disabled mock buttons.
 
-- **Browser:** працюють лише доки page/runtime може виконати timer; notification потребує
-  дозволу та доступного browser API.
-- **Android:** ставиться local AlarmManager, але device verification ще не проведено.
-- **Немає:** server scheduled reminder, sync between devices або гарантія delivery після
-  force-stop/Doze policy.
+## 9. Messaging feature gaps
 
-## 9. Локальна база не зашифрована at rest
+Spoiler, rich text formatting, scheduled/silent messages, temporary chats, threads/topics,
+quiz semantics, global search and an unread message bar remain unimplemented. Existing polls are
+1:1 P2P and their tally is not anonymous/anti-fraud/accounting capable.
 
-- **Зараз:** WebRTC DTLS захищає transport; optional MT-style P-256/AES-GCM envelope
-  має protocol tests; Android backup вимкнений (`allowBackup=false`).
-- **Немає:** незалежного crypto audit, verified E2EE claim, hardware-backed identity,
-  encryption of IndexedDB/attachments at rest, secure recovery або key rotation UX.
-- **Рекомендація:** не зберігайте секрети, для яких потрібна audited E2EE/at-rest model.
+## 10. File/media constraints
 
-## 10. Профіль/mention/search локальні, bookmarks без folders/tags
+Files up to 100 MiB are streamed as 24 KiB acknowledged chunks and verified with SHA-256, but
+this was tested in browser integration, not a real 100 MiB mobile transfer. Codec playback and
+thumbnail support depend on the WebView. Voice/video-to-text is absent.
 
-- **Зараз:** profile card, known-contact mentions, local search filters і «Збережене»
-  функціональні; history of edits локальна на кожній стороні.
-- **Немає:** global profile search, server uniqueness, shared contacts, bookmark folders/tags
-  або cross-device index. Filter results не можуть показати те, чого немає у local history.
+## 11. Notifications
 
-## 11. Polls обмежені P2P 1:1
+Only local reminders are implemented. New-message/mention/incoming-call/channel notifications,
+mention-only mode, notification server settings and background delivery are not implemented.
 
-- **Зараз:** до 8 options, vote та live tally між двома сторонами.
-- **Немає:** trustworthy anonymous accounting, multi-answer semantics, quiz correctness UX,
-  closing/retention policy, channel/group voting або server anti-fraud. Поля legacy packet
-  не слід трактувати як повноцінний server poll service.
+## 12. Performance/device matrix
 
-## 12. APK signing continuity
+The client uses bounded local messages/chats and lazy media hydration, but server pagination,
+virtualized list, server cache/priority, battery/network saver, Ultra Lite mode, low-end Android
+profiling and load testing are not complete.
 
-- **Зараз:** `downloads/LIBO-2.9.10.3-standalone.apk` має перевірений RSA-4096 v2/v3
-  signature та інший package ID `app.libo.messenger.standalone`, тому може стояти поруч із
-  legacy app без signature conflict.
-- **Ризик:** це окремий застосунок із окремим local storage, а не cryptographically trusted
-  in-place update legacy package. Private keystore і password ніколи не потрапляють у Git.
+## 13. Signing and package identity
 
-## 13. Gradle/lint та device matrix
+`LIBO-2.11.4.5-standalone.apk` is `app.libo.messenger.standalone`, signed v2/v3 with certificate
+`a1b522d513f569a6c081ec12e4aeaab9cf3dbcd394b70b6f26ee779cc2d91910`. It updates 2.9.10.3
+Standalone because package + signer match. It does not update the historic `app.libo.messenger`
+package; those apps intentionally have separate data.
 
-- **Зараз:** fallback AAPT2/ECJ/D8 build і APK verification пройшли.
-- **Локально:** Gradle wrapper не зміг завантажити Gradle distribution у sandbox
-  (`services.gradle.org` SSL EOF). **CI:** GitHub Actions PR #12 успішно виконав Gradle build
-  і lint; подробиці в `TESTING.md`.
-- **Потрібно перед production:** CI з pinned JDK/SDK, emulator API 26/29/33/35, фізичні
-  devices, WebView matrix, TURN/mobile network, accessibility та storage tests.
+For the complete request-to-code matrix, see `ROADMAP_2.11.4.5.md`.

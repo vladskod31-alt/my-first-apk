@@ -1,4 +1,4 @@
-# LIBO 2.9.10.3
+# LIBO 2.11.4.5
 
 ![Іконка LIBO](web/public/icon-512.png)
 
@@ -8,27 +8,29 @@
 локально у IndexedDB/WebView. У проєкті **немає** сервера історії, облікових записів,
 каталогу користувачів або фонової доставки.
 
-Поточна версія: **2.9.10.3 Standalone** · Android 8.0+ (API 26+) · пакет
-`app.libo.messenger.standalone` · `versionCode 2091003`. Це окремий Android package,
+Поточна версія: **2.11.4.5 Standalone** · Android 8.0+ (API 26+) · пакет
+`app.libo.messenger.standalone` · `versionCode 2110405`. Це окремий Android package,
 тому він встановлюється поруч із legacy `app.libo.messenger` без signature conflict.
 
-> Це тестова P2P-збірка. Не називайте її серверним месенджером, E2EE-аудованим продуктом,
-> каналами, live stream або дзвінками: цих функцій у цій редакції немає.
+> Це local-first P2P-збірка, а не серверний месенджер або E2EE-аудований продукт. У ній
+> є реальні 1:1 WebRTC audio/video calls, але **немає** каналів, груп, SFU live stream,
+> глобального каталогу, Orbix/Premium, AI або server-side ролей. Вони не показуються як
+> готові функції. Повна чесна матриця зі списком пунктів — у
+[ROADMAP_2.11.4.5.md](ROADMAP_2.11.4.5.md).
 
 ## APK
 
-Після публікації тега [`v2.9.10.3`](https://github.com/vladskod31-alt/my-first-apk/tree/v2.9.10.3)
-основний файл лежить у його каталозі `downloads/`:
+Поточний build у гілці review:
 
-- [LIBO-2.9.10.3-standalone.apk](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.9.10.3/downloads/LIBO-2.9.10.3-standalone.apk)
-- [SHA256SUMS.txt](https://github.com/vladskod31-alt/my-first-apk/raw/refs/tags/v2.9.10.3/downloads/SHA256SUMS.txt)
+- [LIBO-2.11.4.5-standalone.apk](https://github.com/vladskod31-alt/my-first-apk/raw/arena/3f1b3fb8-my-first-apk/downloads/LIBO-2.11.4.5-standalone.apk)
+- [SHA256SUMS.txt](https://github.com/vladskod31-alt/my-first-apk/raw/arena/3f1b3fb8-my-first-apk/downloads/SHA256SUMS.txt)
 
 Точний SHA-256, сертифікат збірки та порядок інсталяції описані в
 [RELEASE_NOTES.md](RELEASE_NOTES.md). Це **не in-place update** legacy пакета: Standalone
 має власні local history/IndexedDB і може стояти поруч зі старим LIBO. За потреби
 експортуйте стару текстову копію та імпортуйте її вручну в новий застосунок.
 
-## Що справді реалізовано в 2.9.10.3
+## Що справді реалізовано в 2.11.4.5
 
 ### Повідомлення та стан доставки
 
@@ -44,6 +46,21 @@
   (черга, доставка, ACK, read), але це клієнтські часові мітки, не серверна телеметрія.
 - Відповіді, реакції, закріплення, редагування, delete-for-both, пересилання, «Збережене»,
   локальна історія редагувань до 20 попередніх версій та локальні нагадування.
+
+### Реальні 1:1 WebRTC calls
+
+- Кнопки audio/video call з’являються **лише** коли обидва online контакти оголосили
+  `calls-v1`; виклик використовує PeerJS `MediaConnection` і фактичний `MediaStream`.
+- `Calling`, `Ringing`, `Connecting`, `Connected`, `Reconnecting`, `Failed` і `Ended`
+  виводяться зі стану реального MediaConnection/`RTCPeerConnection`. `Connected` з’являється
+  тільки після отримання remote stream, а не після натискання кнопки.
+- Є прийняття/відхилення, microphone mute, camera on/off, remote audio/video і панель
+  WebRTC diagnostics (connection/ICE state, RTT, jitter і packet loss, якщо браузер надає
+  ці stats). Android запитує `RECORD_AUDIO` та `CAMERA` тільки під час start/accept.
+- Це P2P 1:1. Виклик потребує одночасно відкритих LIBO, сумісного WebView та доступного
+  ICE route; користувацький TURN у Settings є необхідним на strict NAT. Немає background
+  incoming call, server relay guarantee, recording, SFU, channel/live stream або automatic
+  redial після terminal failure.
 
 ### Вкладення без monolithic Base64
 
