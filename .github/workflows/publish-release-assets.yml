@@ -16,6 +16,7 @@ on:
       - 'downloads/APK-INFO-2.12.0.txt'
       - 'downloads/SIGNING-2.12.0.txt'
       - 'art/screens/**'
+      - '.github/workflows/publish-release-assets.yml'
 
 permissions:
   contents: write
