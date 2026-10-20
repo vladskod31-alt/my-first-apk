@@ -1,0 +1,17 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): true
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=LIBO Release, O=LIBO Messenger
+Signer #1 certificate SHA-256 digest: b102233e1040405097bbb0564798521be0c043abfd616d1c5548c5fadd176371
+Signer #1 certificate SHA-1 digest: 4472d231cc0c588ef8e39737a8e599abe41def1d
+Signer #1 certificate MD5 digest: 0bdd76f28c99452e63ca7d6857665813
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 4096
+Signer #1 public key SHA-256 digest: e534a9ade7581ef6a3498ca3361187509adab6e9ad156ffa88447e8268ccf8f0
+Signer #1 public key SHA-1 digest: aaf9739d60ca68c8ce7a9e05d91a79c31bbc5e18
+Signer #1 public key MD5 digest: f90ad52ccd02a4d72a6dc4c3078ebd3b
