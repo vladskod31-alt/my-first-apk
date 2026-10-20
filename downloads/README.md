@@ -10,7 +10,7 @@ password, chat export, TURN credential, or private data here.
 - Package: `app.libo.messenger.standalone`
 - Label: `LIBO Standalone`
 - Android: API 26+ · versionCode `2120000` · versionName `2.12.0`
-- SHA-256: `4462e4162f664284cebf50e13ed2390424828559e7b486062f55c2101ce05685`
+- SHA-256: `b2453f38a6058957dcd49df521a8538de0ff81bf9d5530491cbc65e516ad7742`
 - APK Signature Schemes verified: v2 + v3 (no v1 JAR signing)
 - Signer: `CN=LIBO Release, O=LIBO Messenger`, RSA-4096
 - Signer certificate SHA-256:
@@ -22,8 +22,8 @@ Screenshots of the 2.12 interface live in `art/screens/`.
 Verify after downloading:
 
 ```sh
-curl -fL -O https://github.com/vladskod31-alt/my-first-apk/raw/arena/1cf121e0-my-first-apk/downloads/LIBO-2.12.0.apk
-curl -fL -O https://github.com/vladskod31-alt/my-first-apk/raw/arena/1cf121e0-my-first-apk/downloads/SHA256SUMS-2.12.0.txt
+curl -fL -O https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/LIBO-2.12.0.apk
+curl -fL -O https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/SHA256SUMS-2.12.0.txt
 sha256sum -c SHA256SUMS-2.12.0.txt
 apksigner verify --verbose --print-certs LIBO-2.12.0.apk
 ```

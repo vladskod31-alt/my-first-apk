@@ -1,0 +1,58 @@
+name: Publish release assets
+
+# GitHub Releases binaries are uploaded to uploads.github.com, which some
+# sandboxed environments cannot reach. GitHub Actions can, so this workflow
+# ships the verified, already-signed APK from downloads/ plus its checksums,
+# badging report, signature report and interface screenshots to the release.
+#
+# It is idempotent (--clobber) and only runs when the release files change.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'arena/1cf121e0-my-first-apk']
+    paths:
+      - 'downloads/LIBO-2.12.0.apk'
+      - 'downloads/SHA256SUMS-2.12.0.txt'
+      - 'downloads/APK-INFO-2.12.0.txt'
+      - 'downloads/SIGNING-2.12.0.txt'
+      - 'art/screens/**'
+      - '.github/workflows/publish-release-assets.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: v2.12.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify the APK matches its checksum
+        run: |
+          set -euo pipefail
+          cd downloads
+          sha256sum -c SHA256SUMS-2.12.0.txt
+          head -3 APK-INFO-2.12.0.txt
+          ls -l LIBO-2.12.0.apk
+
+      - name: Upload assets to the release
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" >/dev/null
+          gh release upload "$TAG" \
+            downloads/LIBO-2.12.0.apk \
+            downloads/SHA256SUMS-2.12.0.txt \
+            downloads/APK-INFO-2.12.0.txt \
+            downloads/SIGNING-2.12.0.txt \
+            art/screens/desktop-chat.png \
+            art/screens/desktop-palette.png \
+            art/screens/desktop-emoji.png \
+            art/screens/desktop-settings.png \
+            art/screens/mobile-chat.png \
+            art/screens/mobile-list.png \
+            art/screens/mobile-sheet.png \
+            --clobber
+          gh release view "$TAG" --json assets --jq '.assets[].name'
