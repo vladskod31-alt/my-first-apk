@@ -1,5 +1,8 @@
 name: Build LIBO APK
 
+# Publishes a debug APK for every push to main (and on demand).
+# The Gradle build needs the built web assets in dist/, which is not tracked,
+# so Node has to run `npm ci && npm run build` before assembleDebug.
 on:
   workflow_dispatch:
   push:
@@ -17,6 +20,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies and build web assets
+        run: npm ci && npm run build
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -28,6 +40,14 @@ jobs:
 
       - name: Build APK
         run: chmod +x ./gradlew && ./gradlew --no-daemon assembleDebug
+
+      - name: Check the APK
+        run: |
+          set -euo pipefail
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BUILD_TOOLS/aapt2" dump badging "$APK" | head -5
+          sha256sum "$APK"
 
       - name: Upload LIBO APK
         uses: actions/upload-artifact@v4
