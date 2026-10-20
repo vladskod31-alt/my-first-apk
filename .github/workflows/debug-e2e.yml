@@ -1,0 +1,43 @@
+name: Debug e2e
+on:
+  workflow_dispatch:
+  push:
+    branches: ['arena/1cf121e0-my-first-apk']
+    paths: ['debug/request.txt']
+
+permissions:
+  contents: write
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run e2e and capture everything
+        run: |
+          set -uo pipefail
+          node -e "const {chromium}=require('@playwright/test');console.log(chromium.executablePath())" > /tmp/cp
+          echo "browser: $(cat /tmp/cp)" > debug/e2e.log
+          node --version >> debug/e2e.log
+          cat /etc/os-release >> debug/e2e.log
+          CI=1 CHROMIUM_PATH="$(cat /tmp/cp)" npx playwright test --reporter=list >> debug/e2e.log 2>&1
+          echo "exit=$?" >> debug/e2e.log
+          tail -c 300000 debug/e2e.log > debug/e2e-tail.log
+          rm -f debug/e2e.log
+          mv debug/e2e-tail.log debug/e2e.log
+      - name: Publish log to the branch
+        if: always()
+        run: |
+          git config user.name "debug-bot"
+          git config user.email "debug@arena.ai"
+          mkdir -p debug
+          test -f debug/e2e.log || echo "no log" > debug/e2e.log
+          git add -f debug/e2e.log
+          git commit -m "debug: e2e log [skip ci]" || true
+          git push || true
