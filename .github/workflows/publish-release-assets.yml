@@ -9,7 +9,7 @@ name: Publish release assets
 on:
   workflow_dispatch:
   push:
-    branches: ['arena/1cf121e0-my-first-apk']
+    branches: [main, 'arena/1cf121e0-my-first-apk']
     paths:
       - 'downloads/LIBO-2.12.0.apk'
       - 'downloads/SHA256SUMS-2.12.0.txt'
