@@ -1,0 +1,42 @@
+browser: /home/runner/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome
+v22.23.3
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.5 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+
+Running 21 tests using 1 worker
+
+  ✓   1 tests/app.spec.mjs:32:1 › real welcome, no invented contacts, valid QR and version; no open-source claims in UI (1.9s)
+  ✓   2 tests/app.spec.mjs:54:1 › saved messages, literal HTML, drafts, search, theme and reload (1.4s)
+  ✓   3 tests/app.spec.mjs:83:1 › mobile navigation, input validation, profile and no horizontal overflow (2.2s)
+  ✓   4 tests/app.spec.mjs:106:1 › text export contains notes but never private contact identity (1.5s)
+  ✓   5 tests/app.spec.mjs:124:1 › two independent clients exchange text, delivery ACK, reply and real photo (14.5s)
+  ✓   6 tests/app.spec.mjs:211:1 › offline queue survives sender reload and is delivered exactly once after reconnect (5.0s)
+  ✓   7 tests/app.spec.mjs:241:1 › backup import becomes read-only archive and close contacts stay on top (1.7s)
+  ✓   8 tests/app.spec.mjs:265:1 › polls, forwarding, read receipts, MT layer and secret timer between two clients (16.7s)
+  ✓   9 tests/app.spec.mjs:315:1 › streamed composer keeps multiline text horizontal and prepares a music attachment without Base64 UI (1.5s)
+  ✓  10 tests/app.spec.mjs:347:1 › local profiles resolve a known mention and open a validated libo link (6.6s)
+  ✓  11 tests/app.spec.mjs:376:1 › 2.11.4.5 establishes an actual 1:1 WebRTC audio call after remote media arrives (6.3s)
+  ✓  12 tests/app.spec.mjs:410:1 › chunked file survives an actual sender reconnect and resumes to SHA-256 delivery (7.0s)
+  ✓  13 tests/ui-next.spec.mjs:29:1 › 1 — ⌘K palette finds chats, actions and messages (1.1s)
+  ✓  14 tests/ui-next.spec.mjs:58:1 › 2 — draft preview in the chat list and restored composer (1.0s)
+  ✓  15 tests/ui-next.spec.mjs:70:1 › 3 — emoji panel 2.0: categories, search, insert and recents (1.2s)
+  ✓  16 tests/ui-next.spec.mjs:90:1 › 4 — appearance: accents, density and text size persist (1.7s)
+  ✓  17 tests/ui-next.spec.mjs:109:1 › 5 — double tap reacts, long press opens the menu, swipe replies (2.0s)
+  ✓  18 tests/ui-next.spec.mjs:132:1 › 6 — long press on a chat opens the context sheet and applies state (1.6s)
+  ✓  19 tests/ui-next.spec.mjs:144:1 › 7 — scroll capsule returns to the newest message (4.7s)
+  ✓  20 tests/ui-next.spec.mjs:159:1 › 8 — right click opens the message menu on desktop (884ms)
+  ✓  21 tests/ui-next.spec.mjs:168:1 › 9 — composer tray exposes attachments on touch widths (866ms)
+
+  21 passed (1.4m)
+exit=0
