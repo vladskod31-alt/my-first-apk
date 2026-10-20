@@ -30,7 +30,7 @@ sha256sum -c SHA256SUMS-2.12.0.txt
 apksigner verify --verbose --print-certs LIBO-2.12.0.apk
 ```
 
-- SHA-256 APK: `cd21ced4e78bf8e499606ff9283341dc46c43bc89e507987018ee8f2483e05d9`
+- SHA-256 APK: `4462e4162f664284cebf50e13ed2390424828559e7b486062f55c2101ce05685`
 - Подпись: APK Signature Scheme **v2 + v3** (v1 JAR — нет), RSA-4096, `CN=LIBO Release, O=LIBO Messenger`
 - SHA-256 сертификата: `b102233e1040405097bbb0564798521be0c043abfd616d1c5548c5fadd176371`
 - `zipalign -c 4` — проверен
