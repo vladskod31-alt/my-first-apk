@@ -1,6 +1,6 @@
 export const VERSION = '2.12.0';
 // Standalone package avoids Android's signature conflict with legacy app.libo.messenger builds.
-export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.12.0/LIBO-2.12.0.apk';
+export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/raw/arena/1cf121e0-my-first-apk/downloads/LIBO-2.12.0.apk';
 
 // The limits below are the actual limits enforced by the browser client and packet
 // validator. Large attachments are held as Blobs in IndexedDB and travel in small,

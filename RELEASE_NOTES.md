@@ -19,12 +19,18 @@
 | `SIGNING.txt` | — | `apksigner verify --print-certs` |
 | `desktop-chat.png`, `mobile-chat.png` | — | скриншоты интерфейса 2.12 |
 
+**Скачать:** [LIBO-2.12.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/arena/1cf121e0-my-first-apk/downloads/LIBO-2.12.0.apk) · зеркало в репозитории `downloads/LIBO-2.12.0.apk`
+(бинарные ассеты GitHub Releases из этой среды недоступны: `uploads.github.com` блокируется,
+поэтому APK лежит ещё и в репозитории).
+
 ```sh
-sha256sum -c SHA256SUMS.txt
+curl -fL -O https://github.com/vladskod31-alt/my-first-apk/raw/arena/1cf121e0-my-first-apk/downloads/LIBO-2.12.0.apk
+curl -fL -O https://github.com/vladskod31-alt/my-first-apk/raw/arena/1cf121e0-my-first-apk/downloads/SHA256SUMS-2.12.0.txt
+sha256sum -c SHA256SUMS-2.12.0.txt
 apksigner verify --verbose --print-certs LIBO-2.12.0.apk
 ```
 
-- SHA-256 APK: `f6c53e3591065046f6485830827389882bb665aeb03cd2060267eefe18ae1168`
+- SHA-256 APK: `cd21ced4e78bf8e499606ff9283341dc46c43bc89e507987018ee8f2483e05d9`
 - Подпись: APK Signature Scheme **v2 + v3** (v1 JAR — нет), RSA-4096, `CN=LIBO Release, O=LIBO Messenger`
 - SHA-256 сертификата: `b102233e1040405097bbb0564798521be0c043abfd616d1c5548c5fadd176371`
 - `zipalign -c 4` — проверен
