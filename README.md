@@ -16,9 +16,9 @@
 
 ## APK
 
-- [LIBO-2.12.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/arena/1cf121e0-my-first-apk/downloads/LIBO-2.12.0.apk)
-  · 326 011 B · SHA-256 `4462e4162f664284cebf50e13ed2390424828559e7b486062f55c2101ce05685`
-- [SHA256SUMS-2.12.0.txt](https://github.com/vladskod31-alt/my-first-apk/raw/arena/1cf121e0-my-first-apk/downloads/SHA256SUMS-2.12.0.txt)
+- [LIBO-2.12.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/LIBO-2.12.0.apk)
+  · 326 011 B · SHA-256 `b2453f38a6058957dcd49df521a8538de0ff81bf9d5530491cbc65e516ad7742`
+- [SHA256SUMS-2.12.0.txt](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/SHA256SUMS-2.12.0.txt)
 - Подробиці підпису та інсталяції — у [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## Дев’ять нових функцій 2.12
