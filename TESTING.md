@@ -10,12 +10,12 @@
 | --- | --- |
 | `npm test` | **33/33 passed** |
 | `npm run build` | passed (Vite production bundle) |
-| `npm run test:e2e` | **12/12 passed** |
+| `npm run test:e2e` | **21/21 passed** |
 | fallback AAPT2/ECJ/D8 build | passed; 11 pre-existing Android deprecation warnings |
 | `zipalign -c 4` | passed |
 | `apksigner verify --verbose --print-certs` | v2 + v3 passed |
 | `aapt2 dump badging` | package/version/permissions below confirmed |
-| `sha256sum -c downloads/SHA256SUMS.txt` | all listed APK files passed |
+| `cd downloads && sha256sum -c SHA256SUMS.txt` | all listed APK files passed |
 
 ## Що покривають тести
 

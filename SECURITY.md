@@ -59,7 +59,7 @@ APK SHA-256: 1f123853534ec28c484772dc1daf3555114b6c50659577dad3035093e0c8a40b
 Verify:
 
 ```sh
-sha256sum -c downloads/SHA256SUMS.txt
+cd downloads && sha256sum -c SHA256SUMS.txt
 apksigner verify --verbose --print-certs downloads/LIBO-2.11.4.5-standalone.apk
 ```
 

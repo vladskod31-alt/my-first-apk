@@ -12,6 +12,7 @@ on:
     branches: [main, 'arena/1cf121e0-my-first-apk']
     paths:
       - 'downloads/LIBO-2.12.0.apk'
+      - 'downloads/SHA256SUMS.txt'
       - 'downloads/SHA256SUMS-2.12.0.txt'
       - 'downloads/APK-INFO-2.12.0.txt'
       - 'downloads/SIGNING-2.12.0.txt'
@@ -44,6 +45,7 @@ jobs:
           gh release view "$TAG" >/dev/null
           gh release upload "$TAG" \
             downloads/LIBO-2.12.0.apk \
+            downloads/SHA256SUMS.txt \
             downloads/SHA256SUMS-2.12.0.txt \
             downloads/APK-INFO-2.12.0.txt \
             downloads/SIGNING-2.12.0.txt \

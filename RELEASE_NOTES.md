@@ -14,10 +14,10 @@
 | Файл | Размер | Что это |
 | --- | ---: | --- |
 | `LIBO-2.12.0.apk` | 326,011 B (≈319 KiB) | подписанный release APK |
-| `SHA256SUMS.txt` | — | контрольная сумма APK |
-| `APK-INFO.txt` | — | `aapt2 dump badging` |
-| `SIGNING.txt` | — | `apksigner verify --print-certs` |
-| `desktop-chat.png`, `mobile-chat.png` | — | скриншоты интерфейса 2.12 |
+| `SHA256SUMS-2.12.0.txt` | — | SHA-256 этой сборки |
+| `APK-INFO-2.12.0.txt` | — | `aapt2 dump badging` |
+| `SIGNING-2.12.0.txt` | — | `apksigner verify --print-certs` |
+| `art/screens/*.png` (7 файлов) | — | скриншоты интерфейса 2.12 (десктоп + мобильный) |
 
 **Скачать:** [LIBO-2.12.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/LIBO-2.12.0.apk) · зеркало в репозитории `downloads/LIBO-2.12.0.apk`
 (бинарные ассеты GitHub Releases из этой среды недоступны: `uploads.github.com` блокируется,
