@@ -314,7 +314,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .chat-header p.is-online { color: var(--green); }
 
 /* ----------------------------------------------------------------- bubbles - */
-.messages { scroll-behavior: smooth; }
 .message-row { animation: msg-in .2s var(--ease-out) both; }
 @keyframes msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .message-bubble {

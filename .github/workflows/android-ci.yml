@@ -24,10 +24,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Модульные тесты (19)
+      - name: Модульные тесты (33)
         run: npm test
-      - name: Браузерные сценарии (6)
-        run: npm run test:e2e
+      # Ubuntu-latest now rolls onto a new image; the bundled serverless Chromium
+      # is a fallback, so CI also installs Playwright's own browser and points
+      # CHROMIUM_PATH at it. This keeps the browser independent of the runner image.
+      - name: Chromium для браузерных сценариев
+        run: npx playwright install --with-deps chromium
+      - name: Браузерные сценарии (21)
+        env:
+          CHROMIUM_PATH: ${{ runner.temp }}/chromium-path
+        run: |
+          set -euo pipefail
+          node -e "const {chromium}=require('@playwright/test');console.log(chromium.executablePath())" > "$CHROMIUM_PATH"
+          echo "Using $(cat "$CHROMIUM_PATH")"
+          test -x "$(cat "$CHROMIUM_PATH")"
+          npm run test:e2e
       - name: Production-бандл веб-части
         run: npm run build
       - uses: actions/upload-artifact@v4

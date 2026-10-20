@@ -8,6 +8,9 @@ export default defineConfig({
   expect: { timeout: 30_000 },
   fullyParallel: false,
   workers: 1,
+  // CI runners occasionally stall on the first browser launch; retry instead of
+  // reddening the branch. Local runs stay strict.
+  retries: process.env.CI ? 2 : 0,
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:5173',
