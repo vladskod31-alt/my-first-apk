@@ -32,13 +32,13 @@ jobs:
       - name: Chromium для браузерных сценариев
         run: npx playwright install --with-deps chromium
       - name: Браузерные сценарии (21)
-        env:
-          CHROMIUM_PATH: ${{ runner.temp }}/chromium-path
         run: |
           set -uo pipefail
-          node -e "const {chromium}=require('@playwright/test');console.log(chromium.executablePath())" > "$CHROMIUM_PATH"
-          echo "Using $(cat "$CHROMIUM_PATH")"
-          test -x "$(cat "$CHROMIUM_PATH")"
+          # CHROMIUM_PATH must be the browser binary itself, not a file that holds it.
+          CHROMIUM_PATH=$(node -e "const {chromium}=require('@playwright/test');console.log(chromium.executablePath())")
+          export CHROMIUM_PATH
+          echo "Using $CHROMIUM_PATH"
+          test -x "$CHROMIUM_PATH"
           npm run test:e2e > e2e.log 2>&1
           status=$?
           tail -80 e2e.log
