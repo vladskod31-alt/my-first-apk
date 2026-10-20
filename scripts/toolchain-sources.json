@@ -1,0 +1,46 @@
+{
+  "description": "External Linux x64 fallback toolchain. Binary inputs are mirrored by MIT App Inventor / Apktool; revisions and SHA-256 are pinned. No tool binaries or private signing key are tracked in this repository.",
+  "runtime": {
+    "package": "@node-plantuml-2/jre-linux-x64@1.1.8",
+    "javaVersion": "Temurin OpenJDK JRE 17.0.17+10",
+    "url": "https://registry.npmjs.org/@node-plantuml-2/jre-linux-x64/-/jre-linux-x64-1.1.8.tgz",
+    "integrity": "sha512-QVR+yjgb4Wr0iPviSSapIvS8kuSF5G9Dyd5hp2Y+sJ4gC2eJHMOGykh95vJQumaDMTeZmMah1wiwCv9lAB9NZw=="
+  },
+  "files": [
+    {
+      "name": "android.jar",
+      "githubApi": "repos/mit-cml/appinventor-sources/contents/appinventor/lib/android/android-35/android.jar?ref=a65d584fc34fc72b411e9ff0214423255974b206",
+      "sha256": "4566663c3876e022b4fa4ced8c8697c4ab1688267f090114fd92d027b32e619b"
+    },
+    {
+      "name": "d8.jar",
+      "githubApi": "repos/mit-cml/appinventor-sources/contents/appinventor/lib/android/tools/d8.jar?ref=a65d584fc34fc72b411e9ff0214423255974b206",
+      "sha256": "305622ad00535684534eb8f742cbf5e628a9abc09d8ea4d39d1babb95bf0cee5"
+    },
+    {
+      "name": "apksigner.jar",
+      "githubApi": "repos/mit-cml/appinventor-sources/contents/appinventor/lib/android/tools/apksigner.jar?ref=a65d584fc34fc72b411e9ff0214423255974b206",
+      "sha256": "00ef9948f843fe395d2440ae3ef41405b8040a6d5d46493bd1902ac0ee6deae7"
+    },
+    {
+      "name": "ecj.jar",
+      "githubApi": "repos/mit-cml/appinventor-sources/contents/appinventor/lib/ecj/ecj-4.5.1.jar?ref=a65d584fc34fc72b411e9ff0214423255974b206",
+      "sha256": "19f313fb13191477e7c7e0f1142f096fef19b721979efc7f18cea81d259e7294"
+    },
+    {
+      "name": "zipalign",
+      "githubApi": "repos/mit-cml/appinventor-sources/contents/appinventor/lib/android/tools/linux/zipalign?ref=a65d584fc34fc72b411e9ff0214423255974b206",
+      "sha256": "a205d94a45c8522ca1b571dcbe190df145c818f0a29dfb366e4dd78eef4f56a7"
+    },
+    {
+      "name": "lib64/libc++.so",
+      "githubApi": "repos/mit-cml/appinventor-sources/contents/appinventor/lib/android/tools/linux/lib64/libc%2B%2B.so?ref=a65d584fc34fc72b411e9ff0214423255974b206",
+      "sha256": "71c9f5d2e9d6e3e1875340c20a2f6b750c2c7f54f730f5fb7f1fd1d0877c8d6f"
+    },
+    {
+      "name": "aapt2",
+      "githubApi": "repos/iBotPeaches/Apktool/contents/brut.apktool/apktool-lib/src/main/resources/prebuilt/linux/aapt2?ref=baa603f353a51b932f136584358acf025c748895",
+      "sha256": "6fbed5edaddcfbee99a3ae6e7208c8654c6cb2bedb4ed5cbbf4e154d7d38a745"
+    }
+  ]
+}
