@@ -3,7 +3,9 @@ import { test, expect } from '@playwright/test';
 async function ready(page) {
   await page.goto('/');
   await expect(page.locator('#chat-list .chat-row')).toHaveCount(1);
-  await expect(page.locator('#network-status')).toContainText('Вы в сети');
+  await expect(page.locator('#network-status')).toContainText('Сигнал доступен');
+  await expect(page.locator('#storage-status')).toContainText('История локально');
+  await expect(page.locator('#boot-loader')).toBeHidden();
 }
 
 async function openSaved(page) {
@@ -25,6 +27,17 @@ async function touchSwipe(page, row, dx) {
   await row.dispatchEvent('pointermove', { pointerId: 91, pointerType: 'touch', clientX: box.x + 60 + dx, clientY: y + 2, button: 0, isPrimary: true });
   await row.dispatchEvent('pointerup', { pointerId: 91, pointerType: 'touch', clientX: box.x + 60 + dx, clientY: y + 2, button: 0, isPrimary: true });
 }
+
+test('mobile navigation shows clear labels and selected section', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ready(page);
+  await expect(page.locator('#nav-chats .rail-label')).toBeVisible();
+  await expect(page.locator('#nav-saved .rail-label')).toBeVisible();
+  await expect(page.locator('.rail-bottom [data-dialog="settings-dialog"] .rail-label')).toBeVisible();
+  await page.locator('#nav-saved').click();
+  await expect(page.locator('#nav-saved')).toHaveClass(/active/);
+  await expect(page.locator('#messages')).toBeVisible();
+});
 
 test('1 — ⌘K palette finds chats, actions and messages', async ({ page }) => {
   const errors = [];

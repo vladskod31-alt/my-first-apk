@@ -231,8 +231,8 @@ test('chunked transfer validates secure chunked file metadata and bounded contro
   assert.equal(validatePacket({ v: 1, type: 'message', id, text: '', at: 44, att: { ...att, sha256: 'wrong' } }), null);
 });
 
-test('2.12.0 keeps profiles, links and call capability bounded', () => {
-  assert.equal(VERSION, '2.12.0');
+test('2.11.9.5 keeps profiles, links and call capability bounded', () => {
+  assert.equal(VERSION, '2.11.9.5');
   assert.ok(CAPABILITIES.includes('calls-v1'));
   assert.equal(normalizeUsername('@Vlad_31'), 'vlad_31');
   assert.equal(normalizeUsername('12bad'), '');

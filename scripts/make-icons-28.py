@@ -1,33 +1,20 @@
 #!/usr/bin/env python3
-"""Render the LIBO 2.8.0 icon set (square 1:1, flat 2D, richer composition; unchanged in 2.8.1).
+"""Render the LIBO 2.11.9.5 purple/pink orb icon set.
 
-Improvements over the 2.6.0 flat mark, all still strict flat 2D (no gradients,
-no blur, no gloss):
-  * duotone field: a diagonal flat wedge of lighter violet over the deep base;
-  * three concentric flat rings plus two thin accent rings for depth;
-  * the chevron gets a flat offset shadow in dark green (long-shadow style);
-  * the wordmark is optically centred and slightly larger, with even gaps;
-  * every artifact is regenerated: legacy densities, round, adaptive layers,
-    monochrome layer, web favicon and 1:1 promo squares.
+The same chat-orb mark is exported as legacy Android icons, adaptive icon
+layers, the Android monochrome glyph, web PNGs, and an SVG favicon.
 
-    python3 scripts/make-icons-28.py
+Requires Pillow: python3 -m pip install Pillow
+Run: python3 scripts/make-icons-28.py
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
-
-BASE = (0x6D, 0x28, 0xD9, 255)    # deep violet field
-WEDGE = (0x8B, 0x5C, 0xF6, 255)   # lighter diagonal wedge
-BAND = (0x5B, 0x21, 0xB6, 255)    # dark flat rings
-ACCENT = (0xC4, 0xB5, 0xFD, 255)  # thin light accent rings
-GREEN = (0x84, 0xCC, 0x16, 255)   # chevron
-GREEN_DK = (0x4D, 0x7C, 0x0F, 255)  # flat chevron shadow
-WHITE = (0xFF, 0xFF, 0xFF, 255)
-
+MASTER = 1024
 LEGACY_DENSITIES = {
     "mipmap-mdpi": 48,
     "mipmap-hdpi": 72,
@@ -36,110 +23,124 @@ LEGACY_DENSITIES = {
     "mipmap-xxxhdpi": 192,
 }
 ADAPTIVE_PX = 432
-ANGLE = 33.0
 
 
-def flat_background(size: int) -> Image.Image:
-    ss = 2
-    big = size * ss
-    img = Image.new("RGBA", (big, big), BASE)
-    draw = ImageDraw.Draw(img)
-    # diagonal flat wedge from the top-right corner
-    draw.polygon([(big, 0), (big, big * 0.62), (big * 0.30, 0)], fill=WEDGE)
-    cx, cy = -0.42 * big, 1.42 * big
+def background(size: int) -> Image.Image:
+    """Diagonal plum-to-magenta background with quiet orbit details."""
+    horizontal = Image.new("L", (size, size), 0)
+    vertical = Image.new("L", (size, size), 0)
+    hd = ImageDraw.Draw(horizontal)
+    vd = ImageDraw.Draw(vertical)
+    for x in range(size):
+        hd.line((x, 0, x, size), fill=round(255 * x / max(1, size - 1)))
+    for y in range(size):
+        vd.line((0, y, size, y), fill=round(255 * y / max(1, size - 1)))
+    diagonal = Image.blend(horizontal, vertical, 0.47)
+    image = ImageOps.colorize(diagonal, black="#210b3b", white="#a8328a").convert("RGBA")
 
-    def disc(radius: float, colour) -> None:
-        draw.ellipse([cx - radius * big, cy - radius * big, cx + radius * big, cy + radius * big], fill=colour)
+    scale = size / 512
+    glow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse((282 * scale, -55 * scale, 565 * scale, 228 * scale), fill=(249, 72, 169, 82))
+    gd.ellipse((-80 * scale, 307 * scale, 224 * scale, 610 * scale), fill=(116, 72, 241, 68))
+    glow = glow.filter(ImageFilter.GaussianBlur(56 * scale))
+    image = Image.alpha_composite(image, glow)
 
-    disc(1.66, BAND)
-    disc(1.36, BASE)
-    disc(0.94, BAND)
-    disc(0.62, BASE)
-
-    def ring(radius: float, width: float, colour) -> None:
-        layer = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-        rd = ImageDraw.Draw(layer)
-        rd.ellipse([cx - radius * big, cy - radius * big, cx + radius * big, cy + radius * big], fill=colour)
-        rd.ellipse([cx - (radius - width) * big, cy - (radius - width) * big,
-                    cx + (radius - width) * big, cy + (radius - width) * big], fill=(0, 0, 0, 0))
-        img.alpha_composite(layer)
-
-    ring(1.70, 0.022, WHITE)
-    ring(1.02, 0.016, ACCENT)
-    ring(0.58, 0.014, ACCENT)
-    return img.resize((size, size), Image.NEAREST)
+    d = ImageDraw.Draw(image, "RGBA")
+    d.ellipse((48 * scale, 48 * scale, 464 * scale, 464 * scale), outline=(255, 231, 255, 30), width=max(1, round(2 * scale)))
+    d.arc((18 * scale, 18 * scale, 494 * scale, 494 * scale), 204, 300, fill=(255, 180, 228, 78), width=max(1, round(3 * scale)))
+    d.arc((42 * scale, 42 * scale, 470 * scale, 470 * scale), 22, 116, fill=(205, 165, 255, 70), width=max(1, round(3 * scale)))
+    return image
 
 
-def wordmark(length: int) -> Image.Image:
-    h = int(length * 0.42)
-    img = Image.new("RGBA", (length, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    u = length / 1000.0
-    cy = h / 2
+def make_mark(size: int = MASTER) -> Image.Image:
+    """Draw a luminous two-orb chat bubble on a transparent canvas."""
+    s = size / 512
+    p = lambda x, y: (round(x * s), round(y * s))
+    box = lambda x0, y0, x1, y1: tuple(round(v * s) for v in (x0, y0, x1, y1))
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
 
-    def capsule(x0, y0, x1, y1, width, colour):
-        draw.line([(x0, y0), (x1, y1)], fill=colour, width=int(width))
-        r = width / 2
-        for x, y in ((x0, y0), (x1, y1)):
-            draw.ellipse([x - r, y - r, x + r, y + r], fill=colour)
+    body_box = box(77, 82, 435, 366)
+    tail = [p(178, 342), p(150, 424), p(253, 365)]
 
-    def chevron(offset, colour):
-        stroke = 80 * u
-        ax, ay = 20 * u + offset, cy + offset
-        tx, ty = 205 * u + offset, cy - 150 * u + offset
-        bx, by = 205 * u + offset, cy + 150 * u + offset
-        draw.line([(ax, ay), (tx, ty)], fill=colour, width=int(stroke))
-        draw.line([(ax, ay), (bx, by)], fill=colour, width=int(stroke))
-        for x, y in ((ax, ay), (tx, ty), (bx, by)):
-            draw.ellipse([x - stroke / 2, y - stroke / 2, x + stroke / 2, y + stroke / 2], fill=colour)
+    shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    offset = round(7 * s)
+    sd.rounded_rectangle((body_box[0], body_box[1] + offset, body_box[2], body_box[3] + offset), radius=78 * s, fill=(15, 5, 32, 122))
+    sd.polygon([(x, y + offset) for x, y in tail], fill=(15, 5, 32, 122))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(17 * s))
+    canvas = Image.alpha_composite(canvas, shadow)
 
-    chevron(26 * u, GREEN_DK)   # flat long-shadow pass
-    chevron(0, GREEN)
-    # 'i'
-    ix = 305 * u
-    capsule(ix, cy + 40 * u, ix + 128 * u, cy + 40 * u, 76 * u, WHITE)
-    draw.ellipse([ix + 94 * u, cy - 120 * u, ix + 172 * u, cy - 42 * u], fill=WHITE)
-    # 'B'
-    bx0, by0 = 486 * u, cy - 165 * u
-    bw, bh = 258 * u, 330 * u
-    draw.rounded_rectangle([bx0, by0, bx0 + bw, by0 + bh], radius=88 * u, fill=WHITE)
-    hole_w, hole_h = 98 * u, 92 * u
-    hx = bx0 + (bw - hole_w) / 2
-    draw.rounded_rectangle([hx, by0 + 52 * u, hx + hole_w, by0 + 52 * u + hole_h], radius=40 * u, fill=(0, 0, 0, 0))
-    draw.rounded_rectangle([hx, by0 + bh - 52 * u - hole_h, hx + hole_w, by0 + bh - 52 * u], radius=40 * u, fill=(0, 0, 0, 0))
-    # 'O'
-    ox0, oy0 = 794 * u, cy - 150 * u
-    ow = 206 * u
-    draw.rounded_rectangle([ox0, oy0, ox0 + ow, oy0 + ow + 60 * u], radius=92 * u, fill=WHITE)
-    draw.rounded_rectangle([ox0 + 58 * u, oy0 + 68 * u, ox0 + ow - 58 * u, oy0 + ow - 8 * u], radius=52 * u, fill=(0, 0, 0, 0))
-    return img
+    mask = Image.new("L", (size, size), 0)
+    md = ImageDraw.Draw(mask)
+    md.rounded_rectangle(body_box, radius=78 * s, fill=255)
+    md.polygon(tail, fill=255)
+    light = Image.linear_gradient("L").resize((size, size))
+    bubble = ImageOps.colorize(light, black="#fffaff", white="#e7d8ff").convert("RGBA")
+    bubble.putalpha(mask)
+    canvas = Image.alpha_composite(canvas, bubble)
+
+    d = ImageDraw.Draw(canvas, "RGBA")
+    d.rounded_rectangle(body_box, radius=78 * s, outline=(255, 255, 255, 210), width=max(1, round(3 * s)))
+    d.line([p(179, 342), p(151, 421), p(252, 365)], fill=(255, 255, 255, 205), width=max(1, round(3 * s)), joint="curve")
+
+    def orb(cx: float, cy: float, radius: float, light_rgb, edge_rgb) -> None:
+        cxp, cyp, rp = round(cx * s), round(cy * s), radius * s
+        od = ImageDraw.Draw(canvas, "RGBA")
+        # Concentric color steps produce a clean radial-gradient sphere at every density.
+        for step in range(72, 0, -1):
+            fraction = step / 72
+            r = rp * fraction
+            edge_weight = fraction ** 0.78
+            colour = tuple(round(light_rgb[i] * (1 - edge_weight) + edge_rgb[i] * edge_weight) for i in range(3)) + (255,)
+            od.ellipse((round(cxp - r), round(cyp - r), round(cxp + r), round(cyp + r)), fill=colour)
+        highlight = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        hd = ImageDraw.Draw(highlight)
+        hd.ellipse((cxp - rp * .62, cyp - rp * .73, cxp - rp * .04, cyp - rp * .22), fill=(255, 255, 255, 145))
+        hd.ellipse((cxp - rp * .43, cyp - rp * .62, cxp - rp * .23, cyp - rp * .43), fill=(255, 255, 255, 115))
+        highlight = highlight.filter(ImageFilter.GaussianBlur(3 * s))
+        canvas.alpha_composite(highlight)
+
+    orb(207, 231, 68, (228, 191, 255), (102, 44, 192))
+    orb(307, 231, 68, (255, 203, 231), (219, 49, 143))
+
+    # Small highlights make the mark read clearly at launcher-icon sizes.
+    d = ImageDraw.Draw(canvas, "RGBA")
+    d.polygon([p(374, 112), p(380, 128), p(396, 134), p(380, 140), p(374, 156), p(368, 140), p(352, 134), p(368, 128)], fill=(255, 255, 255, 235))
+    d.ellipse((*p(117, 151), *p(126, 160)), fill=(245, 213, 255, 230))
+    d.ellipse((*p(391, 304), *p(397, 310)), fill=(255, 206, 236, 220))
+    return canvas
 
 
-def compose(size: int, fit: float = 0.84) -> Image.Image:
-    bg = flat_background(size)
-    mark = wordmark(int(size * 0.98)).rotate(-ANGLE, resample=Image.BICUBIC, expand=True)
-    target = size * fit
+def fit_mark(size: int, fit: float) -> Image.Image:
+    mark = make_mark(MASTER)
+    bounds = mark.getbbox()
+    if bounds:
+        mark = mark.crop(bounds)
+    target = round(size * fit)
     scale = min(target / mark.width, target / mark.height)
-    mw, mh = int(mark.width * scale), int(mark.height * scale)
-    mark = mark.resize((mw, mh), Image.LANCZOS)
-    bg.alpha_composite(mark, ((size - mw) // 2 + int(size * 0.015), (size - mh) // 2 - int(size * 0.02)))
-    return bg
+    width, height = max(1, round(mark.width * scale)), max(1, round(mark.height * scale))
+    return mark.resize((width, height), Image.Resampling.LANCZOS)
+
+
+def compose(size: int, fit: float = 0.82) -> Image.Image:
+    image = background(MASTER).resize((size, size), Image.Resampling.LANCZOS)
+    mark = fit_mark(size, fit)
+    image.alpha_composite(mark, ((size - mark.width) // 2, (size - mark.height) // 2))
+    return image
 
 
 def foreground_layer(size: int) -> Image.Image:
+    """Keep the foreground inside the adaptive icon's launcher-safe area."""
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    mark = wordmark(int(size * 0.80)).rotate(-ANGLE, resample=Image.BICUBIC, expand=True)
-    safe = size * 66 / 108
-    scale = min(safe / mark.width, safe / mark.height) * 1.35
-    mw, mh = int(mark.width * scale), int(mark.height * scale)
-    mark = mark.resize((mw, mh), Image.LANCZOS)
-    canvas.alpha_composite(mark, ((size - mw) // 2, (size - mh) // 2))
+    mark = fit_mark(size, 0.43)
+    canvas.alpha_composite(mark, ((size - mark.width) // 2, (size - mark.height) // 2))
     return canvas
 
 
 def round_variant(image: Image.Image) -> Image.Image:
     mask = Image.new("L", image.size, 0)
-    ImageDraw.Draw(mask).ellipse([0, 0, image.size[0], image.size[1]], fill=255)
+    ImageDraw.Draw(mask).ellipse((0, 0, image.width - 1, image.height - 1), fill=255)
     out = Image.new("RGBA", image.size, (0, 0, 0, 0))
     out.paste(image, (0, 0), mask)
     return out
@@ -151,49 +152,71 @@ def write(image: Image.Image, path: Path) -> None:
     print(f"wrote {path.relative_to(ROOT)} ({image.width}x{image.height})")
 
 
-def main() -> None:
-    res = ROOT / "app/src/main/res"
-    for folder, size in LEGACY_DENSITIES.items():
-        icon = compose(size)
-        write(icon, res / folder / "ic_launcher.png")
-        write(round_variant(icon), res / folder / "ic_launcher_round.png")
-    write(flat_background(ADAPTIVE_PX), res / "mipmap-anydpi-v26" / "ic_launcher_background.png")
-    write(foreground_layer(ADAPTIVE_PX), res / "mipmap-anydpi-v26" / "ic_launcher_foreground.png")
-    write(compose(1024), ROOT / "art/libo-2d-1024.png")
-    write(compose(512), ROOT / "web/public/icon-512.png")
-    write(compose(192), ROOT / "web/public/icon-192.png")
-
+def write_adaptive_xml(res: Path) -> None:
     adaptive = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
         '    <background android:drawable="@mipmap/ic_launcher_background" />\n'
         '    <foreground android:drawable="@mipmap/ic_launcher_foreground" />\n'
         '    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />\n'
-        "</adaptive-icon>\n"
+        '</adaptive-icon>\n'
     )
+    target = res / "mipmap-anydpi-v26"
+    target.mkdir(parents=True, exist_ok=True)
     for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
-        (res / "mipmap-anydpi-v26" / name).write_text(adaptive, encoding="utf-8", newline="\n")
+        (target / name).write_text(adaptive, encoding="utf-8", newline="\n")
 
-    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="LIBO">
-  <rect width="96" height="96" fill="#6d28d9"/>
-  <path d="M96 0v60L29 0Z" fill="#8b5cf6"/>
-  <path fill="#5b21b6" fill-rule="evenodd" d="M-40 136a179 179 0 1 0 0-358 179 179 0 0 0 0 358Zm0-32a147 147 0 1 1 0-294 147 147 0 0 1 0 294Z"/>
-  <path fill="#5b21b6" fill-rule="evenodd" d="M-40 136a101 101 0 1 0 0-202 101 101 0 0 0 0 202Zm0-34a67 67 0 1 1 0-134 67 67 0 0 1 0 134Z"/>
-  <circle cx="-40" cy="136" r="163" fill="none" stroke="#fff" stroke-width="2.4"/>
-  <circle cx="-40" cy="136" r="109" fill="none" stroke="#c4b5fd" stroke-width="1.6"/>
-  <circle cx="-40" cy="136" r="62" fill="none" stroke="#c4b5fd" stroke-width="1.4"/>
-  <g transform="rotate(33 48 44)">
-    <path d="M25 47 L43 34 M25 47 L43 60" stroke="#4d7c0f" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <path d="M22 44 L40 31 M22 44 L40 57" stroke="#84cc16" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <path d="M48 49 h10" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
-    <circle cx="60" cy="36" r="5.4" fill="#fff"/>
-    <path fill="#fff" fill-rule="evenodd" d="M66 30 h12 a7 7 0 0 1 7 7 v14 a7 7 0 0 1 -7 7 h-12 a7 7 0 0 1 -7 -7 v-14 a7 7 0 0 1 7 -7 Z M69 36 h7 v6 h-7 Z M69 46 h7 v6 h-7 Z"/>
-    <path fill="#fff" fill-rule="evenodd" d="M90 30 h6 a8 8 0 0 1 8 8 v12 a8 8 0 0 1 -8 8 h-6 a8 8 0 0 1 -8 -8 v-12 a8 8 0 0 1 8 -8 Z M90 38 h6 v8 h-6 Z"/>
-  </g>
+
+def write_monochrome_xml(path: Path) -> None:
+    xml = '''<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M31,26 H77 A12,12 0 0 1 89,38 V62 A12,12 0 0 1 77,74 H53 L38,88 L42,74 H31 A12,12 0 0 1 19,62 V38 A12,12 0 0 1 31,26 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M42,44 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M65,44 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0" />
+</vector>
+'''
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(xml, encoding="utf-8", newline="\n")
+
+
+def write_svg(path: Path) -> None:
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="LIBO">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#210b3b"/><stop offset=".55" stop-color="#6530a9"/><stop offset="1" stop-color="#b33584"/></linearGradient>
+    <linearGradient id="bubble" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffaff"/><stop offset="1" stop-color="#e7d8ff"/></linearGradient>
+    <radialGradient id="violet" cx="30%" cy="25%"><stop stop-color="#e4bfff"/><stop offset="1" stop-color="#662cc0"/></radialGradient>
+    <radialGradient id="pink" cx="30%" cy="25%"><stop stop-color="#ffcbe7"/><stop offset="1" stop-color="#db318f"/></radialGradient>
+  </defs>
+  <rect width="96" height="96" rx="21" fill="url(#bg)"/>
+  <circle cx="48" cy="48" r="39" fill="none" stroke="#fce7ff" stroke-opacity=".18" stroke-width=".8"/>
+  <path d="M23 19h50a11 11 0 0 1 11 11v28a11 11 0 0 1-11 11H49L34 80l4-11h-15a11 11 0 0 1-11-11V30a11 11 0 0 1 11-11Z" fill="url(#bubble)" stroke="#fff" stroke-opacity=".7" stroke-width="1.2"/>
+  <circle cx="39" cy="45" r="12" fill="url(#violet)"/>
+  <circle cx="57" cy="45" r="12" fill="url(#pink)"/>
+  <ellipse cx="35" cy="41" rx="4.5" ry="3.2" fill="#fff" fill-opacity=".55"/>
+  <ellipse cx="53" cy="41" rx="4.5" ry="3.2" fill="#fff" fill-opacity=".58"/>
+  <path d="m75 13 2.3 5.8 5.7 2.2-5.7 2.3-2.3 5.7-2.2-5.7-5.8-2.3 5.8-2.2L75 13Z" fill="#fff"/>
 </svg>
-"""
-    (ROOT / "web/public/icon.svg").write_text(svg, encoding="utf-8", newline="\n")
-    print("wrote web/public/icon.svg (2.8.0 flat duotone, kept for 2.8.1)")
+'''
+    path.write_text(svg, encoding="utf-8", newline="\n")
+
+
+def main() -> None:
+    res = ROOT / "app/src/main/res"
+    for folder, size in LEGACY_DENSITIES.items():
+        icon = compose(size)
+        write(icon, res / folder / "ic_launcher.png")
+        write(round_variant(icon), res / folder / "ic_launcher_round.png")
+    write(background(ADAPTIVE_PX), res / "mipmap-anydpi-v26" / "ic_launcher_background.png")
+    write(foreground_layer(ADAPTIVE_PX), res / "mipmap-anydpi-v26" / "ic_launcher_foreground.png")
+    write(compose(1024), ROOT / "art/libo-2d-1024.png")
+    write(compose(512), ROOT / "web/public/icon-512.png")
+    write(compose(192), ROOT / "web/public/icon-192.png")
+    write_adaptive_xml(res)
+    write_monochrome_xml(res / "drawable/ic_launcher_monochrome.xml")
+    write_svg(ROOT / "web/public/icon.svg")
+    print("wrote the LIBO 2.11.9.5 purple/pink orb icon family")
 
 
 if __name__ == "__main__":
