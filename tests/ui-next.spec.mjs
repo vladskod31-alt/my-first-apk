@@ -190,3 +190,76 @@ test('9 — composer tray exposes attachments on touch widths', async ({ page })
   await page.locator('#sheet-close').click();
   await expect(page.locator('#action-sheet')).toBeHidden();
 });
+
+test('10 — mobile left-column vertical navigation (А/Б/В/Г/Д), 4-layer 3D loader and zero overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  await ready(page);
+  await expect(page.locator('#boot-loader .orb-layer')).toHaveCount(4);
+
+  const railBox = await page.locator('.rail').boundingBox();
+  expect(railBox.x).toBe(0);
+  expect(railBox.width).toBeLessThanOrEqual(60);
+
+  const yChats = (await page.locator('#nav-chats').boundingBox()).y;
+  const ySaved = (await page.locator('#nav-saved').boundingBox()).y;
+  const yContacts = (await page.locator('#nav-contacts').boundingBox()).y;
+  const yWalls = (await page.locator('#nav-walls').boundingBox()).y;
+  const yLang = (await page.locator('#lang-quick').boundingBox()).y;
+  expect(yChats).toBeLessThan(ySaved);
+  expect(ySaved).toBeLessThan(yContacts);
+  expect(yContacts).toBeLessThan(yWalls);
+  expect(yWalls).toBeLessThan(yLang);
+
+  const scrollW = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(scrollW).toBe(360);
+});
+
+test('11 — 3D & 9:16 wallpaper gallery, Ukrainian localization, rich spoilers, send FX and sketchpad', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ready(page);
+
+  await expect(page.locator('html')).toHaveAttribute('data-wall', 'orb-3d');
+  await page.locator('#nav-walls').click();
+  await expect(page.locator('#wall-dialog')).toBeVisible();
+  await expect(page.locator('#wall-gallery-grid .wall-card')).toHaveCount(23);
+
+  await page.locator('.wall-card[data-wall-id="gen-leaves"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-wall', 'gen-leaves');
+  await page.locator('#wall-dialog [data-close]').click();
+
+  await page.locator('#lang-quick').click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'uk');
+  await expect(page.locator('.sidebar-heading h1')).toContainText('Повідомлення');
+
+  await openSaved(page);
+  const bgImg = await page.locator('#chat-bg-stage').evaluate(el => el.style.backgroundImage);
+  expect(bgImg).toContain('wp-leaves.jpg');
+
+  await page.locator('#fx-button').click();
+  await page.locator('#fx-picker [data-fx="hearts"]').click();
+  await page.locator('#message-input').fill('**Жирний** *курсив* `код` ||секрет||');
+  await page.locator('#send-button').click();
+
+  const last = page.locator('.message-row:last-child');
+  await expect(last.locator('strong')).toHaveText('Жирний');
+  await expect(last.locator('em')).toHaveText('курсив');
+  await expect(last.locator('code.msg-code')).toHaveText('код');
+  const spoiler = last.locator('.msg-spoiler');
+  await expect(spoiler).toHaveText('секрет');
+  await expect(spoiler).not.toHaveClass(/revealed/);
+  await spoiler.click();
+  await expect(spoiler).toHaveClass(/revealed/);
+  await expect(last.locator('.msg-fx-badge')).toHaveText('💜');
+
+  await page.locator('#draw-button').click();
+  await expect(page.locator('#draw-dialog')).toBeVisible();
+  const canvas = page.locator('#draw-canvas');
+  const canvasBox = await canvas.boundingBox();
+  await canvas.dispatchEvent('pointerdown', { pointerId: 77, pointerType: 'touch', clientX: canvasBox.x + 50, clientY: canvasBox.y + 50, button: 0, isPrimary: true });
+  await canvas.dispatchEvent('pointermove', { pointerId: 77, pointerType: 'touch', clientX: canvasBox.x + 160, clientY: canvasBox.y + 140, button: 0, isPrimary: true });
+  await canvas.dispatchEvent('pointerup', { pointerId: 77, pointerType: 'touch', clientX: canvasBox.x + 160, clientY: canvasBox.y + 140, button: 0, isPrimary: true });
+  await page.locator('#draw-send').click();
+  await expect(page.locator('#attachment-preview')).toBeVisible();
+  await page.locator('#send-button').click();
+  await expect(page.locator('.message-row')).toHaveCount(2);
+});

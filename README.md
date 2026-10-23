@@ -14,7 +14,7 @@
 ## Завантажити APK (2.11.9.5 — нова іконка, новий ID пакета, релізний підпис)
 
 - **GitHub Releases (`v2.11.9.5`):** [LIBO-2.11.9.5.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk)
-  · 579 764 B · SHA-256 `750d540514ef974a6ab1a4acd661a2c6c652cb52a50f195c175bdcaef8be5b5e`
+  · 1 321 549 B (~1.26 MiB) · SHA-256 `5643f8c467e726bc74ad6b193e922ecf108e45738efbe73802daa278535a7ab4`
 - **Пряме посилання з репозиторію (`downloads/`):** [downloads/LIBO-2.11.9.5.apk](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/LIBO-2.11.9.5.apk)
 - **Контрольна сума та підпис:** [SHA256SUMS-2.11.9.5.txt](downloads/SHA256SUMS-2.11.9.5.txt) · [SIGNING-2.11.9.5.txt](downloads/SIGNING-2.11.9.5.txt) · [RELEASE_NOTES-2.11.9.5.md](RELEASE_NOTES-2.11.9.5.md)
 - Завдяки окремому `applicationId` (`app.libo.messenger.orb`) та власному релізному ключу підпису (`db8f5aaddd6fb93e7861bb9e4eefb3cb75f2595c149de102ea635d1cc1a94353`), APK встановлюється без помилок конфлікту підпису чи версії навіть якщо на пристрої вже встановлено `LIBO Standalone 2.12.0` (`app.libo.messenger.standalone`).

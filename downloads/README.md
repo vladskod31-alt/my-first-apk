@@ -6,12 +6,12 @@ This directory keeps directly downloadable, verified signed APK mirrors alongsid
 
 - File: `LIBO-2.11.9.5.apk`
 - GitHub Release asset: [LIBO-2.11.9.5.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk)
-- Size: **579,764 bytes** (~566 KiB)
+- Size: **1,321,549 bytes** (~1.26 MiB)
 - Package: `app.libo.messenger.orb` (dedicated package ID — installs cleanly alongside `app.libo.messenger.standalone` without uninstalling 2.12.0)
 - Label: `LIBO`
 - Icon: Purple/pink 3D chat-orb (`art/libo-2d-1024.png`)
 - Android: API 26+ (Android 8.0–15+) · `versionCode` `2110905` · `versionName` `2.11.9.5`
-- SHA-256: `750d540514ef974a6ab1a4acd661a2c6c652cb52a50f195c175bdcaef8be5b5e`
+- SHA-256: `5643f8c467e726bc74ad6b193e922ecf108e45738efbe73802daa278535a7ab4`
 - APK Signature Schemes verified: v2 + v3 (no v1 JAR signing)
 - Signer: `CN=LIBO Orb Release, O=LIBO Messenger`, RSA-4096
 - Signer certificate SHA-256:

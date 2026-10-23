@@ -8,6 +8,7 @@ import {
   mergePollVote, pollTally, REACTIONS, VERSION, FILE_CHUNK_SIZE, MAX_AUDIO_FILE_SIZE,
   normalizeUsername, parseLiboLink, makeLiboLink, makeFileId, CAPABILITIES,
   makeFileChunkPacket, makeFileReceiptPacket, makeFileStatePacket, makeFileAckPacket,
+  WALLPAPERS, SEND_EFFECTS,
 } from '../web/lib/core.mjs';
 import { bytesToBase64, base64ToBytes, sha256Blob } from '../web/lib/attachments.mjs';
 
@@ -256,4 +257,28 @@ test('chunk encoding and SHA-256 preserve binary bytes without a data URL', asyn
   assert.deepEqual([...base64ToBytes(encoded)], [...bytes]);
   const digest = await sha256Blob(new Blob([bytes]));
   assert.equal(digest, '141429fd79e45a4abc2b001732de4c7e07d33ca09575aa30c3d8254aee86d897');
+});
+
+test('3D wallpapers, 9:16 wallpapers, send effects and circular video notes validate cleanly', () => {
+  assert.equal(WALLPAPERS.length, 23);
+  assert.equal(WALLPAPERS.filter(w => w.endsWith('-3d')).length, 14);
+  assert.equal(WALLPAPERS.filter(w => w.startsWith('gen-')).length, 5);
+  assert.deepEqual([...SEND_EFFECTS], ['fire', 'hearts', 'confetti', 'bolt', 'spark']);
+
+  const withFx = validatePacket({ ...message, fx: 'hearts' });
+  assert.equal(withFx.fx, 'hearts');
+  const badFx = validatePacket({ ...message, fx: 'explosion' });
+  assert.equal(badFx.fx, undefined);
+  assert.equal(toPacket({ ...message, fx: 'fire' }).fx, 'fire');
+  assert.equal(toPacket({ ...message }).fx, undefined);
+
+  const fileId = makeFileId();
+  const sha256 = 'a'.repeat(64);
+  const vnoteAtt = {
+    v: 2, kind: 'video', fileId, name: 'vnote.webm', mime: 'video/webm',
+    size: 4096, chunkSize: FILE_CHUNK_SIZE, totalChunks: 1, sha256, dur: 4200, vnote: true,
+  };
+  const parsedVnote = validatePacket({ v: 1, type: 'message', id: message.id, text: '', at: 100, att: vnoteAtt });
+  assert.equal(parsedVnote.att.vnote, true);
+  assert.equal(toPacket({ id: message.id, text: '', at: 100, att: vnoteAtt }).att.vnote, true);
 });
