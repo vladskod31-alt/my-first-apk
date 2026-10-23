@@ -1,5 +1,5 @@
 export const VERSION = '2.11.9.5';
-// This prerelease asset keeps the standalone package ID; Android will reject in-place downgrades.
+// Dedicated package ID (app.libo.messenger.orb) signed with its own release key for clean installation.
 export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk';
 
 // The limits below are the actual limits enforced by the browser client and packet
@@ -25,7 +25,14 @@ export const MAX_MESSAGES = 500;
 export const MAX_CHATS = 100;
 export const MAX_POLL_OPTIONS = 8;
 export const TTL_OPTIONS = [0, 10, 30, 60, 300, 3600, 86400, 604800];
-export const WALLPAPERS = ['plain', 'dusk', 'mint', 'mono'];
+export const WALLPAPERS = [
+  'orb-3d', 'aurora-3d', 'cyber-grid-3d', 'prism-cubes-3d', 'starfield-3d',
+  'liquid-lava-3d', 'neon-rings-3d', 'emerald-canopy-3d', 'ocean-caustics-3d', 'velvet-waves-3d',
+  'solar-eclipse-3d', 'crystal-cave-3d', 'fireflies-3d', 'matrix-pulse-3d',
+  'gen-leaves', 'gen-golden-fern', 'gen-aurora-forest', 'gen-crystal-orbs', 'gen-sakura-night',
+  'plain', 'dusk', 'mint', 'mono',
+];
+export const SEND_EFFECTS = Object.freeze(['fire', 'hearts', 'confetti', 'bolt', 'spark']);
 export const FOLDERS = { personal: 'Личные', work: 'Работа' };
 export const REACTIONS = ['thumb', 'heart', 'laugh', 'surprise', 'sad', 'fire'];
 export const REACTION_EMOJI = {
@@ -262,6 +269,7 @@ function attachmentMeta(value) {
     if (!validInlineImage(value.preview)) return null;
     att.preview = value.preview;
   }
+  if (kind === 'video' && value.vnote === true) att.vnote = true;
   return att;
 }
 
@@ -292,6 +300,7 @@ function legacyAttachment(value) {
     if (!Number.isFinite(value.dur) || value.dur < 0 || value.dur > 3_600_000) return null;
     att.dur = Math.round(value.dur);
   }
+  if (kind === 'video' && value.vnote === true) att.vnote = true;
   return att;
 }
 
@@ -442,6 +451,7 @@ export function validatePacket(value) {
   if (mentions?.length) packet.mentions = mentions;
   if (timing && Object.keys(timing).length) packet.timing = timing;
   if (TTL_OPTIONS.includes(value.ttl)) packet.ttl = value.ttl;
+  if (SEND_EFFECTS.includes(value.fx)) packet.fx = value.fx;
   if (value.fwd != null) {
     if (typeof value.fwd !== 'object' || typeof value.fwd.from !== 'string' || !value.fwd.from.trim() || value.fwd.from.length > 40) return null;
     packet.fwd = { from: normalizeName(value.fwd.from) };
@@ -483,6 +493,7 @@ export function toPacket(message) {
   if (message.timing) packet.timing = message.timing;
   if (message.editedAt) packet.editedAt = message.editedAt;
   if (message.ttl) packet.ttl = message.ttl;
+  if (SEND_EFFECTS.includes(message.fx)) packet.fx = message.fx;
   if (message.fwd) packet.fwd = message.fwd;
   return packet;
 }

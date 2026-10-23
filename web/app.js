@@ -11,8 +11,13 @@ import {
   toPacket, textExport, verificationCode, classifyAttachment, maxAttachmentBytes, normalizeMime,
   makeAckPacket, makeEditPacket, makeDeletePacket, makePinPacket, makeReactPacket,
   makeReadPacket, makePollVotePacket, mergePollVote, pollTally,
-  TTL_OPTIONS, WALLPAPERS, FOLDERS, makeLiboLink, parseLiboLink,
+  TTL_OPTIONS, WALLPAPERS, SEND_EFFECTS, FOLDERS, makeLiboLink, parseLiboLink,
 } from './lib/core.mjs';
+import {
+  FX_LABELS, FX_ICONS, appendRichText, triggerSendEffect, initWallpaperStudio,
+  initMiniPlayer, enhanceAudioBubble, startVoiceHud, stopVoiceHud,
+  initDrawPad, initVideoNotes, initLocalization,
+} from './features-extra.mjs';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -23,7 +28,7 @@ const state = {
   filter: 'all', network: 'connecting', networkDetail: '', contactStates: new Map(),
   typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
   lastSeen: new Map(), recording: null, archiveNotice: false,
-  folderTab: '', selection: null, ttl: 0, highlight: null,
+  folderTab: '', selection: null, ttl: 0, fx: '', highlight: null,
   transfers: new Map(), attachmentUrls: new Map(), attachmentPreviewUrl: '', pendingAudioFile: null, nativeSave: null,
   mentionTarget: null, reminders: [], attachmentRenderGeneration: 0,
   // A call only exists while PeerJS has a live MediaConnection. No message state or
@@ -45,6 +50,8 @@ let photoGeneration = 0;
 let draftPersistTimer;
 let transferManager;
 let chatOpenSequence = 0;
+let miniPlayerApi = null;
+let wallStudioApi = null;
 
 const transport = new Transport({
   onState(status, detail = '') {
@@ -91,7 +98,7 @@ const transport = new Transport({
         chat.messages.push({
           id: packet.id, text: packet.text, image: packet.image, reply: packet.reply,
           att: packet.att || null, mentions: packet.mentions || [], editedAt: packet.editedAt || null,
-          ttl: packet.ttl || 0, fwd: packet.fwd || null,
+          ttl: packet.ttl || 0, ...(packet.fx ? { fx: packet.fx } : {}), fwd: packet.fwd || null,
           timing: { ...(packet.timing || {}), recipientReceivedAt: receivedAt },
           at: Math.min(packet.at, Date.now() + 60_000), direction: 'in',
           status: isChunkedAttachment(packet.att) ? 'receiving' : 'received',
@@ -107,7 +114,10 @@ const transport = new Transport({
       if (fresh) {
         if (packet.ttl) scheduleExpiry(id, packet.id, packet.ttl, packet.at);
         renderSidebar();
-        if (state.current === id) { renderMessages(); renderHeader(); sendReadReceipt(id); noteIncoming(); }
+        if (state.current === id) {
+          renderMessages(); renderHeader(); sendReadReceipt(id); noteIncoming();
+          if (packet.fx) triggerSendEffect(packet.fx);
+        }
         playMessageSound(id);
       }
     } catch (error) {
@@ -863,7 +873,7 @@ function renderMessages(scroll = true) {
     loading.className = 'message-loading';
     loading.setAttribute('role', 'status');
     loading.setAttribute('aria-live', 'polite');
-    loading.innerHTML = '<div class="orb-loader" aria-hidden="true"><span class="orb orb-violet"></span><span class="orb orb-pink"></span></div><div class="message-loading-copy"><strong>Открываем переписку</strong><span>Читаем сохранённые данные</span></div>';
+    loading.innerHTML = '<div class="orb-loader" aria-hidden="true"><span class="orb-layer orb-halo-3d"></span><span class="orb-layer orb-ring-outer"><i></i></span><span class="orb-layer orb-ring-inner"><i></i></span><span class="orb-layer orb-spheres"><span class="orb orb-violet"></span><span class="orb orb-pink"></span></span></div><div class="message-loading-copy"><strong>Открываем переписку</strong><span>Читаем сохранённые данные</span></div>';
     box.replaceChildren(loading);
     return;
   }
@@ -953,6 +963,15 @@ function renderMessages(scroll = true) {
     const meta = document.createElement('div'); meta.className = 'message-meta';
     const time = document.createElement('time'); time.dateTime = new Date(message.at).toISOString(); time.textContent = timeFormat.format(new Date(message.at));
     meta.appendChild(time);
+    if (message.fx && FX_ICONS[message.fx]) {
+      const fxBadge = document.createElement('button');
+      fxBadge.type = 'button';
+      fxBadge.className = 'msg-fx-badge';
+      fxBadge.textContent = FX_ICONS[message.fx];
+      fxBadge.title = 'Натисніть, щоб повторити анімацію ефекту';
+      fxBadge.addEventListener('click', (ev) => { ev.stopPropagation(); triggerSendEffect(message.fx); });
+      meta.appendChild(fxBadge);
+    }
     if (message.editedAt) {
       const edited = document.createElement('button'); edited.type = 'button'; edited.className = 'edited-mark'; edited.dataset.editHistory = message.id; edited.textContent = 'изменено';
       edited.title = 'Показать локальную историю изменений';
@@ -988,7 +1007,7 @@ function renderMessages(scroll = true) {
     const swipeHint = document.createElement('span'); swipeHint.className = 'swipe-hint'; swipeHint.setAttribute('aria-hidden', 'true'); swipeHint.innerHTML = svg('reply');
     row.append(swipeHint, bubble, actions); box.appendChild(row);
   }
-  if (scroll && nearBottom) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
+  if (scroll && nearBottom) box.scrollTop = box.scrollHeight;
   else box.scrollTop = previousTop;
 }
 
@@ -1128,12 +1147,22 @@ async function hydrateStreamAttachment(wrap, att) {
   if (!media || media.firstChild) return;
   if (att.kind === 'video') {
     const video = document.createElement('video');
-    video.className = 'message-video'; video.controls = true; video.preload = 'metadata'; video.src = url; video.setAttribute('playsinline', '');
+    video.className = 'message-video'; video.controls = !att.vnote; video.preload = 'metadata'; video.src = url; video.setAttribute('playsinline', '');
+    if (att.vnote) { video.loop = true; }
     video.addEventListener('error', () => {
       const fallback = document.createElement('p'); fallback.className = 'media-fallback'; fallback.textContent = 'Этот формат видео не воспроизводится в данном WebView. Сохраните исходный файл.';
       media.appendChild(fallback);
     }, { once: true });
-    media.appendChild(video);
+    if (att.vnote) {
+      const outer = document.createElement('div'); outer.className = 'vnote-bubble-wrap';
+      const circle = document.createElement('div'); circle.className = 'vnote-circle-player';
+      circle.title = 'Натисніть для відтворення або паузи';
+      circle.addEventListener('click', () => { if (video.paused) video.play().catch(() => {}); else video.pause(); });
+      circle.appendChild(video); outer.appendChild(circle);
+      media.appendChild(outer);
+    } else {
+      media.appendChild(video);
+    }
   } else if (['audio', 'music', 'voice'].includes(att.kind)) {
     const audio = document.createElement('audio'); audio.controls = true; audio.preload = 'metadata'; audio.src = url;
     audio.addEventListener('loadedmetadata', () => {
@@ -1147,6 +1176,7 @@ async function hydrateStreamAttachment(wrap, att) {
       media.appendChild(fallback);
     }, { once: true });
     media.appendChild(audio);
+    enhanceAudioBubble(media, audio, att, miniPlayerApi);
   }
 }
 
@@ -1155,8 +1185,10 @@ function renderLegacyAttachment(message) {
   if (att.kind === 'voice' || att.kind === 'audio') {
     const wrap = document.createElement('div'); wrap.className = 'att-voice';
     wrap.innerHTML = `${svg('mic')}<audio controls preload="metadata"></audio><span></span>`;
-    wrap.querySelector('audio').src = att.data;
+    const audio = wrap.querySelector('audio');
+    audio.src = att.data;
     wrap.querySelector('span').textContent = att.dur ? `${Math.round(att.dur / 1000)} с` : 'аудио';
+    enhanceAudioBubble(wrap, audio, att, miniPlayerApi);
     return wrap;
   }
   if (att.kind === 'video') {
@@ -1210,13 +1242,13 @@ function appendMessageText(node, text, mentions) {
     const token = match[0];
     const mention = byUsername.get(token.toLowerCase());
     if (!mention) continue;
-    node.append(document.createTextNode(text.slice(position, match.index)));
+    appendRichText(node, text.slice(position, match.index));
     const button = document.createElement('button'); button.type = 'button'; button.className = 'mention';
     button.dataset.profileId = mention.userId; button.textContent = token; button.title = `Открыть профиль ${token}`;
     node.appendChild(button);
     position = (match.index || 0) + token.length;
   }
-  node.append(document.createTextNode(text.slice(position)));
+  appendRichText(node, text.slice(position));
 }
 
 function renderPins() {
@@ -1554,6 +1586,16 @@ function resetComposerExtras() {
   $('#photo-input').value = '';
   $('#emoji-picker').hidden = true;
   $('#emoji-button').setAttribute('aria-expanded', 'false');
+  const fxPicker = $('#fx-picker');
+  if (fxPicker) fxPicker.hidden = true;
+}
+
+function syncFxChip() {
+  const label = $('#fx-active-label');
+  const btn = $('#fx-button');
+  if (label) label.textContent = FX_LABELS[state.fx] || 'Ефект';
+  if (btn) btn.classList.toggle('has-fx', Boolean(state.fx));
+  $$('#fx-picker .fx-chip').forEach(chip => chip.classList.toggle('active', (chip.dataset.fx || '') === (state.fx || '')));
 }
 
 async function restoreDraft(id) {
@@ -1655,9 +1697,11 @@ async function sendMessage(event) {
     return;
   }
   const createdAt = Date.now();
+  const chosenFx = SEND_EFFECTS.includes(state.fx) ? state.fx : '';
   const message = {
     id: crypto.randomUUID(), text, image: null, att: attachment || null,
     mentions: extractMentions(text), reply: state.reply, ttl: state.ttl || 0,
+    ...(chosenFx ? { fx: chosenFx } : {}),
     timing: { clientCreatedAt: createdAt },
     at: createdAt, direction: 'out', status: id === 'saved' ? 'local' : 'queued',
   };
@@ -1666,9 +1710,11 @@ async function sendMessage(event) {
     await changeChat(id, next => { makeRoom(next); next.messages.push(message); next.updatedAt = message.at; });
     if (state.current === id) {
       $('#message-input').value = '';
+      state.fx = ''; syncFxChip();
       resetComposerExtras(); rememberDraft();
       renderMessages();
-      requestAnimationFrame(() => { $('#messages').scrollTop = $('#messages').scrollHeight; });
+      if (chosenFx) triggerSendEffect(chosenFx);
+      $('#messages').scrollTop = $('#messages').scrollHeight;
     }
     renderSidebar();
     if (message.ttl) scheduleExpiry(id, message.id, message.ttl, message.at);
@@ -1834,7 +1880,7 @@ const UI_KEY = 'libo-v2-ui';
 // Synchronous mirror of the cosmetic settings: a reload must never race the
 // IndexedDB commit and flash the wrong theme or wallpaper.
 function rememberUi() {
-  try { localStorage.setItem(UI_KEY, JSON.stringify({ theme: state.settings.theme, wall: state.settings.wall || 'plain', accent: state.settings.accent, density: state.settings.density, font: state.settings.font })); }
+  try { localStorage.setItem(UI_KEY, JSON.stringify({ theme: state.settings.theme, wall: state.settings.wall || 'orb-3d', accent: state.settings.accent, density: state.settings.density, font: state.settings.font })); }
   catch { /* Cosmetic only; storage may be full. */ }
 }
 
@@ -1857,7 +1903,7 @@ function populateSettings() {
   $('#profile-status').value = state.profile.status || 'online';
   renderProfileAvatar();
   $('#sound-enabled').checked = state.settings.sound;
-  $('#wall-select').value = WALLPAPERS.includes(state.settings.wall) ? state.settings.wall : 'plain';
+  $('#wall-select').value = WALLPAPERS.includes(state.settings.wall) ? state.settings.wall : 'orb-3d';
   const lock = lockState();
   $('#lock-state').value = lock ? 'Включён' : 'Выключен';
   $('#lock-pin').value = '';
@@ -1885,7 +1931,7 @@ async function saveSettings(event) {
   if (username && collision) { error.textContent = `@${username} уже виден у контакта «${collision.name}» на этом устройстве.`; error.hidden = false; return; }
   const settings = {
     ...state.settings, sound: $('#sound-enabled').checked,
-    wall: WALLPAPERS.includes($('#wall-select').value) ? $('#wall-select').value : 'plain',
+    wall: WALLPAPERS.includes($('#wall-select').value) ? $('#wall-select').value : 'orb-3d',
     signalUrl: $('#signal-url').value.trim(), turnUrl: $('#turn-url').value.trim(),
     turnUser: $('#turn-user').value.trim(), turnPassword: $('#turn-password').value,
   };
@@ -2193,6 +2239,7 @@ async function toggleRecording() {
     const startedAt = Date.now();
     recorder.ondataavailable = event => { if (event.data?.size) chunks.push(event.data); };
     recorder.onstop = async () => {
+      stopVoiceHud();
       stream.getTracks().forEach(track => track.stop());
       state.recording = null;
       button.classList.remove('recording'); button.setAttribute('aria-label', 'Записать голосовое сообщение');
@@ -2205,9 +2252,10 @@ async function toggleRecording() {
     };
     recorder.start();
     state.recording = recorder;
+    startVoiceHud(stream, () => { if (state.recording === recorder) recorder.stop(); });
     button.classList.add('recording'); button.setAttribute('aria-label', 'Остановить запись');
     setTimeout(() => { if (state.recording === recorder) recorder.stop(); }, MAX_VOICE_SECONDS * 1000);
-  } catch { notify('Нет доступа к микрофону. Разрешите запись в настройках Android.', true); }
+  } catch { stopVoiceHud(); notify('Нет доступа к микрофону. Разрешите запись в настройках Android.', true); }
 }
 
 function scheduleExpiry(chatId, messageId, ttl, at) {
@@ -2371,7 +2419,15 @@ async function tryUnlock() {
 }
 
 function applyWall() {
-  document.documentElement.dataset.wall = WALLPAPERS.includes(state.settings?.wall) ? state.settings.wall : 'plain';
+  const nextWall = WALLPAPERS.includes(state.settings?.wall) ? state.settings.wall : 'orb-3d';
+  document.documentElement.dataset.wall = nextWall;
+  const stage = $('#chat-bg-stage');
+  if (stage) {
+    stage.style.backgroundImage = nextWall.startsWith('gen-') ? `url('./wallpapers/wp-${nextWall.slice(4)}.jpg')` : '';
+  }
+  const sel = $('#wall-select');
+  if (sel && sel.value !== nextWall) sel.value = nextWall;
+  wallStudioApi?.refreshGallery?.();
 }
 
 function playMessageSound(chatId = null) {
@@ -3485,7 +3541,7 @@ async function main() {
   }
   const defaultServer = import.meta.env.DEV ? new URL('/peerjs', location.origin).href : 'https://0.peerjs.com';
   state.settings = {
-    theme: 'light', sound: false, signalUrl: defaultServer, turnUrl: '', turnUser: '', turnPassword: '',
+    theme: 'light', wall: 'orb-3d', sound: false, signalUrl: defaultServer, turnUrl: '', turnUser: '', turnPassword: '',
     ...recallUi(), ...await store.getMeta('settings'),
   };
   state.blocked = await store.getMeta('blocked') || [];
@@ -3517,7 +3573,81 @@ async function main() {
   const savedSeen = await store.getMeta('lastSeen');
   if (savedSeen && typeof savedSeen === 'object') for (const [id, at] of Object.entries(savedSeen)) state.lastSeen.set(id, at);
   if (!window.MediaRecorder || !navigator.mediaDevices) $('#voice-button').hidden = true;
-  bindEvents(); applyTheme(); applyWall(); applyAppearance(); initInterface(); renderSidebar(); renderNetwork(); renderStorage();
+function initOrbFeaturePack() {
+  miniPlayerApi = initMiniPlayer();
+  wallStudioApi = initWallpaperStudio({
+    getWall: () => (WALLPAPERS.includes(state.settings?.wall) ? state.settings.wall : 'orb-3d'),
+    setWall: async (wallId) => {
+      if (!WALLPAPERS.includes(wallId)) return;
+      state.settings = { ...state.settings, wall: wallId };
+      applyWall();
+      rememberUi();
+      try { await store.setMeta('settings', state.settings); } catch {}
+    },
+  });
+
+  initDrawPad({
+    openDialog,
+    closeDialog: (dlg) => dlg?.close?.(),
+    showToast: (msg) => notify(msg, true),
+    onAttachSketch: async (dataUrl) => {
+      if (!activeChat() || activeChat().request || activeChat().archive) return;
+      const b64 = (dataUrl || '').split(',')[1] || '';
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'image/jpeg' });
+      await showAttachmentDraft(await persistAttachment(blob, 'sketch.jpg', 'image'));
+    },
+  });
+
+  initVideoNotes({
+    openDialog,
+    closeDialog: (dlg) => dlg?.close?.(),
+    showToast: (msg) => notify(msg, true),
+    onSendVideoNote: async ({ blob, type, durMs }) => {
+      if (!activeChat() || activeChat().request || activeChat().archive) return;
+      const ext = String(type || '').includes('mp4') ? 'mp4' : 'webm';
+      await showAttachmentDraft(await persistAttachment(blob, `vnote.${ext}`, 'video', { dur: durMs, vnote: true }));
+      await sendMessage();
+    },
+  });
+
+  const fxBtn = $('#fx-button');
+  const fxPicker = $('#fx-picker');
+  fxBtn?.addEventListener('click', () => {
+    if (!fxPicker) return;
+    fxPicker.hidden = !fxPicker.hidden;
+  });
+  $$('#fx-picker .fx-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      state.fx = chip.dataset.fx || '';
+      syncFxChip();
+      if (fxPicker) fxPicker.hidden = true;
+      if (state.fx) triggerSendEffect(state.fx);
+    });
+  });
+
+  const markers = { bold: '**', italic: '*', code: '`', spoiler: '||' };
+  $$('.fmt-btn[data-fmt]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = $('#message-input');
+      if (!input) return;
+      const wrap = markers[btn.dataset.fmt] || '**';
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? input.value.length;
+      const selected = input.value.slice(start, end) || 'текст';
+      input.setRangeText(`${wrap}${selected}${wrap}`, start, end, 'select');
+      input.focus();
+      updateComposer();
+      rememberDraft();
+    });
+  });
+
+  initLocalization();
+}
+
+  bindEvents(); applyTheme(); applyWall(); applyAppearance(); initInterface(); initOrbFeaturePack(); renderSidebar(); renderNetwork(); renderStorage();
   hideBootLoader();
   if (lockState()) {
     $('#lock-screen').hidden = false;

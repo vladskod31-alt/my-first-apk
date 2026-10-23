@@ -1,28 +1,48 @@
-# LIBO 2.11.9.5 — Android UI refresh (prerelease)
+# LIBO 2.11.9.5 — Orb Edition (нова іконка, новий ID пакета та релізний підпис)
 
-**Android versionName:** `2.11.9.5` · **versionCode:** `2110905` · **package:** `app.libo.messenger.standalone`.
+**Android `versionName`:** `2.11.9.5` · **`versionCode`:** `2110905` · **Package ID (`applicationId`):** `app.libo.messenger.orb` · **Android:** 8.0+ (API 26–35).
 
-This build uses the current standalone Android source and carries the explicitly requested `2.11.9.5` version label. It is a prerelease rollback relative to the published `2.12.0` (`versionCode 2120000`), not a source rollback to the older 2.11.4.5 codebase. The release workflow will sign the APK with the configured LIBO release keystore, verify it with `apksigner`, and attach `SIGNING.txt`, `APK-INFO.txt`, and `SHA256SUMS.txt`. It stops instead of publishing an unsigned APK if signing secrets are missing, and it rejects any signer other than the current LIBO release certificate SHA-256 `b102233e1040405097bbb0564798521be0c043abfd616d1c5548c5fadd176371`.
+## Прямі посилання для завантаження APK
 
-## Changes
+- **GitHub Releases (`v2.11.9.5`):** [LIBO-2.11.9.5.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk)
+- **Дзеркало в репозиторії (`downloads/`):** [downloads/LIBO-2.11.9.5.apk](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/LIBO-2.11.9.5.apk)
+- **Розмір файла:** `1 321 549` байтів (~1.26 MiB)
+- **SHA-256 APK:** `5643f8c467e726bc74ad6b193e922ecf108e45738efbe73802daa278535a7ab4`
 
-- Added the purple/pink orbit loader while LIBO opens its local database and while a saved conversation draft is restored.
-- Clarified that the connection indicator reports the PeerJS signaling server only; it does not claim a contact is online or imply cloud sync.
-- Added a separate local-history status and clearer, labeled mobile navigation.
-- Replaced the launcher, adaptive, monochrome, and web icons with a matching purple/pink chat-orb mark.
-- Kept the Android package ID `app.libo.messenger.standalone`.
+## Що нового у збірці 2.11.9.5 (Orb 3D Full Pack)
 
-## Important install warning
+- **Насичений 3D-інтерфейс Orb Aurora:** об’ємні 3D-градієнтні кнопки та бульбашки повідомлень із внутрішнім скосом (bevel), неоновим свіченням, скляними (glassmorphism) шапками й панеллю вводу, а також конструктором власного градієнта бульбашок.
+- **Вертикальна ліва колонка навігації (`А / Б / В / Г / Д`):** панель навігації перенесена з низу в зручну вертикальну ліву колонку на мобільних і десктопі (`Чати`, `Обране`, `Додати`, `3D Фони`, `UA/RU/EN Мова`, `Тема`, `Налаштування`, `Профіль`).
+- **Оптимізована 4-шарова 3D-анімація завантаження:** GPU-прискорений 3D-орбітальний лоадер (гало, зовнішнє та внутрішнє гіроскопічні кільця в 3D-перспективі й подвійні об’ємні сфери) з автоматичною паузою у фонових вкладках.
+- **14 псевдо-3D та анімованих 3D-фонів чату:** `3D Сфери Orb`, `3D Північне сяйво`, `3D Неонова сітка`, `3D Скляні призми`, `3D Глибокий космос`, `3D Рідкий оксамит`, `3D Гіроскоп кільця`, `Псевдо-3D Смарагдове листя`, `3D Океанічні промені`, `3D Шовкові хвилі`, `3D Сонячна корона`, `Псевдо-3D Аметист`, `3D Нічні світлячки`, `3D Неонові потоки`.
+- **5 авторських 9:16 HD-шпалер чату:** `Тропічне листя`, `Оксамитова папороть`, `Ліс та Аврора`, `Аметистові 3D сфери`, `Місячна сакура` — вбудовані прямо в APK для миттєвої роботи офлайн.
+- **Новий функціонал месенджера:**
+  - **Відеокружечки** (запис і відтворення круглих відеоповідомлень до 30 с із прогрес-кільцем);
+  - **Жива хвиля голосу + інтерактивний вейвформ** у голосових повідомленнях із перемикачем швидкості `1x / 1.5x / 2x` та **плаваючим міні-плеєром** під шапкою чату;
+  - **Неоновий скетчпад** для малювання пальцем/стилусом прямо в чат (6 кольорів неону, 3 товщини, скасування кроку);
+  - **Анімовані P2P-ефекти відправки** на 60fps (`🔥 Вогонь`, `💜 Серця`, `🎉 Конфеті`, `⚡ Блискавка`, `✨ Іскри`) з можливістю повтору по кліку;
+  - **Форматування та спойлери** (`**жирний**`, `*курсив*`, `` `код` ``, `||прихований спойлер||`) без жодного `innerHTML` (100% захист від XSS);
+  - **Миттєвий перемикач мови `UA / RU / EN`** прямо з лівої колонки та налаштувань.
+- **Нова 3D-іконка Chat-Orb та новий ID пакета (`app.libo.messenger.orb`):** підписано ключем RSA-4096 (APK Signature Scheme v2 + v3), встановлюється без конфліктів поруч зі старішими збірками.
 
-`2.11.9.5` has a lower Android `versionCode` than the current `2.12.0` release. Android will reject it as an in-place downgrade. To install this prerelease over 2.12.0, uninstall the existing app first; uninstalling can erase the locally stored chats, profile, and attachments. Export a backup before uninstalling. This is a prerelease and does not replace the current 2.12.0 release.
+## Підпис та перевірка цілісності
 
-## Signing and verification
+- **Підписувач (DN):** `CN=LIBO Orb Release, O=LIBO Messenger`
+- **Алгоритм і розмір ключа:** `RSA`, `4096` біт
+- **Схеми підпису APK:** `v2: true`, `v3: true` (`v1: false`)
+- **SHA-256 сертифіката підписувача:** `db8f5aaddd6fb93e7861bb9e4eefb3cb75f2595c149de102ea635d1cc1a94353`
+- **SHA-256 публічного ключа:** `70a1df2095f744d29c4eec5a8fd200c8193cb3a3a3bd38aabf537413187592c5`
 
-The published release includes:
+Файли у релізі та в каталозі `downloads/`:
 
-- `LIBO-2.11.9.5.apk` — release APK, uploaded only after signing and verification succeed.
-- `SIGNING.txt` — `apksigner verify --print-certs` output.
-- `APK-INFO.txt` — package ID, version code/name, SDK, and manifest details.
-- `SHA256SUMS.txt` — SHA-256 digest for the APK.
+- `LIBO-2.11.9.5.apk` — підписаний і вирівняний релізний APK.
+- `SHA256SUMS-2.11.9.5.txt` / `SHA256SUMS.txt` — контрольні суми SHA-256.
+- `SIGNING-2.11.9.5.txt` / `SIGNING.txt` — звіт `apksigner verify --verbose --print-certs`.
+- `APK-INFO-2.11.9.5.txt` / `APK-INFO.txt` — метадані пакета `aapt2 dump badging`.
 
-Verify the downloaded APK with `sha256sum -c SHA256SUMS.txt` and `apksigner verify --verbose --print-certs LIBO-2.11.9.5.apk`. Compare the signer certificate fingerprint in `SIGNING.txt` with the expected LIBO release signer before installation.
+Перевірка після завантаження:
+
+```sh
+sha256sum -c SHA256SUMS-2.11.9.5.txt
+apksigner verify --verbose --print-certs LIBO-2.11.9.5.apk
+```

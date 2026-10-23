@@ -1,21 +1,16 @@
 name: Publish release assets
 
-# GitHub Releases binaries are uploaded to uploads.github.com, which some
-# sandboxed environments cannot reach. GitHub Actions can, so this workflow
-# ships the verified, already-signed APK from downloads/ plus its checksums,
-# badging report, signature report and interface screenshots to the release.
-#
-# It is idempotent (--clobber) and only runs when the release files change.
+# Ships verified, already-signed APKs from downloads/ along with their SHA-256
+# checksums, aapt2 badging reports, apksigner certificate reports, and artwork
+# directly to GitHub Releases without requiring private keystore secrets in CI.
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'arena/1cf121e0-my-first-apk']
+    branches: [main, 'arena/**']
     paths:
-      - 'downloads/LIBO-2.12.0.apk'
-      - 'downloads/SHA256SUMS.txt'
-      - 'downloads/SHA256SUMS-2.12.0.txt'
-      - 'downloads/APK-INFO-2.12.0.txt'
-      - 'downloads/SIGNING-2.12.0.txt'
+      - 'downloads/**'
+      - 'RELEASE_NOTES-2.11.9.5.md'
+      - 'art/libo-2d-1024.png'
       - 'art/screens/**'
       - '.github/workflows/publish-release-assets.yml'
 
@@ -27,34 +22,54 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      TAG: v2.12.0
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify the APK matches its checksum
+      - name: Verify APK checksums and metadata
         run: |
           set -euo pipefail
-          cd downloads
-          sha256sum -c SHA256SUMS-2.12.0.txt
-          head -3 APK-INFO-2.12.0.txt
-          ls -l LIBO-2.12.0.apk
+          (cd downloads && sha256sum -c SHA256SUMS-2.11.9.5.txt)
+          (cd downloads && sha256sum -c SHA256SUMS-2.12.0.txt)
+          (cd downloads && sha256sum -c SHA256SUMS.txt)
+          grep -Fq "package: name='app.libo.messenger.orb' versionCode='2110905' versionName='2.11.9.5'" downloads/APK-INFO-2.11.9.5.txt
+          grep -Fq 'Signer #1 certificate SHA-256 digest: db8f5aaddd6fb93e7861bb9e4eefb3cb75f2595c149de102ea635d1cc1a94353' downloads/SIGNING-2.11.9.5.txt
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if compgen -G "$SDK_DIR/build-tools/*" >/dev/null; then
+            BUILD_TOOLS=$(ls -d "$SDK_DIR"/build-tools/* | sort -V | tail -1)
+            "$BUILD_TOOLS/zipalign" -c 4 downloads/LIBO-2.11.9.5.apk
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs downloads/LIBO-2.11.9.5.apk | grep -Fq 'db8f5aaddd6fb93e7861bb9e4eefb3cb75f2595c149de102ea635d1cc1a94353'
+          fi
+          ls -lh downloads/LIBO-2.11.9.5.apk
 
-      - name: Upload assets to the release
+      - name: Publish v2.11.9.5 GitHub Release and assets
         run: |
           set -euo pipefail
-          gh release view "$TAG" >/dev/null
+          TAG="v2.11.9.5"
+          TITLE="LIBO 2.11.9.5 — Orb Edition (нова іконка, новий ID пакета та підпис)"
+          STAGE=$(mktemp -d)
+          cp downloads/LIBO-2.11.9.5.apk "$STAGE/LIBO-2.11.9.5.apk"
+          cp downloads/SHA256SUMS-2.11.9.5.txt "$STAGE/SHA256SUMS.txt"
+          cp downloads/SHA256SUMS-2.11.9.5.txt "$STAGE/SHA256SUMS-2.11.9.5.txt"
+          cp downloads/APK-INFO-2.11.9.5.txt "$STAGE/APK-INFO.txt"
+          cp downloads/APK-INFO-2.11.9.5.txt "$STAGE/APK-INFO-2.11.9.5.txt"
+          cp downloads/SIGNING-2.11.9.5.txt "$STAGE/SIGNING.txt"
+          cp downloads/SIGNING-2.11.9.5.txt "$STAGE/SIGNING-2.11.9.5.txt"
+          cp art/libo-2d-1024.png "$STAGE/libo-icon-2.11.9.5.png"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TITLE" --notes-file RELEASE_NOTES-2.11.9.5.md --prerelease=false --latest
+          else
+            gh release create "$TAG" --title "$TITLE" --notes-file RELEASE_NOTES-2.11.9.5.md --latest
+          fi
+
           gh release upload "$TAG" \
-            downloads/LIBO-2.12.0.apk \
-            downloads/SHA256SUMS.txt \
-            downloads/SHA256SUMS-2.12.0.txt \
-            downloads/APK-INFO-2.12.0.txt \
-            downloads/SIGNING-2.12.0.txt \
-            art/screens/desktop-chat.png \
-            art/screens/desktop-palette.png \
-            art/screens/desktop-emoji.png \
-            art/screens/desktop-settings.png \
-            art/screens/mobile-chat.png \
-            art/screens/mobile-list.png \
-            art/screens/mobile-sheet.png \
+            "$STAGE/LIBO-2.11.9.5.apk" \
+            "$STAGE/SHA256SUMS.txt" \
+            "$STAGE/SHA256SUMS-2.11.9.5.txt" \
+            "$STAGE/APK-INFO.txt" \
+            "$STAGE/APK-INFO-2.11.9.5.txt" \
+            "$STAGE/SIGNING.txt" \
+            "$STAGE/SIGNING-2.11.9.5.txt" \
+            "$STAGE/libo-icon-2.11.9.5.png" \
             --clobber
-          gh release view "$TAG" --json assets --jq '.assets[].name'
+          gh release view "$TAG" --json url,assets --jq '{url: .url, assets: [.assets[].name]}'

@@ -1,4 +1,4 @@
-# LIBO 2.12.0 — «Polished»
+# LIBO 2.11.9.5 — Orb Edition
 
 ![Іконка LIBO](web/public/icon-512.png)
 
@@ -8,22 +8,22 @@
 локально у IndexedDB/WebView. У проєкті **немає** сервера історії, облікових записів,
 каталогу користувачів або фонової доставки.
 
-Поточна версія: **2.12.0 Standalone** · Android 8.0+ (API 26+) · пакет
-`app.libo.messenger.standalone` · `versionCode 2120000`.
+Поточна збірка: **LIBO 2.11.9.5 (Orb Edition)** · Android 8.0+ (API 26+) · новий пакет
+`app.libo.messenger.orb` · `versionCode 2110905` · релізний підпис RSA-4096 (APK Signature Scheme v2 + v3).
 
-> 2.12 — це оновлення **інтерфейсу**: єдина дизайн-система (`web/ui-next.css`) та дев’ять
-> нових функцій. Протокол, сховище й безпекова модель не змінювалися.
+## Завантажити APK (2.11.9.5 — нова іконка, новий ID пакета, релізний підпис)
 
-## APK
+- **GitHub Releases (`v2.11.9.5`):** [LIBO-2.11.9.5.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk)
+  · 1 321 549 B (~1.26 MiB) · SHA-256 `5643f8c467e726bc74ad6b193e922ecf108e45738efbe73802daa278535a7ab4`
+- **Пряме посилання з репозиторію (`downloads/`):** [downloads/LIBO-2.11.9.5.apk](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/LIBO-2.11.9.5.apk)
+- **Контрольна сума та підпис:** [SHA256SUMS-2.11.9.5.txt](downloads/SHA256SUMS-2.11.9.5.txt) · [SIGNING-2.11.9.5.txt](downloads/SIGNING-2.11.9.5.txt) · [RELEASE_NOTES-2.11.9.5.md](RELEASE_NOTES-2.11.9.5.md)
+- Завдяки окремому `applicationId` (`app.libo.messenger.orb`) та власному релізному ключу підпису (`db8f5aaddd6fb93e7861bb9e4eefb3cb75f2595c149de102ea635d1cc1a94353`), APK встановлюється без помилок конфлікту підпису чи версії навіть якщо на пристрої вже встановлено `LIBO Standalone 2.12.0` (`app.libo.messenger.standalone`).
+
+### Попередня лінійка Standalone (2.12.0)
 
 - [LIBO-2.12.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/LIBO-2.12.0.apk)
-  · 326 011 B · SHA-256 `b2453f38a6058957dcd49df521a8538de0ff81bf9d5530491cbc65e516ad7742`
-- [SHA256SUMS-2.12.0.txt](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/SHA256SUMS-2.12.0.txt)
-- Подробиці підпису та інсталяції — у [RELEASE_NOTES.md](RELEASE_NOTES.md).
-
-## Android prerelease 2.11.9.5 — intentionally lower version
-
-The requested `2.11.9.5` build is a prerelease based on the current standalone source, not a rollback to the older 2.11.4.5 codebase. Its Android `versionCode` is `2110905`, lower than the published 2.12.0 (`2120000`), so Android will reject an in-place downgrade. Installing it over 2.12.0 requires uninstalling first, which may erase locally stored chats and attachments; export a backup before uninstalling. The release workflow refuses to publish an unsigned APK. See [RELEASE_NOTES-2.11.9.5.md](RELEASE_NOTES-2.11.9.5.md) for details and the [2.11.9.5 prerelease APK](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk).
+  · 326 011 B · пакет `app.libo.messenger.standalone` · SHA-256 `b2453f38a6058957dcd49df521a8538de0ff81bf9d5530491cbc65e516ad7742`
+- [SHA256SUMS-2.12.0.txt](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/SHA256SUMS-2.12.0.txt) · подробиці у [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## Дев’ять нових функцій 2.12
 

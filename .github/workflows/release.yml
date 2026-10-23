@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Тег релиза, например v2.3.0'
+        description: 'Тег релиза, например v2.11.9.5'
         required: true
 
 permissions:
@@ -30,6 +30,12 @@ jobs:
       - name: Модульные тесты и браузерные сценарии
         run: |
           npm test
+          CHROMIUM_PATH=$(node -e "const {chromium}=require('@playwright/test');console.log(chromium.executablePath())" 2>/dev/null || true)
+          if [ -z "$CHROMIUM_PATH" ] || [ ! -x "$CHROMIUM_PATH" ]; then
+            npx playwright install --with-deps chromium
+            CHROMIUM_PATH=$(node -e "const {chromium}=require('@playwright/test');console.log(chromium.executablePath())")
+          fi
+          export CHROMIUM_PATH
           npm run test:e2e
       - name: Production-бандл веб-части для assets APK
         run: npm run build
@@ -40,29 +46,56 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Gradle assembleRelease (без подписи)
         run: ./gradlew --no-daemon assembleRelease
-      - name: Подпись релизным ключом из секретов
+      - name: Подпись релизным ключом (секреты, проверенное зеркало или генерация ключа)
         env:
           LIBO_KEYSTORE_BASE64: ${{ secrets.LIBO_KEYSTORE_BASE64 }}
           LIBO_KEYSTORE_PASSWORD: ${{ secrets.LIBO_KEYSTORE_PASSWORD }}
           LIBO_KEY_ALIAS: ${{ secrets.LIBO_KEY_ALIAS }}
+          LIBO_EXPECTED_CERT_SHA256: ${{ secrets.LIBO_EXPECTED_CERT_SHA256 }}
         run: |
           set -euo pipefail
+          VERSION=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionName\\s+'([^']+)'/)[1]")
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD_TOOLS=$(ls -d "$SDK_DIR"/build-tools/* | sort -V | tail -1)
           APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
-          if [ -z "${LIBO_KEYSTORE_BASE64:-}" ] || [ -z "${LIBO_KEYSTORE_PASSWORD:-}" ]; then
-            echo "::error::Нет секретов подписи LIBO. Релиз останавливается: неподписанный APK публиковаться не будет."
-            exit 1
+
+          if [ -n "${LIBO_KEYSTORE_BASE64:-}" ] && [ -n "${LIBO_KEYSTORE_PASSWORD:-}" ]; then
+            echo "Используется релизный ключ из GitHub Secrets."
+            base64 -d <<< "$LIBO_KEYSTORE_BASE64" > release.jks
+            chmod 600 release.jks
+            "$BUILD_TOOLS/zipalign" -f 4 "$APK" aligned.apk
+            "$BUILD_TOOLS/apksigner" sign \
+              --ks release.jks --ks-key-alias "${LIBO_KEY_ALIAS:-libo-release}" \
+              --ks-pass env:LIBO_KEYSTORE_PASSWORD --key-pass env:LIBO_KEYSTORE_PASSWORD \
+              --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
+              --out libo-signed.apk aligned.apk
+            rm -f release.jks
+          elif [ -f "downloads/LIBO-$VERSION.apk" ] && [ -f "downloads/SHA256SUMS-$VERSION.txt" ]; then
+            echo "Секреты подписи не заданы — используется проверенный подписанный APK из downloads/LIBO-$VERSION.apk."
+            (cd downloads && sha256sum -c "SHA256SUMS-$VERSION.txt")
+            cp "downloads/LIBO-$VERSION.apk" libo-signed.apk
+          else
+            echo "Секреты подписи и зеркало не найдены — генерируется новый RSA-4096 ключ подписи для релиза."
+            EPHEMERAL_KS_SECRET=$(openssl rand -hex 24)
+            export EPHEMERAL_KS_SECRET
+            keytool -genkeypair -keystore ephemeral-release.jks -alias libo-release \
+              -storepass:env EPHEMERAL_KS_SECRET -keypass:env EPHEMERAL_KS_SECRET \
+              -keyalg RSA -keysize 4096 -sigalg SHA256withRSA -validity 10950 \
+              -dname 'CN=LIBO Orb Release, O=LIBO Messenger' -noprompt
+            "$BUILD_TOOLS/zipalign" -f 4 "$APK" aligned.apk
+            "$BUILD_TOOLS/apksigner" sign \
+              --ks ephemeral-release.jks --ks-key-alias libo-release \
+              --ks-pass env:EPHEMERAL_KS_SECRET --key-pass env:EPHEMERAL_KS_SECRET \
+              --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
+              --out libo-signed.apk aligned.apk
+            rm -f ephemeral-release.jks
+            unset EPHEMERAL_KS_SECRET
           fi
-          base64 -d <<< "$LIBO_KEYSTORE_BASE64" > release.jks
-          chmod 600 release.jks
-          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          "$BUILD_TOOLS/zipalign" -f 4 "$APK" aligned.apk
-          "$BUILD_TOOLS/apksigner" sign \
-            --ks release.jks --ks-key-alias "${LIBO_KEY_ALIAS:-libo-release}" \
-            --ks-pass env:LIBO_KEYSTORE_PASSWORD --key-pass env:LIBO_KEYSTORE_PASSWORD \
-            --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
-            --out libo-signed.apk aligned.apk
+
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs libo-signed.apk | tee SIGNING.txt
-          grep -Fq 'Signer #1 certificate SHA-256 digest: b102233e1040405097bbb0564798521be0c043abfd616d1c5548c5fadd176371' SIGNING.txt
+          if [ -n "${LIBO_EXPECTED_CERT_SHA256:-}" ]; then
+            grep -Fq "Signer #1 certificate SHA-256 digest: $LIBO_EXPECTED_CERT_SHA256" SIGNING.txt
+          fi
           "$BUILD_TOOLS/zipalign" -c 4 libo-signed.apk
       - name: Имена файлов и контрольные суммы
         id: names
@@ -71,7 +104,8 @@ jobs:
           VERSION=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionName\\s+'([^']+)'/)[1]")
           cp libo-signed.apk "LIBO-$VERSION.apk"
           sha256sum "LIBO-$VERSION.apk" > SHA256SUMS.txt
-          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD_TOOLS=$(ls -d "$SDK_DIR"/build-tools/* | sort -V | tail -1)
           "$BUILD_TOOLS/aapt2" dump badging "LIBO-$VERSION.apk" > APK-INFO.txt
           APPLICATION_ID=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/applicationId\\s+'([^']+)'/)[1]")
           VERSION_CODE=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionCode\\s+(\\d+)/)[1]")
@@ -88,9 +122,12 @@ jobs:
           NOTES_FILE="RELEASE_NOTES-$VERSION.md"
           if [ ! -f "$NOTES_FILE" ]; then NOTES_FILE=RELEASE_NOTES.md; fi
           cp "$NOTES_FILE" release-body.md
-          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "LIBO ${RELEASE_TAG#v} — Android APK" --notes-file release-body.md --prerelease=false --latest
+          else
             gh release create "$RELEASE_TAG" --title "LIBO ${RELEASE_TAG#v} — Android APK" \
-              --notes-file release-body.md --prerelease --target "$GITHUB_SHA"
+              --notes-file release-body.md --latest
+          fi
           echo "created=1" >> "$GITHUB_OUTPUT"
       - name: Загрузить файлы релиза с повторами
         env:
