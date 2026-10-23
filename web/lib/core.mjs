@@ -1,5 +1,5 @@
 export const VERSION = '2.11.9.5';
-// This prerelease asset keeps the standalone package ID; Android will reject in-place downgrades.
+// Dedicated package ID (app.libo.messenger.orb) signed with its own release key for clean installation.
 export const APK_URL = 'https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk';
 
 // The limits below are the actual limits enforced by the browser client and packet

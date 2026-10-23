@@ -3,8 +3,8 @@
 # SDK / Gradle repositories are unreachable (see scripts/toolchain-sources.json for
 # the pinned external toolchain). GitHub Actions uses Gradle; see .github/workflows.
 #
-# LIBO_BUILD_TYPE=release (default): package app.libo.messenger.standalone, debuggable=false,
-#   signed with the release keystore in LIBO_KEYSTORE (v1+v2+v3).
+# LIBO_BUILD_TYPE=release (default): package from app/build.gradle applicationId, debuggable=false,
+#   signed with the release keystore in LIBO_KEYSTORE (v2+v3).
 # LIBO_BUILD_TYPE=debug: legacy beta behaviour (package suffix .beta, debuggable=true).
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -24,12 +24,13 @@ export LIBO_VERSION
 LIBO_VERSION=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionName\\s+'([^']+)'/)[1]")
 export LIBO_VERSION_CODE
 LIBO_VERSION_CODE=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionCode\s+(\d+)/)[1]")
+APPLICATION_ID=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/applicationId\s+'([^']+)'/)[1]")
 if [ "$BUILD_TYPE" = release ]; then
-  PACKAGE='app.libo.messenger.standalone'
+  PACKAGE="$APPLICATION_ID"
   DEBUGGABLE='false'
   DEBUG_FLAG='false'
 else
-  PACKAGE='app.libo.messenger.standalone.beta'
+  PACKAGE="${APPLICATION_ID}.beta"
   DEBUGGABLE='true'
   DEBUG_FLAG='true'
 fi
@@ -104,7 +105,7 @@ if [ "$BUILD_TYPE" = release ]; then
     "$KEYTOOL" -genkeypair -keystore "$KEYSTORE" -alias "$ALIAS" \
       -storepass:env LIBO_KEYSTORE_PASSWORD -keypass:env LIBO_KEYSTORE_PASSWORD \
       -keyalg RSA -keysize 4096 -sigalg SHA256withRSA -validity 10950 \
-      -dname 'CN=LIBO Release, O=LIBO Messenger' -noprompt
+      -dname 'CN=LIBO Orb Release, O=LIBO Messenger' -noprompt
     chmod 600 "$KEYSTORE"
   fi
   export LIBO_KEYSTORE_PASSWORD
@@ -126,7 +127,7 @@ fi
 APK="$ROOT/artifacts/LIBO-$LIBO_VERSION.apk"
 "$JAVA" -jar "$LIBO_TOOLCHAIN/apksigner.jar" sign --ks "$KEYSTORE" --ks-key-alias "$ALIAS" \
   --ks-pass "env:$PASS_ENV" --key-pass "env:$PASS_ENV" \
-  --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
+  --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
   --out "$APK" "$WORK/aligned.apk"
 "$LIBO_TOOLCHAIN/zipalign" -c 4 "$APK"
 "$JAVA" -jar "$LIBO_TOOLCHAIN/apksigner.jar" verify --verbose --print-certs "$APK" | tee "$ROOT/artifacts/SIGNING.txt"

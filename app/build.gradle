@@ -6,10 +6,10 @@ android {
     buildToolsVersion '35.0.0'
 
     defaultConfig {
-        applicationId 'app.libo.messenger.standalone'
+        applicationId 'app.libo.messenger.orb'
         minSdk 26
         targetSdk 35
-        versionCode 2110905 // 2.11.9.5; intentionally below the published 2.12.0 versionCode.
+        versionCode 2110905
         versionName '2.11.9.5'
     }
     buildFeatures { buildConfig true }

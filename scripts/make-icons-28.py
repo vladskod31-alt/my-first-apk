@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 MASTER = 1024
@@ -75,30 +75,41 @@ def make_mark(size: int = MASTER) -> Image.Image:
     md = ImageDraw.Draw(mask)
     md.rounded_rectangle(body_box, radius=78 * s, fill=255)
     md.polygon(tail, fill=255)
+
+    # Build a seamless outer rim from the combined bubble+tail mask so no stroke cuts into the tail.
+    stroke_px = max(3, round(3 * s) | 1)
+    outer_mask = mask.filter(ImageFilter.MaxFilter(stroke_px * 2 + 1))
+    rim_mask = ImageChops.subtract(outer_mask, mask).filter(ImageFilter.GaussianBlur(max(0.5, 0.6 * s)))
+
     light = Image.linear_gradient("L").resize((size, size))
     bubble = ImageOps.colorize(light, black="#fffaff", white="#e7d8ff").convert("RGBA")
     bubble.putalpha(mask)
     canvas = Image.alpha_composite(canvas, bubble)
 
-    d = ImageDraw.Draw(canvas, "RGBA")
-    d.rounded_rectangle(body_box, radius=78 * s, outline=(255, 255, 255, 210), width=max(1, round(3 * s)))
-    d.line([p(179, 342), p(151, 421), p(252, 365)], fill=(255, 255, 255, 205), width=max(1, round(3 * s)), joint="curve")
+    rim = Image.new("RGBA", (size, size), (255, 255, 255, 0))
+    rim.putalpha(rim_mask.point(lambda a: round(a * 0.85)))
+    canvas = Image.alpha_composite(canvas, rim)
 
     def orb(cx: float, cy: float, radius: float, light_rgb, edge_rgb) -> None:
         cxp, cyp, rp = round(cx * s), round(cy * s), radius * s
+        # Render at 2x supersampling for anti-aliased sphere edges, with off-center 3D radial shading.
         od = ImageDraw.Draw(canvas, "RGBA")
-        # Concentric color steps produce a clean radial-gradient sphere at every density.
-        for step in range(72, 0, -1):
-            fraction = step / 72
+        fx, fy = cxp - rp * 0.28, cyp - rp * 0.30
+        steps = 96
+        for step in range(steps, 0, -1):
+            fraction = step / steps
             r = rp * fraction
-            edge_weight = fraction ** 0.78
+            cur_x = fx + (cxp - fx) * fraction
+            cur_y = fy + (cyp - fy) * fraction
+            edge_weight = fraction ** 0.82
             colour = tuple(round(light_rgb[i] * (1 - edge_weight) + edge_rgb[i] * edge_weight) for i in range(3)) + (255,)
-            od.ellipse((round(cxp - r), round(cyp - r), round(cxp + r), round(cyp + r)), fill=colour)
-        highlight = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+            od.ellipse((round(cur_x - r), round(cur_y - r), round(cur_x + r), round(cur_y + r)), fill=colour)
+        # Initialize highlight layer with transparent WHITE (255,255,255,0) so GaussianBlur never bleeds dark fringes.
+        highlight = Image.new("RGBA", (size, size), (255, 255, 255, 0))
         hd = ImageDraw.Draw(highlight)
-        hd.ellipse((cxp - rp * .62, cyp - rp * .73, cxp - rp * .04, cyp - rp * .22), fill=(255, 255, 255, 145))
-        hd.ellipse((cxp - rp * .43, cyp - rp * .62, cxp - rp * .23, cyp - rp * .43), fill=(255, 255, 255, 115))
-        highlight = highlight.filter(ImageFilter.GaussianBlur(3 * s))
+        hd.ellipse((cxp - rp * .60, cyp - rp * .70, cxp - rp * .06, cyp - rp * .24), fill=(255, 255, 255, 130))
+        hd.ellipse((cxp - rp * .44, cyp - rp * .60, cxp - rp * .22, cyp - rp * .42), fill=(255, 255, 255, 150))
+        highlight = highlight.filter(ImageFilter.GaussianBlur(max(1.0, 5.5 * s)))
         canvas.alpha_composite(highlight)
 
     orb(207, 231, 68, (228, 191, 255), (102, 44, 192))
