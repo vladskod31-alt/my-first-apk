@@ -34,6 +34,13 @@ apksigner verify --verbose --print-certs LIBO-2.12.0.apk
 > `LIBO_KEYSTORE_BASE64`, `LIBO_KEYSTORE_PASSWORD`, `LIBO_KEY_ALIAS`) to keep one signer for
 > future versions.
 
+## Prerelease rollback: 2.11.9.5
+
+- Asset: [LIBO-2.11.9.5.apk](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk)
+- Package: `app.libo.messenger.standalone` · versionCode `2110905` · versionName `2.11.9.5`
+- Verification files: `SIGNING.txt`, `APK-INFO.txt`, and `SHA256SUMS.txt` are attached to the same GitHub release.
+- This is a prerelease rollback below 2.12.0 (`2120000`), not a newer update. Android requires uninstalling 2.12.0 first; that may erase local chats and attachments. Export a backup before uninstalling.
+
 ## Previous builds
 
 - `LIBO-2.11.4.5-standalone.apk` — 313,723 B ·

@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -41,7 +41,6 @@ jobs:
       - name: Gradle assembleRelease (без подписи)
         run: ./gradlew --no-daemon assembleRelease
       - name: Подпись релизным ключом из секретов
-        id: sign
         env:
           LIBO_KEYSTORE_BASE64: ${{ secrets.LIBO_KEYSTORE_BASE64 }}
           LIBO_KEYSTORE_PASSWORD: ${{ secrets.LIBO_KEYSTORE_PASSWORD }}
@@ -50,10 +49,8 @@ jobs:
           set -euo pipefail
           APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
           if [ -z "${LIBO_KEYSTORE_BASE64:-}" ] || [ -z "${LIBO_KEYSTORE_PASSWORD:-}" ]; then
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Секреты подписи не заданы: публикуется НЕПОДПИСАННЫЙ APK только как артефакт сборки."
-            mv "$APK" libo-unsigned.apk
-            exit 0
+            echo "::error::Нет секретов подписи LIBO. Релиз останавливается: неподписанный APK публиковаться не будет."
+            exit 1
           fi
           base64 -d <<< "$LIBO_KEYSTORE_BASE64" > release.jks
           chmod 600 release.jks
@@ -65,19 +62,20 @@ jobs:
             --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
             --out libo-signed.apk aligned.apk
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs libo-signed.apk | tee SIGNING.txt
+          grep -Fq 'Signer #1 certificate SHA-256 digest: b102233e1040405097bbb0564798521be0c043abfd616d1c5548c5fadd176371' SIGNING.txt
           "$BUILD_TOOLS/zipalign" -c 4 libo-signed.apk
-          echo "signed=true" >> "$GITHUB_OUTPUT"
       - name: Имена файлов и контрольные суммы
         id: names
         run: |
           set -euo pipefail
-          VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")
-          SIGNED=${{ steps.sign.outputs.signed }}
-          if [ "$SIGNED" = true ]; then SRC=libo-signed.apk; else SRC=libo-unsigned.apk; fi
-          cp "$SRC" "LIBO-$VERSION.apk"
+          VERSION=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionName\\s+'([^']+)'/)[1]")
+          cp libo-signed.apk "LIBO-$VERSION.apk"
           sha256sum "LIBO-$VERSION.apk" > SHA256SUMS.txt
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          "$BUILD_TOOLS/aapt2" dump badging "LIBO-$VERSION.apk" > APK-INFO.txt || true
+          "$BUILD_TOOLS/aapt2" dump badging "LIBO-$VERSION.apk" > APK-INFO.txt
+          APPLICATION_ID=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/applicationId\\s+'([^']+)'/)[1]")
+          VERSION_CODE=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionCode\\s+(\\d+)/)[1]")
+          grep -Fq "package: name='$APPLICATION_ID' versionCode='$VERSION_CODE' versionName='$VERSION'" APK-INFO.txt
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           cat SHA256SUMS.txt
       - name: Создать или обновить релиз
@@ -86,13 +84,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          SIGNED=${{ steps.sign.outputs.signed }}
-          NOTES_FILE=RELEASE_NOTES.md
-          if [ "$SIGNED" != true ]; then
-            { echo "> ⚠️ Сборка без подписи: секреты релизного ключа не заданы. Устанавливать не рекомендуется."; echo; cat "$NOTES_FILE"; } > release-body.md
-          else
-            cp "$NOTES_FILE" release-body.md
-          fi
+          VERSION=${{ steps.names.outputs.version }}
+          NOTES_FILE="RELEASE_NOTES-$VERSION.md"
+          if [ ! -f "$NOTES_FILE" ]; then NOTES_FILE=RELEASE_NOTES.md; fi
+          cp "$NOTES_FILE" release-body.md
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
             gh release create "$RELEASE_TAG" --title "LIBO ${RELEASE_TAG#v} — Android APK" \
               --notes-file release-body.md --prerelease --target "$GITHUB_SHA"
@@ -106,14 +101,15 @@ jobs:
           for attempt in 1 2 3 4 5; do
             echo "Попытка загрузки $attempt"
             if gh release upload "$RELEASE_TAG" \
-                 "LIBO-$VERSION.apk" SHA256SUMS.txt APK-INFO.txt \
+                 "LIBO-$VERSION.apk" SHA256SUMS.txt APK-INFO.txt SIGNING.txt \
                  --clobber; then
               echo "Файлы релиза загружены."
               exit 0
             fi
             sleep $((attempt * 20))
           done
-          echo "::warning::uploads.github.com недоступен из этой среды: файлы останутся в каталоге downloads/ тега (основная ссылка релиза)."
+          echo "::error::Не удалось загрузить APK и файлы проверки в GitHub Release после пяти попыток."
+          exit 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:

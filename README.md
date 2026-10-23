@@ -21,6 +21,10 @@
 - [SHA256SUMS-2.12.0.txt](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/SHA256SUMS-2.12.0.txt)
 - Подробиці підпису та інсталяції — у [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## Android prerelease 2.11.9.5 — intentionally lower version
+
+The requested `2.11.9.5` build is a prerelease based on the current standalone source, not a rollback to the older 2.11.4.5 codebase. Its Android `versionCode` is `2110905`, lower than the published 2.12.0 (`2120000`), so Android will reject an in-place downgrade. Installing it over 2.12.0 requires uninstalling first, which may erase locally stored chats and attachments; export a backup before uninstalling. The release workflow refuses to publish an unsigned APK. See [RELEASE_NOTES-2.11.9.5.md](RELEASE_NOTES-2.11.9.5.md) for details and the [2.11.9.5 prerelease APK](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk).
+
 ## Дев’ять нових функцій 2.12
 
 | # | Функція | Де |

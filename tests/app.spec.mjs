@@ -3,7 +3,9 @@ import { test, expect } from '@playwright/test';
 async function ready(page) {
   await page.goto('/');
   await expect(page.locator('#chat-list .chat-row')).toHaveCount(1);
-  await expect(page.locator('#network-status')).toContainText('Вы в сети');
+  await expect(page.locator('#network-status')).toContainText('Сигнал доступен');
+  await expect(page.locator('#storage-status')).toContainText('История локально');
+  await expect(page.locator('#boot-loader')).toBeHidden();
 }
 async function profile(page, name) {
   await page.locator('#profile-button').click();
@@ -43,11 +45,11 @@ test('real welcome, no invented contacts, valid QR and version; no open-source c
   // 2.11.4.5: the UI must not mention open source, source code hosting or GitHub.
   await page.locator('.quiet-button').click();
   const about = await page.locator('#about-dialog').innerText();
-  expect(about).toContain('2.12.0');
+  expect(about).toContain('2.11.9.5');
   expect(about).not.toMatch(/открыт(?:ым|ый|ого)? (?:исходн|код)/i);
   expect(about).not.toMatch(/github/i);
   expect(await page.locator('#about-features li').count()).toBe(20);
-  expect(await page.locator('#about-version').innerText()).toBe('2.12.0');
+  expect(await page.locator('#about-version').innerText()).toBe('2.11.9.5');
   expect(errors).toEqual([]);
 });
 
@@ -228,7 +230,7 @@ test('offline queue survives sender reload and is delivered exactly once after r
   await expect(alice.locator('.message-text')).toHaveText('Доставить после возвращения');
   bob = await bobContext.newPage();
   await bob.goto('/');
-  await expect(bob.locator('#network-status')).toContainText('Вы в сети');
+  await expect(bob.locator('#network-status')).toContainText('Сигнал доступен');
   await bob.locator('.chat-row').filter({ hasText: 'Отправитель' }).click();
   await expect(bob.locator('.message-text')).toHaveText('Доставить после возвращения', { timeout: 40_000 });
   await expect(alice.locator('.message-status')).toHaveAttribute('data-status', 'delivered');

@@ -774,3 +774,72 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (prefers-reduced-motion: reduce) {
   .message-row, .emoji-picker, .dialog[open], .palette, .palette-card, .action-sheet, .action-sheet .sheet-card, .scroll-down, .toast { animation: none !important; }
 }
+
+/* 2.11.9.5: local-first loading, connection clarity and responsive navigation. */
+.brand-mark { background: linear-gradient(135deg, #7741dd 0%, #a344cf 56%, #d849a3 100%); }
+.brand-glyph > span:before { background: #ffb8df; }
+
+.connection-bar { height: 54px; gap: 7px; min-width: 0; }
+.connection-statuses { display: flex; flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 4px; }
+.network-status, .storage-status { max-width: 100%; min-width: 0; }
+.network-status > span, .storage-status > span { overflow: hidden; text-overflow: ellipsis; }
+.network-status[data-state='connecting'] i, .network-status[data-state='offline'] i { background: #d59b42; box-shadow: 0 0 0 3px #d59b4226; }
+.network-status[data-state='error'] i { background: #e2728f; box-shadow: 0 0 0 3px #e2728f26; }
+.storage-status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 8px; font-weight: 650; line-height: 1.2; white-space: nowrap; }
+.storage-status i { width: 5px; height: 5px; border-radius: 50%; flex: 0 0 auto; background: #a77be0; box-shadow: 0 0 0 2px color-mix(in srgb, #a77be0 18%, transparent); }
+.storage-status.ready i { background: #70ad91; box-shadow: 0 0 0 2px #70ad9126; }
+.storage-status.waiting i { background: #d59b42; box-shadow: 0 0 0 2px #d59b4226; }
+
+.boot-loader { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; padding: 24px; background: var(--bg); color: var(--text); opacity: 1; transition: opacity .24s ease, visibility .24s ease; }
+.boot-loader.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+.boot-loader-card { display: grid; justify-items: center; gap: 12px; width: min(100%, 310px); padding: 30px 26px; border: 1px solid var(--line); border-radius: 24px; background: var(--panel); box-shadow: var(--shadow); text-align: center; }
+.boot-loader-card > strong { margin-top: 2px; font-size: 14px; font-weight: 750; letter-spacing: -.2px; }
+.boot-loader-caption { color: var(--muted); font-size: 10px; }
+.orb-loader { position: relative; display: grid; place-items: center; width: 68px; height: 68px; }
+.orb-loader::before { content: ''; position: absolute; inset: 4px; border: 1px solid color-mix(in srgb, #a855f7 34%, transparent); border-radius: 50%; animation: orb-track 3.4s linear infinite; }
+.orb-loader::after { content: ''; position: absolute; inset: 12px; border: 1px dashed color-mix(in srgb, #ec4899 24%, transparent); border-radius: 50%; }
+.orb { position: absolute; width: 26px; height: 26px; border-radius: 50%; }
+.orb-violet { z-index: 1; transform: translateX(-10px); background: radial-gradient(circle at 30% 25%, #f5ddff 0%, #ce8bff 22%, #8747ed 66%, #5528a4 100%); box-shadow: 0 5px 15px #8747ed66, inset -2px -3px 6px #30165f55; animation: orb-violet 1.7s cubic-bezier(.45,0,.55,1) infinite alternate; }
+.orb-pink { z-index: 2; transform: translateX(10px); background: radial-gradient(circle at 30% 25%, #ffe5f2 0%, #ff9dd2 23%, #ec4899 68%, #a52369 100%); box-shadow: 0 5px 15px #ec489966, inset -2px -3px 6px #61163f55; animation: orb-pink 1.7s cubic-bezier(.45,0,.55,1) infinite alternate; }
+@keyframes orb-violet { 0% { transform: translate(-13px, 2px) scale(.91); } 50% { transform: translate(-2px, -5px) scale(1.04); } 100% { transform: translate(9px, 2px) scale(.94); } }
+@keyframes orb-pink { 0% { transform: translate(13px, -2px) scale(.91); } 50% { transform: translate(2px, 5px) scale(1.04); } 100% { transform: translate(-9px, -2px) scale(.94); } }
+@keyframes orb-track { to { transform: rotate(360deg); } }
+.orb-loader-progress { display: block; width: 118px; height: 3px; margin-top: 4px; overflow: hidden; border-radius: 999px; background: var(--surface); }
+.orb-loader-progress i { display: block; width: 42%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8b5cf6, #ec4899); animation: orb-progress 1.4s ease-in-out infinite; }
+@keyframes orb-progress { from { transform: translateX(-110%); } to { transform: translateX(250%); } }
+.message-loading { min-height: 100%; display: grid; align-content: center; justify-items: center; gap: 9px; }
+.message-loading .orb-loader { width: 52px; height: 52px; }
+.message-loading .orb { width: 21px; height: 21px; }
+.message-loading-copy { display: grid; justify-items: center; gap: 4px; text-align: center; }
+.message-loading-copy strong { font-size: 11px; font-weight: 700; }
+.message-loading-copy span { color: var(--muted); font-size: 9px; }
+
+.rail-label { display: none; }
+.rail-button.active > svg { animation: nav-icon-pop .26s cubic-bezier(.2,.8,.2,1); }
+@keyframes nav-icon-pop { 0% { transform: scale(.84); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+
+@media (max-width: 760px) {
+  .rail-main, .rail-bottom { gap: 2px; }
+  .rail-bottom #theme-toggle { display: none; }
+  .rail-bottom > .rail-button:not(#theme-toggle) { display: flex; }
+  .rail-button { width: 50px; height: 58px; flex-direction: column; justify-content: center; gap: 3px; padding: 4px 2px; }
+  .rail-button > svg { width: 20px; height: 20px; }
+  .rail-label { display: block; max-width: 100%; overflow: hidden; color: var(--muted); font-size: 8px; font-weight: 700; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+  .rail-button.active { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+  .rail-button.active .rail-label { color: var(--accent-text); }
+  .rail-button.active:after { display: block; top: -7px; left: 50%; width: 24px; height: 3px; transform: translateX(-50%); border-radius: 999px; background: linear-gradient(90deg, #8b5cf6, #ec4899); box-shadow: 0 0 10px #c34ad85c; }
+  .connection-bar { height: 46px; gap: 5px; }
+  .network-status { padding: 3px 7px 3px 6px; font-size: 8px; }
+  .storage-status { gap: 5px; font-size: 8px; }
+}
+
+@media (max-width: 380px) {
+  .rail-button { width: 45px; }
+  .rail-label { font-size: 7.5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-loader::before, .orb-loader-progress i, .orb-violet, .orb-pink, .rail-button.active > svg { animation: none !important; }
+  .orb-violet { transform: translateX(-10px); }
+  .orb-pink { transform: translateX(10px); }
+}

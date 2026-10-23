@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>LIBO v-1.4.6 — Super Mega Stable</title>
+    <title>LIBO v-1.4.7 — Super Mega Stable</title>
     <style>
         * {
             margin: 0;
@@ -1832,12 +1832,19 @@ nav{position:relative;z-index:5000;flex:0 0 auto;min-height:62px;padding-bottom:
  pointer-events:none!important
 }
 </style>
-<meta name="libo-version" content="1.4.6">
+<meta name="libo-version" content="1.4.7">
 </head>
 <body>
-<!-- Splash -->
-    <div class="splash">
-        <div class="splash-logo" aria-label="Загрузка LIBO"></div>
+<!-- LIBO v1.4.7 startup screen -->
+    <div class="splash" role="status" aria-live="polite" aria-label="Завантаження LIBO">
+        <div class="splash-loader-card">
+            <div class="libo-exchange-orbs" aria-hidden="true">
+                <span class="libo-exchange-orb libo-exchange-orb--violet"></span>
+                <span class="libo-exchange-orb libo-exchange-orb--pink"></span>
+            </div>
+            <div class="splash-wordmark">LIBO</div>
+            <div class="splash-caption">Готуємо ваші чати</div>
+        </div>
     </div>
 
     <!-- Notification -->
@@ -1852,8 +1859,19 @@ nav{position:relative;z-index:5000;flex:0 0 auto;min-height:62px;padding-bottom:
                 <div class="header-subtitle" id="headerSubtitle">Чати</div>
             </div>
             <div class="header-icons">
-                <button class="icon-btn header-icon-btn" id="searchBtn" aria-label="Пошук">⌕</button>
-                <button class="icon-btn header-icon-btn" id="menuBtn" aria-label="Меню">⋮</button>
+                <button class="libo-connection-status" id="liboConnectionStatus" type="button" aria-label="Статус: локальне збереження" title="Дані LIBO зберігаються на цьому пристрої">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8h10M7 12h6"/><circle cx="17" cy="15" r="1"/>
+                    </svg>
+                    <span class="libo-connection-label" id="liboConnectionLabel">Локально</span>
+                    <span class="libo-connection-dot" aria-hidden="true"></span>
+                </button>
+                <button class="icon-btn header-icon-btn" id="searchBtn" aria-label="Пошук" title="Пошук">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.2 4.2"/></svg>
+                </button>
+                <button class="icon-btn header-icon-btn" id="menuBtn" aria-label="Меню" title="Меню">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+                </button>
             </div>
         </header>
 
@@ -1877,12 +1895,12 @@ nav{position:relative;z-index:5000;flex:0 0 auto;min-height:62px;padding-bottom:
                             </div>
                             <div class="chat-header-text">
                                 <h3 id="chatViewName"></h3>
-                                <p id="chatViewStatus">Онлайн</p>
+                                <p id="chatViewStatus" class="libo-chat-local-status"><span class="libo-status-dot" aria-hidden="true"></span><span>Локально</span></p>
                             </div>
                         </div>
                         <button class="icon-btn" id="chatSettingsBtn">⚙️</button>
                     </div>
-                    <div class="chat-messages" id="chatMessages"></div>
+                    <div class="chat-messages" id="chatMessages" aria-live="polite" aria-busy="false"></div>
                     <div class="chat-input-area">
                         <input type="text" class="chat-input" id="chatInput" placeholder="Повідомлення...">
                         <button class="send-btn">➤</button>
@@ -1901,6 +1919,18 @@ nav{position:relative;z-index:5000;flex:0 0 auto;min-height:62px;padding-bottom:
             <!-- Settings -->
             <div class="section" id="settingsSection">
                 <div class="settings-list">
+                    <div class="libo-sync-card" id="liboSyncStatusCard" role="status" aria-live="polite">
+                        <div class="libo-sync-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8h10M7 12h7"/><circle cx="17" cy="16" r="1.1"/>
+                            </svg>
+                        </div>
+                        <div class="libo-sync-copy">
+                            <b>Статус збереження</b>
+                            <span id="liboSyncDetail">Дані зберігаються на пристрої. Серверна синхронізація не підключена.</span>
+                        </div>
+                        <span class="libo-sync-pill" id="liboSyncPill"><i></i>Локально</span>
+                    </div>
                     <div class="settings-group">
                         <div class="settings-group-title">Мова</div>
                         <div class="settings-item">
@@ -1993,7 +2023,7 @@ nav{position:relative;z-index:5000;flex:0 0 auto;min-height:62px;padding-bottom:
                             <div class="libo-security-note">Автоблокування вимкнено. LIBO не блокує застосунок автоматично.</div>
                         </div>
                     </div>
-                    <div class="settings-version">LIBO <b>v-1.4.0</b></div>
+                    <div class="settings-version">LIBO <b>v-1.4.7</b></div>
                 </div>
             </div>
 
@@ -2021,41 +2051,41 @@ nav{position:relative;z-index:5000;flex:0 0 auto;min-height:62px;padding-bottom:
         </div>
 
         <!-- Navigation -->
-        <nav>
-            <div class="nav-item active" data-section="chat">
-                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <nav aria-label="Основна навігація">
+            <button type="button" class="nav-item active" data-section="chat" aria-current="page" aria-label="Чати">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M20.2 11.2a7.7 7.7 0 0 1-8 7.5 8.7 8.7 0 0 1-3.6-.8L4 19l1.2-3.5a7.1 7.1 0 0 1-1-3.7 7.7 7.7 0 0 1 8-7.5 7.7 7.7 0 0 1 8 6.9Z"/>
+                    <path d="M8.5 10h7M8.5 13.5h4.5"/>
                 </svg>
-                <div class="nav-label">Чати</div>
-            </div>
-            <div class="nav-item" data-section="contacts">
-                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                <span class="nav-label">Чати</span>
+            </button>
+            <button type="button" class="nav-item" data-section="contacts" aria-label="Контакти">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="9" cy="8" r="3.5"/><path d="M2.8 20v-1.2a5.2 5.2 0 0 1 5.2-5.2h2a5.2 5.2 0 0 1 5.2 5.2V20"/>
+                    <path d="M16 4.8a3.5 3.5 0 0 1 0 6.7M17.4 14a4.2 4.2 0 0 1 3.8 4.2V20"/>
                 </svg>
-                <div class="nav-label">Контакти</div>
-            </div>
-            <div class="nav-item" data-section="settings">
-                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m3.08 3.08l4.24 4.24M1 12h6m6 0h6"/>
+                <span class="nav-label">Контакти</span>
+            </button>
+            <button type="button" class="nav-item" data-section="settings" aria-label="Налаштування">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 8.3a3.7 3.7 0 1 0 0 7.4 3.7 3.7 0 0 0 0-7.4Z"/>
+                    <path d="m19.4 13.5 1.1.8-1.5 2.6-1.3-.6a7.8 7.8 0 0 1-1.7 1l-.2 1.4h-3l-.2-1.4a7.8 7.8 0 0 1-1.7-1l-1.3.6-1.5-2.6 1.1-.8a7.5 7.5 0 0 1 0-2l-1.1-.8 1.5-2.6 1.3.6a7.8 7.8 0 0 1 1.7-1l.2-1.4h3l.2 1.4a7.8 7.8 0 0 1 1.7 1l1.3-.6 1.5 2.6-1.1.8a7.5 7.5 0 0 1 0 2Z"/>
                 </svg>
-                <div class="nav-label">Налаштування</div>
-            </div>
-            <div class="nav-item" data-section="profile">
-                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
+                <span class="nav-label">Налаштування</span>
+            </button>
+            <button type="button" class="nav-item" data-section="profile" aria-label="Профіль">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>
                 </svg>
-                <div class="nav-label">Профіль</div>
-            </div>
+                <span class="nav-label">Профіль</span>
+            </button>
         </nav>
     </div>
 
     <!-- FAB -->
-    <button class="fab" id="fabBtn">+</button>
+    <button class="fab" id="fabBtn" type="button" aria-label="Створити чат, контакт або канал" aria-expanded="false" title="Створити">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
 
     <!-- Create Menu -->
     <div class="create-menu" id="createMenu">
@@ -2266,10 +2296,10 @@ nav{position:relative;z-index:5000;flex:0 0 auto;min-height:62px;padding-bottom:
    const btn=$('liboSecSave'); if(btn)btn.disabled=true;
    try{
      if(backupMode){
-       const payload={app:'LIBO',version:'v-1.4.0',createdAt:new Date().toISOString(),data:collectAppData()};
+       const payload={app:'LIBO',version:'v-1.4.7',createdAt:new Date().toISOString(),data:collectAppData()};
        const box=await seal(JSON.stringify(payload),p);
-       const blob=new Blob([JSON.stringify({app:'LIBO',version:'v-1.4.0',type:'encrypted-backup',algorithm:box.algorithm,kdf:box.kdf,iterations:box.iterations,salt:box.salt,iv:box.iv,data:box.data},null,2)],{type:'application/json'});
-       const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='libo-backup-v-1.4.0.libo'; a.click();
+       const blob=new Blob([JSON.stringify({app:'LIBO',version:'v-1.4.7',type:'encrypted-backup',algorithm:box.algorithm,kdf:box.kdf,iterations:box.iterations,salt:box.salt,iv:box.iv,data:box.data},null,2)],{type:'application/json'});
+       const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='libo-backup-v-1.4.7.libo'; a.click();
        setTimeout(()=>URL.revokeObjectURL(a.href),1000);
        closePasswordModal(); setStatus('Зашифрованный backup с данными готов');
      }else{
@@ -3110,7 +3140,7 @@ const backup=document.getElementById('liboBackupBtn');
           <path d="m9 12 2 2 4-4"/>
         </svg>
       </div>
-      <div><b>Безпека і захист</b><small>LIBO Security • v-1.4.0</small></div>
+      <div><b>Безпека і захист</b><small>LIBO Security • v-1.4.7</small></div>
     </div>
 
     <button class="libo-sec-row" id="liboSecProtect">
@@ -3433,7 +3463,7 @@ function setupComposer(){let s=$('liboPrivateChatScreen');if(!s)return;let c=s.q
 if(att){let fi=document.createElement('input');fi.type='file';fi.multiple=true;fi.hidden=true;fi.accept='image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip';document.body.appendChild(fi);att.onclick=()=>fi.click();fi.onchange=()=>{[...fi.files].forEach(f=>sendMessage('',f));fi.value=''}}}
 function sendMessage(text,file){let d=getChats(),c=current?d[current.id]:null,input=$('liboPrivateInput');if(!c)return;let value=(text ?? (input?.value || '')).trim();if(!value&&!file)return;c.messages.push({id:crypto.randomUUID?.()||String(Date.now()),text:value,me:true,read:false,time:Date.now(),reply:reply?.text||null,file:file?file.name:null});d[c.id]=c;saveChats(d);saveDraft(c.id,'');reply=null;$('l139Replybar')?.classList.remove('show');if(input)input.value='';redraw();toast(file?'Файл добавлен':'Сообщение отправлено');}
 window.LIBO139Open=(id,name)=>{current={id,name};let c=ensureChat(id,name);c.unread=0;saveChats(getChats());let screen=$('liboPrivateChatScreen');if(screen){screen.classList.add('show');setupComposer();if($('liboPrivateInput'))$('liboPrivateInput').value=draft(id);redraw();}};
-window.LIBO139Enhance={indexedDB:()=>idb(),backup:async()=>{let data={version:'v-1.4.0',local:{},indexedDB:await all('chats')};for(let i=0;i<localStorage.length;i++){let k=localStorage.key(i);if(k&&!k.startsWith('libo_security'))data.local[k]=localStorage.getItem(k)};let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='libo-backup-v-1.4.0.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('Backup экспортирован')}};
+window.LIBO139Enhance={indexedDB:()=>idb(),backup:async()=>{let data={version:'v-1.4.7',local:{},indexedDB:await all('chats')};for(let i=0;i<localStorage.length;i++){let k=localStorage.key(i);if(k&&!k.startsWith('libo_security'))data.local[k]=localStorage.getItem(k)};let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='libo-backup-v-1.4.7.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('Backup экспортирован')}};
 function route(el){let row=el.closest?.('[data-chat-id],[data-chat],[data-id]');if(!row)return;let id=row.dataset.chatId||row.dataset.chat||row.dataset.id;let name=row.dataset.name||row.querySelector('.chat-name,.name,.title,.chat-title')?.textContent?.trim()||'Личный чат';if(window.LIBO139Open){window.LIBO139Open(id,name);return true}return false}
 document.addEventListener('click',e=>{let a=e.target.closest?.('[data-chat-id],[data-chat],[data-id]');if(a&&!e.target.closest('button,input,textarea,a')){if(route(a))e.preventDefault()};let act=e.target.closest?.('[data-act]');if(act){let row=act.closest('[data-msg-index]'),c=findCurrent(),i=Number(row?.dataset.msgIndex);if(!c||!row)return;e.preventDefault();let m=c.messages[i];let type=act.dataset.act;if(type==='reply'){reply=m;$('l139Replybar')?.classList.add('show');$('l139Replybar .l139-replytext').textContent=m.text||m.file||'Вложение'}else if(type==='edit'){let n=prompt('Изменить сообщение',m.text||'');if(n!==null){let d=getChats();d[c.id]=c;saveChats(d);redraw()}}else if(type==='delete'){c.messages.splice(i,1);let d=getChats();d[c.id]=c;saveChats(d);redraw()}else if(type==='pin'){m.pinned=!m.pinned;let d=getChats();d[c.id]=c;saveChats(d);toast(m.pinned?'Сообщение закреплено':'Закрепление снято')}else if(type==='forward'){navigator.clipboard?.writeText(m.text||'').catch(()=>{});toast('Текст скопирован для пересылки')}}},false);
 // Prevent duplicate legacy chat openings from inline handlers by routing list items once they are interacted with.
@@ -3444,7 +3474,7 @@ function enhanceIcons(){svgBtn('#liboPrivateSend','i139-send','Отправит�
 // Keyboard/viewport stabilization.
 function viewportFix(){let s=$('liboPrivateChatScreen');if(!s)return;let vv=visualViewport;if(vv){document.documentElement.style.setProperty('--l139-vh',vv.height+'px');vv.onresize=()=>{document.documentElement.style.setProperty('--l139-vh',vv.height+'px');requestAnimationFrame(()=>{$('liboPrivateMessages')?.scrollTo({top:$('liboPrivateMessages').scrollHeight,behavior:'instant'})})}}}
 // Diagnostics
-window.LIBO139Diagnostics=async()=>{let tests={version:'v-1.4.0',localStorage:!!window.localStorage,indexedDB:!!window.indexedDB,crypto:!!window.crypto?.subtle,webRTC:!!window.RTCPeerConnection,fileAPI:!!window.FileReader,visualViewport:!!window.visualViewport,duplicateIds:new Set([...document.querySelectorAll('[id]')].map(x=>x.id)).size===document.querySelectorAll('[id]').length};console.table(tests);return tests};
+window.LIBO139Diagnostics=async()=>{let tests={version:'v-1.4.7',localStorage:!!window.localStorage,indexedDB:!!window.indexedDB,crypto:!!window.crypto?.subtle,webRTC:!!window.RTCPeerConnection,fileAPI:!!window.FileReader,visualViewport:!!window.visualViewport,duplicateIds:new Set([...document.querySelectorAll('[id]')].map(x=>x.id)).size===document.querySelectorAll('[id]').length};console.table(tests);return tests};
 (async()=>{try{await idb()}catch{};enhanceIcons();viewportFix();document.addEventListener('visibilitychange',()=>{if(!document.hidden)viewportFix()});window.addEventListener('pageshow',viewportFix);window.LIBO139Diagnostics();})();
 })();
 </script>
@@ -3487,7 +3517,18 @@ window.LIBO139Diagnostics=async()=>{let tests={version:'v-1.4.0',localStorage:!!
 @keyframes l140grad{50%{background-position:100% 70%}}
 @media(prefers-reduced-motion:reduce){.l140dot,.l140-gradient{animation:none}}
 </style>
-<div id="libo140Loader"><div class="l140dot"></div></div>
+<div id="libo140Loader" role="status" aria-live="polite" aria-label="Завантаження LIBO">
+  <div class="libo-loader-card">
+    <div class="libo-exchange-orbs" aria-hidden="true">
+      <span class="libo-exchange-orb libo-exchange-orb--violet"></span>
+      <span class="libo-exchange-orb libo-exchange-orb--pink"></span>
+    </div>
+    <b class="libo-loader-brand">LIBO</b>
+    <span class="libo-loader-title">Відновлюємо чати</span>
+    <span class="libo-loader-caption">Читаємо локальні дані</span>
+    <span class="libo-loader-progress" aria-hidden="true"><i></i></span>
+  </div>
+</div>
 
 <script>
 (()=>{"use strict";
@@ -3533,7 +3574,7 @@ function bindGlobalSounds(){
  document.addEventListener("click",e=>{const x=e.target.closest?.(".chat-item,.contact-item,[data-chat-id],[data-chat]");if(x)tone("open")},true);
 }
 bindGlobalSounds();
-window.LIBO140RunTests=()=>({version:"1.4.0",crypto:!!crypto?.subtle,filePicker:"showOpenFilePicker" in window||"HTMLInputElement" in window,mediaRecorder:!!window.MediaRecorder,mic:!!navigator.mediaDevices?.getUserMedia,visualViewport:!!window.visualViewport,duplicateIds:(()=>{const a=[...document.querySelectorAll("[id]")],b=new Set(a.map(x=>x.id));return a.length===b.size})()});
+window.LIBO140RunTests=()=>({version:"1.4.7",crypto:!!crypto?.subtle,filePicker:"showOpenFilePicker" in window||"HTMLInputElement" in window,mediaRecorder:!!window.MediaRecorder,mic:!!navigator.mediaDevices?.getUserMedia,visualViewport:!!window.visualViewport,duplicateIds:(()=>{const a=[...document.querySelectorAll("[id]")],b=new Set(a.map(x=>x.id));return a.length===b.size})()});
 setTimeout(()=>{const l=document.getElementById("libo140Loader");if(l){l.classList.add("hide");setTimeout(()=>l.remove(),300)}},850);
 })();
 </script>
@@ -3563,7 +3604,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   window.LIBO140Diagnostics=()=>{
     const ids=[...document.querySelectorAll('[id]')].map(x=>x.id);
     const dup=ids.filter((x,i)=>ids.indexOf(x)!==i);
-    return {version:'v-1.4.0',duplicateIds:[...new Set(dup)],audio:!!(window.AudioContext||window.webkitAudioContext),mediaRecorder:!!window.MediaRecorder,microphone:!!navigator.mediaDevices?.getUserMedia,svg:document.querySelectorAll('svg').length,chatScreen:!!document.getElementById('liboPrivateChatScreen')};
+    return {version:'v-1.4.7',duplicateIds:[...new Set(dup)],audio:!!(window.AudioContext||window.webkitAudioContext),mediaRecorder:!!window.MediaRecorder,microphone:!!navigator.mediaDevices?.getUserMedia,svg:document.querySelectorAll('svg').length,chatScreen:!!document.getElementById('liboPrivateChatScreen')};
   };
 });
 </script>
@@ -3856,7 +3897,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 })();
 </script>
 
-<!-- ================= LIBO v-1.4.6 SUPER MEGA SETTINGS ================= -->
+<!-- ================= LIBO v-1.4.7 SUPER MEGA SETTINGS ================= -->
 <style id="libo146-settings">
 :root{
   --l146-accent:#6c63ff;
@@ -4272,12 +4313,12 @@ function download(name,data,type="application/json"){
  a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),500);
 }
 document.querySelector('[data-action="backup"]')?.addEventListener("click",()=>{
- const payload={version:"1.4.6",settings:state,profile:(()=>{try{return JSON.parse(localStorage.getItem("libo_profile_v146")||"null")}catch(_){return null}})()};
- download("LIBO_backup_v1.4.6.json",JSON.stringify(payload,null,2));
+ const payload={version:"1.4.7",settings:state,profile:(()=>{try{return JSON.parse(localStorage.getItem("libo_profile_v146")||"null")}catch(_){return null}})()};
+ download("LIBO_backup_v1.4.7.json",JSON.stringify(payload,null,2));
  notify("✓ Backup створено");
 });
 document.querySelector('[data-action="export"]')?.addEventListener("click",()=>{
- download("LIBO_settings_v1.4.6.json",JSON.stringify(state,null,2));notify("✓ Експорт готовий");
+ download("LIBO_settings_v1.4.7.json",JSON.stringify(state,null,2));notify("✓ Експорт готовий");
 });
 document.querySelector('[data-action="clearCache"]')?.addEventListener("click",()=>{
  try{
@@ -4344,7 +4385,718 @@ document.querySelector('[data-action="saveAI"]')?.addEventListener("click",()=>{
 });
 })();
 </script>
-<!-- ================= END LIBO v-1.4.6 ================= -->
+<!-- ================= END LIBO v-1.4.7 ================= -->
+
+
+
+<style id="libo147-polish">
+:root{
+  --libo147-violet:#9863ff;
+  --libo147-violet-deep:#7041db;
+  --libo147-pink:#ef5aa8;
+  --libo147-pink-soft:#ff8cc9;
+  --libo147-line:rgba(188,132,255,.2);
+  --libo147-panel:rgba(17,13,24,.96);
+}
+
+/* Two luminous spheres cross and exchange places during every loading state. */
+.libo-exchange-orbs{
+  position:relative;
+  isolation:isolate;
+  display:grid;
+  place-items:center;
+  width:78px;
+  height:58px;
+  margin:0 auto;
+}
+.libo-exchange-orbs::before{
+  content:"";
+  position:absolute;
+  width:46px;
+  height:46px;
+  border:1px solid rgba(205,158,255,.2);
+  border-radius:50%;
+  box-shadow:0 0 26px rgba(144,88,255,.12),inset 0 0 20px rgba(232,89,179,.06);
+  animation:libo147OrbitPulse 1.1s ease-in-out infinite;
+}
+.libo-exchange-orbs::after{
+  content:"";
+  position:absolute;
+  width:60px;
+  height:30px;
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:50%;
+  transform:rotate(-28deg);
+}
+.libo-exchange-orb{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:19px;
+  height:19px;
+  border-radius:50%;
+  will-change:transform;
+  box-shadow:0 0 13px currentColor,0 0 28px currentColor;
+}
+.libo-exchange-orb--violet{
+  color:#a66bff;
+  background:radial-gradient(circle at 32% 28%,#f3ddff 0 8%,#bc82ff 24%,#874cff 72%);
+  animation:libo147ExchangeLeft .86s cubic-bezier(.45,0,.55,1) infinite;
+}
+.libo-exchange-orb--pink{
+  color:#f05cab;
+  background:radial-gradient(circle at 32% 28%,#ffe4f4 0 8%,#ff8cc9 25%,#e7429b 74%);
+  animation:libo147ExchangeRight .86s cubic-bezier(.45,0,.55,1) infinite;
+}
+@keyframes libo147ExchangeLeft{
+  0%,100%{transform:translate(calc(-50% - 17px),-50%) scale(.78)}
+  48%{transform:translate(calc(-50% + 17px),-50%) scale(1.08)}
+  52%{transform:translate(calc(-50% + 17px),-50%) scale(1.02)}
+}
+@keyframes libo147ExchangeRight{
+  0%,100%{transform:translate(calc(-50% + 17px),-50%) scale(1.06)}
+  48%{transform:translate(calc(-50% - 17px),-50%) scale(.8)}
+  52%{transform:translate(calc(-50% - 17px),-50%) scale(.86)}
+}
+@keyframes libo147OrbitPulse{
+  0%,100%{opacity:.56;transform:scale(.92)}
+  50%{opacity:1;transform:scale(1.08)}
+}
+
+/* Branded startup loader. The app has local storage only; copy stays honest. */
+.splash{
+  z-index:999998;
+  background:radial-gradient(ellipse at 50% 38%,rgba(100,54,167,.2),transparent 52%),#07060b;
+  animation:fadeOutSplash .25s ease .68s forwards;
+}
+.splash-loader-card{
+  display:grid;
+  justify-items:center;
+  gap:9px;
+  min-width:190px;
+  padding:22px 25px 20px;
+  border:1px solid rgba(187,133,255,.15);
+  border-radius:25px;
+  background:rgba(15,12,21,.62);
+  box-shadow:0 22px 80px rgba(0,0,0,.24),0 0 34px rgba(140,78,229,.08);
+}
+.splash-wordmark,.libo-loader-brand{
+  color:#f6efff;
+  font-size:15px;
+  font-weight:850;
+  letter-spacing:.24em;
+  text-indent:.24em;
+}
+.splash-caption,.libo-loader-caption{
+  color:#aaa0b6;
+  font-size:11px;
+  letter-spacing:.025em;
+}
+#libo140Loader{
+  z-index:999999;
+  padding:20px;
+  background:radial-gradient(ellipse at 50% 42%,rgba(109,56,190,.22),transparent 48%),rgba(5,4,9,.96);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  transition:opacity .3s ease,visibility .3s ease;
+}
+#libo140Loader.hide{opacity:0;visibility:hidden;pointer-events:none}
+.libo-loader-card{
+  display:grid;
+  justify-items:center;
+  gap:8px;
+  width:min(280px,calc(100vw - 40px));
+  padding:25px 24px 23px;
+  border:1px solid rgba(190,139,255,.2);
+  border-radius:27px;
+  background:linear-gradient(145deg,rgba(27,20,36,.97),rgba(12,10,17,.98));
+  box-shadow:0 26px 90px rgba(0,0,0,.52),0 0 46px rgba(147,86,239,.14);
+  color:#fff;
+  text-align:center;
+  animation:libo147LoaderCardIn .38s cubic-bezier(.2,.85,.25,1) both;
+}
+.libo-loader-card .libo-exchange-orbs{margin-bottom:4px}
+.libo-loader-brand{font-size:12px;color:#d5b9ff}
+.libo-loader-title{font-size:14px;font-weight:720;letter-spacing:.01em}
+.libo-loader-caption{font-size:11px;color:#8f8798}
+.libo-loader-progress{
+  position:relative;
+  width:100%;
+  height:3px;
+  overflow:hidden;
+  margin-top:9px;
+  border-radius:99px;
+  background:rgba(255,255,255,.08);
+}
+.libo-loader-progress i{
+  display:block;
+  width:38%;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,var(--libo147-violet),var(--libo147-pink));
+  box-shadow:0 0 12px rgba(223,92,193,.55);
+  animation:libo147Progress 1.15s ease-in-out infinite;
+}
+@keyframes libo147Progress{0%{transform:translateX(-110%)}100%{transform:translateX(285%)}}
+@keyframes libo147LoaderCardIn{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}
+
+/* Connection status is deliberately labelled local, never as a fake server. */
+header{border-bottom-color:rgba(179,117,255,.12)}
+.notification{
+  width:max-content;
+  max-width:calc(100vw - 28px);
+  white-space:normal;
+  text-align:center;
+  background:linear-gradient(110deg,#7b50d8,#c14fad 58%,#e4569c);
+  color:#fff;
+  box-shadow:0 8px 26px rgba(144,78,187,.28);
+}
+.header-title{
+  background:linear-gradient(110deg,#f6efff 8%,#c4a2ff 54%,#ff9bce 100%);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.header-icons{gap:6px}
+.icon-btn.header-icon-btn{width:36px;height:36px;border:1px solid rgba(255,255,255,.06);border-radius:13px;color:#ded4e8}
+.icon-btn.header-icon-btn svg{display:block;width:19px;height:19px}
+.icon-btn.header-icon-btn:hover{background:rgba(164,112,229,.12);border-color:rgba(190,139,255,.22)}
+.libo-connection-status{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  height:34px;
+  padding:0 9px;
+  border:1px solid rgba(173,123,236,.2);
+  border-radius:13px;
+  background:linear-gradient(135deg,rgba(136,84,206,.13),rgba(231,83,160,.055));
+  color:#d7c2f0;
+  font-family:inherit;
+  font-size:10px;
+  font-weight:600;
+  line-height:1;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:transform .18s ease,border-color .18s ease,background .18s ease;
+}
+.libo-connection-status:active{transform:scale(.96)}
+.libo-connection-status:focus-visible,.nav-item:focus-visible,.fab:focus-visible{
+  outline:2px solid #d49bff;
+  outline-offset:3px;
+}
+.libo-connection-status svg{width:16px;height:16px;flex:0 0 16px;color:#c49aff}
+.libo-connection-label{max-width:53px;overflow:hidden;text-overflow:ellipsis}
+.libo-connection-dot,.libo-sync-pill i,.libo-status-dot{
+  display:inline-block;
+  width:7px;
+  height:7px;
+  flex:0 0 7px;
+  border-radius:50%;
+  background:#c084fc;
+  box-shadow:0 0 0 0 rgba(192,132,252,.42),0 0 9px rgba(192,132,252,.56);
+  animation:libo147StatusPulse 1.9s ease-out infinite;
+}
+.libo-connection-status.is-offline .libo-connection-dot,
+.libo-sync-card.is-offline .libo-sync-pill i,
+.libo-chat-local-status.is-offline .libo-status-dot{
+  background:#ff829d;
+  box-shadow:0 0 0 0 rgba(255,130,157,.4),0 0 9px rgba(255,130,157,.42);
+}
+@keyframes libo147StatusPulse{
+  0%{box-shadow:0 0 0 0 rgba(192,132,252,.36),0 0 8px rgba(192,132,252,.46)}
+  70%{box-shadow:0 0 0 6px rgba(192,132,252,0),0 0 11px rgba(192,132,252,.55)}
+  100%{box-shadow:0 0 0 0 rgba(192,132,252,0),0 0 8px rgba(192,132,252,.4)}
+}
+.libo-chat-local-status{display:inline-flex;align-items:center;gap:6px}
+.libo-chat-local-status.is-saving .libo-status-dot{animation:libo147StatusPulse .7s ease-out infinite}
+
+/* Explicit, live status card in Settings: local cache works; no server is wired. */
+.libo-sync-card{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  margin:0 0 13px;
+  padding:13px 14px;
+  border:1px solid rgba(170,112,232,.19);
+  border-radius:19px;
+  background:linear-gradient(120deg,rgba(131,78,197,.13),rgba(231,79,157,.055) 72%),rgba(18,15,23,.94);
+  box-shadow:0 10px 27px rgba(0,0,0,.2);
+}
+.libo-sync-icon{
+  display:grid;
+  place-items:center;
+  width:39px;
+  height:39px;
+  flex:0 0 39px;
+  border-radius:13px;
+  color:#d0a8ff;
+  background:linear-gradient(145deg,rgba(153,93,238,.23),rgba(237,90,177,.11));
+}
+.libo-sync-icon svg{width:21px;height:21px}
+.libo-sync-copy{display:grid;gap:4px;min-width:0;flex:1}
+.libo-sync-copy b{font-size:12px;font-weight:760;color:#f6efff}
+.libo-sync-copy span{font-size:10px;line-height:1.4;color:#a59bad}
+.libo-sync-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 8px;
+  border:1px solid rgba(186,135,241,.18);
+  border-radius:999px;
+  background:rgba(142,91,197,.1);
+  color:#dfcaff;
+  font-size:9px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.libo-sync-pill i{width:6px;height:6px;flex-basis:6px}
+.libo-sync-card.is-offline .libo-sync-pill{color:#ffc1cf;border-color:rgba(255,130,157,.22);background:rgba(255,130,157,.08)}
+
+/* Bottom bar: compact glass surface, accessible targets and animated SVG tabs. */
+nav{
+  position:relative!important;
+  flex:0 0 auto!important;
+  display:flex!important;
+  justify-content:stretch!important;
+  align-items:stretch;
+  gap:4px;
+  min-height:76px!important;
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom))!important;
+  border-top:1px solid rgba(190,135,255,.18)!important;
+  background:linear-gradient(180deg,rgba(20,16,28,.96),rgba(10,8,14,.99))!important;
+  box-shadow:0 -12px 36px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.025);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+}
+nav .nav-item{
+  position:relative;
+  isolation:isolate;
+  display:flex;
+  flex:1 1 0;
+  min-width:0;
+  min-height:56px;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  padding:5px 2px;
+  overflow:hidden;
+  border:0;
+  border-radius:16px;
+  background:transparent;
+  color:#837b8e;
+  font-family:inherit;
+  font-size:10px;
+  font-weight:600;
+  line-height:1.1;
+  cursor:pointer;
+  -webkit-appearance:none;
+  appearance:none;
+  transition:color .2s ease,transform .2s ease,background .2s ease;
+}
+nav .nav-item::before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  inset:1px 2px;
+  bottom:auto;
+  width:auto;
+  height:auto;
+  border:1px solid rgba(195,145,255,.19);
+  border-radius:15px;
+  background:linear-gradient(135deg,rgba(150,91,226,.17),rgba(231,81,165,.09));
+  opacity:0;
+  transform:scale(.93);
+  transition:opacity .22s ease,transform .22s ease;
+}
+nav .nav-item::after{
+  content:"";
+  position:absolute;
+  bottom:2px;
+  left:50%;
+  width:16px;
+  height:3px;
+  border-radius:999px;
+  background:linear-gradient(90deg,var(--libo147-violet),var(--libo147-pink));
+  box-shadow:0 0 12px rgba(222,105,211,.48);
+  opacity:0;
+  transform:translateX(-50%) scaleX(.55);
+  transition:opacity .2s ease,transform .2s ease;
+}
+nav .nav-item.active{color:#f4e9ff;animation:libo147NavSelect .32s cubic-bezier(.2,.9,.3,1)}
+nav .nav-item.active::before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  inset:1px 2px;
+  bottom:1px;
+  width:auto;
+  height:auto;
+  border:1px solid rgba(195,145,255,.19);
+  border-radius:15px;
+  background:linear-gradient(135deg,rgba(150,91,226,.17),rgba(231,81,165,.09));
+  opacity:1;
+  transform:scale(1);
+}
+nav .nav-item.active::after{opacity:1;transform:translateX(-50%) scaleX(1)}
+nav .nav-item:hover:not(.active){color:#d2c2e2;background:rgba(255,255,255,.035)}
+nav .nav-item:active{transform:scale(.96)}
+nav .nav-icon{
+  position:relative;
+  z-index:1;
+  display:block;
+  width:22px;
+  height:22px;
+  flex:0 0 22px;
+  max-width:22px;
+  overflow:visible;
+  fill:none;
+  stroke:currentColor;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  transition:transform .23s cubic-bezier(.2,.8,.2,1),filter .23s ease,color .2s ease;
+}
+nav .nav-item.active .nav-icon{
+  color:#ddaaff;
+  filter:drop-shadow(0 0 6px rgba(207,145,255,.46));
+  transform:translateY(-1px) scale(1.08);
+}
+nav .nav-label{
+  position:relative;
+  z-index:1;
+  max-width:100%;
+  overflow:hidden;
+  color:inherit;
+  font-size:10px;
+  font-weight:650;
+  letter-spacing:.01em;
+  line-height:1.1;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+@keyframes libo147NavSelect{0%{transform:scale(.93)}65%{transform:scale(1.035)}100%{transform:scale(1)}}
+
+/* Primary create action moved to the left; LIBO AI remains on the right. */
+.fab,#fabBtn{
+  position:fixed!important;
+  left:16px!important;
+  right:auto!important;
+  bottom:calc(88px + env(safe-area-inset-bottom))!important;
+  z-index:5200!important;
+  display:grid;
+  place-items:center;
+  width:54px;
+  height:54px;
+  border:1px solid rgba(235,178,255,.43);
+  border-radius:19px;
+  background:linear-gradient(140deg,#8d5bfa 0%,#c34fd0 54%,#ed5a9f 100%);
+  color:#fff;
+  box-shadow:0 12px 32px rgba(122,72,212,.34),inset 0 1px 0 rgba(255,255,255,.25);
+  font-size:0;
+  transition:transform .22s ease,box-shadow .22s ease,filter .22s ease;
+}
+.fab svg,#fabBtn svg{display:block;width:24px;height:24px;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.fab:hover,#fabBtn:hover{filter:brightness(1.09);box-shadow:0 14px 38px rgba(122,72,212,.45)}
+.fab:active,#fabBtn:active{transform:scale(.93)}
+.fab.is-open svg,#fabBtn.is-open svg{transform:rotate(45deg)}
+#createMenu,.create-menu{
+  left:16px!important;
+  right:auto!important;
+  bottom:calc(151px + env(safe-area-inset-bottom))!important;
+  z-index:5300!important;
+  transform-origin:left bottom;
+}
+.l140-ai-launch{left:auto!important;right:16px!important;bottom:calc(88px + env(safe-area-inset-bottom))!important;z-index:5200!important}
+.l140-ai-panel{left:auto!important;right:12px!important;bottom:calc(151px + env(safe-area-inset-bottom))!important;z-index:8100!important}
+
+/* Purple/pink accents carry through message surfaces without reducing contrast. */
+.avatar{background:linear-gradient(135deg,#754be8,#e34fa4)!important;box-shadow:0 0 14px rgba(160,96,232,.22)!important}
+.online-status{background:#c58aff;box-shadow:0 0 8px rgba(197,138,255,.72)}
+.message-bubble.own{background:linear-gradient(135deg,#754ce4,#d64b9e)!important;color:#fff!important}
+.message-bubble.other{background:rgba(105,72,130,.19)!important;border:1px solid rgba(190,139,255,.18)!important}
+.send-btn{background:linear-gradient(135deg,#8e5df1,#e553a6)!important;color:#fff!important;box-shadow:0 5px 16px rgba(142,74,210,.2)}
+.chat-item:hover,.contact-item:hover{background:rgba(148,94,202,.1)!important;border-color:rgba(199,145,255,.18)!important}
+
+/* Reusable in-chat loader, shown while local history is restored. */
+#chatMessages,#liboPrivateMessages{position:relative}
+#chatMessages{isolation:isolate}
+#liboPrivateMessages{isolation:isolate}
+.libo-inline-loader{
+  position:absolute;
+  z-index:80;
+  inset:0;
+  display:grid;
+  place-items:center;
+  padding:14px;
+  background:rgba(5,4,9,.76);
+  backdrop-filter:blur(7px);
+  -webkit-backdrop-filter:blur(7px);
+  opacity:1;
+  transition:opacity .18s ease;
+}
+.libo-inline-loader.is-hiding{opacity:0;pointer-events:none}
+.libo-inline-loader-card{
+  display:grid;
+  justify-items:center;
+  gap:5px;
+  width:min(245px,100%);
+  padding:16px 18px 14px;
+  border:1px solid rgba(192,138,255,.19);
+  border-radius:21px;
+  background:linear-gradient(145deg,rgba(27,20,37,.96),rgba(11,9,16,.97));
+  box-shadow:0 18px 54px rgba(0,0,0,.42),0 0 24px rgba(153,85,229,.11);
+  color:#fff;
+  text-align:center;
+  animation:libo147LoaderCardIn .22s ease both;
+}
+.libo-inline-loader .libo-exchange-orbs{width:70px;height:48px;transform:scale(.82);margin:0 auto 1px}
+.libo-inline-loader-title{font-size:12px;font-weight:750}
+.libo-inline-loader-detail{font-size:10px;color:#a39aaa;line-height:1.35}
+.libo-empty-messages{
+  display:grid;
+  justify-items:center;
+  align-content:center;
+  gap:8px;
+  min-height:100%;
+  padding:28px;
+  color:#8f849b;
+  text-align:center;
+  animation:libo147LoaderCardIn .28s ease both;
+}
+.libo-empty-messages b{font-size:14px;color:#e7d9f2}
+.libo-empty-messages span{font-size:11px;line-height:1.5}
+.libo-empty-message-icon{
+  display:grid;
+  place-items:center;
+  width:54px;
+  height:54px;
+  margin-bottom:3px;
+  border-radius:19px;
+  background:linear-gradient(145deg,rgba(144,87,230,.2),rgba(235,83,163,.12));
+  color:#d3a1ff;
+}
+.libo-empty-message-icon svg{width:26px;height:26px}
+@keyframes libo147MessageIn{from{opacity:0;transform:translateY(7px) scale(.985)}to{opacity:1;transform:none}}
+.libo-private-bubble{animation:libo147MessageIn .22s ease both}
+.libo-private-bubble.me{background:linear-gradient(135deg,#754ce4,#d64b9e)!important;color:#fff}
+.libo-private-title small{display:flex;align-items:center;gap:6px}
+.libo-private-title small::before{content:"";width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:#c084fc;box-shadow:0 0 8px rgba(192,132,252,.6);animation:libo147StatusPulse 1.9s ease-out infinite}
+
+body.white-theme nav{background:linear-gradient(180deg,rgba(249,247,252,.98),rgba(239,235,245,.99))!important;border-top-color:rgba(132,79,186,.16)!important}
+body.white-theme nav .nav-item{color:#75677f}
+body.white-theme nav .nav-item.active{color:#573477}
+body.white-theme .libo-sync-card{background:linear-gradient(120deg,rgba(145,99,204,.1),rgba(229,94,167,.055)),#fff;border-color:rgba(123,75,164,.16)}
+body.white-theme .libo-sync-copy b{color:#271b31}
+body.white-theme .libo-sync-copy span{color:#756c7b}
+body.white-theme .libo-connection-status{background:rgba(136,94,182,.08);color:#644083}
+
+@media(max-width:390px){
+  .header-icons{gap:4px}
+  .icon-btn.header-icon-btn{width:33px;height:33px}
+  .libo-connection-status{gap:4px;padding:0 7px;height:32px}
+  nav{gap:2px;padding-left:7px!important;padding-right:7px!important}
+  nav .nav-item{border-radius:14px}
+  nav .nav-label{font-size:9px;letter-spacing:0}
+}
+@media(max-width:340px){
+  .libo-connection-label{display:none}
+  .libo-connection-status{width:32px;padding:0;gap:0}
+  .libo-connection-dot{position:absolute;right:3px;top:3px;width:6px;height:6px}
+  .nav-label{font-size:8.5px!important}
+}
+@media(max-height:600px){
+  nav{min-height:64px!important;padding-top:5px!important;padding-bottom:calc(5px + env(safe-area-inset-bottom))!important}
+  nav .nav-item{min-height:50px}
+  nav .nav-icon{width:20px;height:20px;flex-basis:20px}
+  .fab,#fabBtn,.l140-ai-launch{bottom:calc(74px + env(safe-area-inset-bottom))!important}
+  #createMenu,.create-menu,.l140-ai-panel{bottom:calc(136px + env(safe-area-inset-bottom))!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .libo-exchange-orb,.libo-exchange-orbs::before,.libo-loader-progress i,.libo-connection-dot,
+  .libo-sync-pill i,.libo-status-dot,.libo-private-title small::before{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+  }
+  .libo-inline-loader,.nav-item,.nav-icon,.fab svg{transition-duration:.01ms!important}
+}
+</style>
+
+<script id="libo147-runtime">
+(()=>{"use strict";
+const $=id=>document.getElementById(id);
+const activeLoads=new WeakMap();
+const labels={
+  loadingTitle:"Завантажуємо повідомлення",
+  loadingDetail:"Відновлюємо історію з пристрою",
+  local:"Локально",
+  offline:"Офлайн",
+  localStatus:"Локально · збережено на пристрої",
+  offlineStatus:"Офлайн · дані доступні локально",
+  saving:"Зберігаємо повідомлення…",
+  serverInfo:"Дані зберігаються на пристрої. Серверна синхронізація у цій версії не підключена.",
+  offlineInfo:"Немає доступу до мережі. Локальні чати й повідомлення залишаються доступними на пристрої."
+};
+function isOffline(){return navigator.onLine===false}
+function showInlineLoader(container,title=labels.loadingTitle,detail=labels.loadingDetail,duration=430){
+  if(!container)return;
+  const previous=Array.from(container.children).find(node=>node.classList?.contains("libo-inline-loader"));
+  previous?.remove();
+  const token=(activeLoads.get(container)||0)+1;
+  activeLoads.set(container,token);
+  const layer=document.createElement("div");
+  layer.className="libo-inline-loader";
+  layer.setAttribute("role","status");
+  layer.setAttribute("aria-live","polite");
+  layer.innerHTML='<div class="libo-inline-loader-card"><div class="libo-exchange-orbs" aria-hidden="true"><span class="libo-exchange-orb libo-exchange-orb--violet"></span><span class="libo-exchange-orb libo-exchange-orb--pink"></span></div><b class="libo-inline-loader-title"></b><span class="libo-inline-loader-detail"></span></div>';
+  layer.querySelector(".libo-inline-loader-title").textContent=title;
+  layer.querySelector(".libo-inline-loader-detail").textContent=detail;
+  container.appendChild(layer);
+  container.setAttribute("aria-busy","true");
+  window.setTimeout(()=>{
+    if(activeLoads.get(container)!==token||!layer.isConnected)return;
+    layer.classList.add("is-hiding");
+    window.setTimeout(()=>{
+      if(activeLoads.get(container)!==token)return;
+      layer.remove();
+      container.setAttribute("aria-busy","false");
+    },190);
+  },duration);
+}
+function updateConnectionState(){
+  const offline=isOffline();
+  const status=$("liboConnectionStatus"),label=$("liboConnectionLabel");
+  const detail=$("liboSyncDetail"),pill=$("liboSyncPill"),card=$("liboSyncStatusCard");
+  const mainStatus=$("chatViewStatus");
+  const statusText=offline?labels.offlineStatus:labels.localStatus;
+  const networkText=offline?labels.offlineInfo:labels.serverInfo;
+  if(label)label.textContent=offline?labels.offline:labels.local;
+  if(status){
+    status.classList.toggle("is-offline",offline);
+    status.title=networkText;
+    status.setAttribute("aria-label",offline?"Немає мережі. Дані збережені локально.":"Локальний режим. Серверна синхронізація не підключена.");
+  }
+  if(detail)detail.textContent=networkText;
+  if(pill)pill.lastChild.textContent=offline?labels.offline:labels.local;
+  if(card)card.classList.toggle("is-offline",offline);
+  if(mainStatus&&!mainStatus.classList.contains("is-saving")){
+    const copy=mainStatus.querySelector("span:last-child");
+    if(copy)copy.textContent=offline?labels.offlineStatus:labels.localStatus;
+    mainStatus.classList.toggle("is-offline",offline);
+  }
+  const privateSmall=document.querySelector("#liboPrivateChatScreen.show .libo-private-title small");
+  if(privateSmall)privateSmall.textContent=offline?"Офлайн · локальні повідомлення":"Локально · на цьому пристрої";
+}
+function updateNavA11y(){
+  document.querySelectorAll("nav .nav-item").forEach(item=>{
+    if(item.classList.contains("active"))item.setAttribute("aria-current","page");
+    else item.removeAttribute("aria-current");
+  });
+}
+
+// Main legacy chat path: render first, then reveal a brief, accessible history loader.
+if(typeof window.renderMessages==="function"){
+  const originalRenderMessages=window.renderMessages;
+  window.renderMessages=function(chatId){
+    const result=originalRenderMessages.apply(this,arguments);
+    const box=$("chatMessages");
+    if(box&&!box.querySelector(".message")&&!box.querySelector(".libo-empty-messages")){
+      box.insertAdjacentHTML("beforeend",'<div class="libo-empty-messages"><div class="libo-empty-message-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.2 11.2a7.7 7.7 0 0 1-8 7.5 8.7 8.7 0 0 1-3.6-.8L4 19l1.2-3.5a7.1 7.1 0 0 1-1-3.7 7.7 7.7 0 0 1 8-7.5 7.7 7.7 0 0 1 8 6.9Z"/></svg></div><b>Поки що немає повідомлень</b><span>Напишіть перше — воно з’явиться тут.</span></div>');
+    }
+    return result;
+  };
+}
+if(typeof window.openChat==="function"){
+  const originalOpenChat=window.openChat;
+  window.openChat=function(chatId,chatName){
+    const result=originalOpenChat.apply(this,arguments);
+    const status=$("chatViewStatus");
+    if(status&&!status.classList.contains("is-saving")){
+      const copy=status.querySelector("span:last-child");
+      if(copy)copy.textContent=isOffline()?labels.offlineStatus:labels.localStatus;
+      status.classList.toggle("is-offline",isOffline());
+    }
+    showInlineLoader($("chatMessages"),labels.loadingTitle,labels.loadingDetail,440);
+    return result;
+  };
+}
+
+// The restored private-chat path is localStorage-backed; animate its history load too.
+const privateChatSelectors=".chat-item,.chat-row,.conversation,.conversation-item,[data-chat-id],[data-chat],.dialog-item,.message-list-item";
+document.addEventListener("click",event=>{
+  const item=event.target.closest?.(privateChatSelectors);
+  if(!item)return;
+  if(event.target.closest("button,a,input,textarea,select")&&!event.target.closest(".chat-item,.chat-row,.conversation,.conversation-item,[data-chat-id],[data-chat]"))return;
+  requestAnimationFrame(()=>{
+    const screen=$("liboPrivateChatScreen"),box=$("liboPrivateMessages");
+    if(!screen?.classList.contains("show")||!box)return;
+    const small=screen.querySelector(".libo-private-title small");
+    if(small)small.textContent=isOffline()?"Офлайн · локальні повідомлення":"Локально · на цьому пристрої";
+    showInlineLoader(box,labels.loadingTitle,labels.loadingDetail,440);
+  });
+},true);
+if(typeof window.LIBOOpenPrivateChat==="function"){
+  const originalPrivateOpen=window.LIBOOpenPrivateChat;
+  window.LIBOOpenPrivateChat=function(){
+    const result=originalPrivateOpen.apply(this,arguments);
+    requestAnimationFrame(()=>{
+      const screen=$("liboPrivateChatScreen"),box=$("liboPrivateMessages");
+      if(screen?.classList.contains("show")&&box)showInlineLoader(box,labels.loadingTitle,labels.loadingDetail,440);
+    });
+    return result;
+  };
+}
+
+// Expose a truthful live local/network state; navigator.onLine is not a server health check.
+updateConnectionState();
+window.addEventListener("online",updateConnectionState,{passive:true});
+window.addEventListener("offline",updateConnectionState,{passive:true});
+$("liboConnectionStatus")?.addEventListener("click",()=>{
+  const message=isOffline()?labels.offlineInfo:labels.serverInfo;
+  if(typeof window.showNotification==="function")window.showNotification(message);
+  else if(typeof showNotification==="function")showNotification(message);
+});
+
+// A small saving pulse is shown while the legacy composer writes to localStorage.
+let saveTimer=0;
+document.addEventListener("keypress",event=>{
+  if(event.target?.id!=="chatInput"||event.key!=="Enter"||!event.target.value.trim())return;
+  const status=$("chatViewStatus"),copy=status?.querySelector("span:last-child");
+  if(!status||!copy)return;
+  clearTimeout(saveTimer);
+  status.classList.add("is-saving");
+  copy.textContent=labels.saving;
+  saveTimer=window.setTimeout(()=>{
+    status.classList.remove("is-saving");
+    copy.textContent=isOffline()?labels.offlineStatus:labels.localStatus;
+  },520);
+},true);
+
+const nav=document.querySelector("nav");
+nav?.addEventListener("click",event=>{
+  if(event.target.closest(".nav-item"))requestAnimationFrame(updateNavA11y);
+});
+updateNavA11y();
+
+const createMenu=$("createMenu"),fab=$("fabBtn");
+if(createMenu&&fab){
+  const syncFab=()=>{
+    const open=createMenu.classList.contains("active");
+    fab.classList.toggle("is-open",open);
+    fab.setAttribute("aria-expanded",String(open));
+  };
+  new MutationObserver(syncFab).observe(createMenu,{attributes:true,attributeFilter:["class"]});
+  syncFab();
+}
+window.LIBO147={
+  version:"1.4.7",
+  updateConnectionState,
+  loadChat(containerId="chatMessages",title=labels.loadingTitle,detail=labels.loadingDetail){showInlineLoader($(containerId),title,detail,440)},
+  status(){return {version:"1.4.7",network:navigator.onLine===false?"offline":"available",storage:"local-only",serverSync:false}}
+};
+})();
+</script>
 
 </body>
 </html>

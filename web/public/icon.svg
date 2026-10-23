@@ -1,17 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="LIBO">
-  <rect width="96" height="96" fill="#6d28d9"/>
-  <path d="M96 0v60L29 0Z" fill="#8b5cf6"/>
-  <path fill="#5b21b6" fill-rule="evenodd" d="M-40 136a179 179 0 1 0 0-358 179 179 0 0 0 0 358Zm0-32a147 147 0 1 1 0-294 147 147 0 0 1 0 294Z"/>
-  <path fill="#5b21b6" fill-rule="evenodd" d="M-40 136a101 101 0 1 0 0-202 101 101 0 0 0 0 202Zm0-34a67 67 0 1 1 0-134 67 67 0 0 1 0 134Z"/>
-  <circle cx="-40" cy="136" r="163" fill="none" stroke="#fff" stroke-width="2.4"/>
-  <circle cx="-40" cy="136" r="109" fill="none" stroke="#c4b5fd" stroke-width="1.6"/>
-  <circle cx="-40" cy="136" r="62" fill="none" stroke="#c4b5fd" stroke-width="1.4"/>
-  <g transform="rotate(33 48 44)">
-    <path d="M25 47 L43 34 M25 47 L43 60" stroke="#4d7c0f" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <path d="M22 44 L40 31 M22 44 L40 57" stroke="#84cc16" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <path d="M48 49 h10" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
-    <circle cx="60" cy="36" r="5.4" fill="#fff"/>
-    <path fill="#fff" fill-rule="evenodd" d="M66 30 h12 a7 7 0 0 1 7 7 v14 a7 7 0 0 1 -7 7 h-12 a7 7 0 0 1 -7 -7 v-14 a7 7 0 0 1 7 -7 Z M69 36 h7 v6 h-7 Z M69 46 h7 v6 h-7 Z"/>
-    <path fill="#fff" fill-rule="evenodd" d="M90 30 h6 a8 8 0 0 1 8 8 v12 a8 8 0 0 1 -8 8 h-6 a8 8 0 0 1 -8 -8 v-12 a8 8 0 0 1 8 -8 Z M90 38 h6 v8 h-6 Z"/>
-  </g>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#210b3b"/><stop offset=".55" stop-color="#6530a9"/><stop offset="1" stop-color="#b33584"/></linearGradient>
+    <linearGradient id="bubble" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffaff"/><stop offset="1" stop-color="#e7d8ff"/></linearGradient>
+    <radialGradient id="violet" cx="30%" cy="25%"><stop stop-color="#e4bfff"/><stop offset="1" stop-color="#662cc0"/></radialGradient>
+    <radialGradient id="pink" cx="30%" cy="25%"><stop stop-color="#ffcbe7"/><stop offset="1" stop-color="#db318f"/></radialGradient>
+  </defs>
+  <rect width="96" height="96" rx="21" fill="url(#bg)"/>
+  <circle cx="48" cy="48" r="39" fill="none" stroke="#fce7ff" stroke-opacity=".18" stroke-width=".8"/>
+  <path d="M23 19h50a11 11 0 0 1 11 11v28a11 11 0 0 1-11 11H49L34 80l4-11h-15a11 11 0 0 1-11-11V30a11 11 0 0 1 11-11Z" fill="url(#bubble)" stroke="#fff" stroke-opacity=".7" stroke-width="1.2"/>
+  <circle cx="39" cy="45" r="12" fill="url(#violet)"/>
+  <circle cx="57" cy="45" r="12" fill="url(#pink)"/>
+  <ellipse cx="35" cy="41" rx="4.5" ry="3.2" fill="#fff" fill-opacity=".55"/>
+  <ellipse cx="53" cy="41" rx="4.5" ry="3.2" fill="#fff" fill-opacity=".58"/>
+  <path d="m75 13 2.3 5.8 5.7 2.2-5.7 2.3-2.3 5.7-2.2-5.7-5.8-2.3 5.8-2.2L75 13Z" fill="#fff"/>
 </svg>

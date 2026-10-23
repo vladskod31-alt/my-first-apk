@@ -19,7 +19,7 @@ const $$ = selector => [...document.querySelectorAll(selector)];
 const svg = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const store = new Store();
 const state = {
-  profile: null, settings: null, chats: [], blocked: [], current: null,
+  profile: null, settings: null, chats: [], blocked: [], current: null, loadingChat: null, storageReady: false,
   filter: 'all', network: 'connecting', networkDetail: '', contactStates: new Map(),
   typing: new Map(), drafts: {}, reply: null, attachment: null, sending: false,
   lastSeen: new Map(), recording: null, archiveNotice: false,
@@ -44,6 +44,7 @@ let audioContext;
 let photoGeneration = 0;
 let draftPersistTimer;
 let transferManager;
+let chatOpenSequence = 0;
 
 const transport = new Transport({
   onState(status, detail = '') {
@@ -367,11 +368,32 @@ function notify(text, error = false) {
 
 function renderNetwork() {
   const el = $('#network-status');
+  if (!el) return;
   el.className = `network-status ${state.network}`;
+  el.dataset.state = state.network;
   el.querySelector('span').textContent = {
-    ready: 'Вы в сети', connecting: 'Подключаемся…', offline: 'Нет соединения', error: 'Нужно подключение',
-  }[state.network];
-  el.title = state.networkDetail || 'Наличие связи с сигнальным сервером. Статус собеседника показан внутри чата.';
+    ready: 'Сигнал доступен', connecting: 'Подключаемся к сигналу…',
+    offline: 'Связь с сигналом потеряна', error: 'Сигнальный сервер недоступен',
+  }[state.network] || 'Статус сигнала неизвестен';
+  el.title = state.networkDetail || 'Это только связь с сигнальным сервером PeerJS, а не статус собеседника. История хранится на этом устройстве; облачной синхронизации нет.';
+}
+
+function renderStorage() {
+  const el = $('#storage-status');
+  if (!el) return;
+  el.className = `storage-status ${state.storageReady ? 'ready' : 'waiting'}`;
+  el.querySelector('span').textContent = state.storageReady ? 'История локально' : 'Открываем локальную историю…';
+  el.title = state.storageReady
+    ? 'История и черновики хранятся только на этом устройстве. Облачной синхронизации нет.'
+    : 'Подключаем локальное хранилище этого устройства.';
+}
+
+function hideBootLoader() {
+  const loader = $('#boot-loader');
+  if (!loader || loader.hidden) return;
+  loader.classList.add('is-hidden');
+  loader.setAttribute('aria-hidden', 'true');
+  setTimeout(() => { loader.hidden = true; }, 260);
 }
 
 function paintAvatar(element, { name, id, avatar = '', saved = false }) {
@@ -835,6 +857,17 @@ function renderMessages(scroll = true) {
   const chat = activeChat();
   if (!chat) return;
   const box = $('#messages');
+  if (state.loadingChat === chat.id) {
+    box.setAttribute('aria-busy', 'true');
+    const loading = document.createElement('div');
+    loading.className = 'message-loading';
+    loading.setAttribute('role', 'status');
+    loading.setAttribute('aria-live', 'polite');
+    loading.innerHTML = '<div class="orb-loader" aria-hidden="true"><span class="orb orb-violet"></span><span class="orb orb-pink"></span></div><div class="message-loading-copy"><strong>Открываем переписку</strong><span>Читаем сохранённые данные</span></div>';
+    box.replaceChildren(loading);
+    return;
+  }
+  box.setAttribute('aria-busy', 'false');
   const previousTop = box.scrollTop;
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
   const rawQuery = $('#message-search').value.trim();
@@ -1547,8 +1580,10 @@ async function restoreDraft(id) {
 
 async function openChat(id) {
   if (!state.chats.some(chat => chat.id === id)) return;
+  const sequence = ++chatOpenSequence;
   rememberDraft();
   state.current = id;
+  state.loadingChat = id;
   closeMessageActions();
   $('#shell').classList.add('chat-open');
   $('#welcome').hidden = true;
@@ -1558,7 +1593,11 @@ async function openChat(id) {
   setSelection(null);
   state.highlight = null;
   resetComposerExtras();
-  await restoreDraft(id);
+  renderHeader(); renderMessages(); renderSidebar();
+  try { await restoreDraft(id); }
+  catch { if (sequence === chatOpenSequence) notify('Не удалось восстановить черновик на этом устройстве.', true); }
+  if (sequence !== chatOpenSequence || state.current !== id) return;
+  state.loadingChat = null;
   updateComposer();
   renderHeader(); renderMessages(); renderSidebar();
   state.newBelow = 0;
@@ -1570,6 +1609,8 @@ async function openChat(id) {
 }
 
 function closeChat() {
+  ++chatOpenSequence;
+  state.loadingChat = null;
   rememberDraft();
   state.current = null;
   $('#shell').classList.remove('chat-open');
@@ -3428,6 +3469,8 @@ function initInterface() {
 
 async function main() {
   await store.open();
+  state.storageReady = true;
+  renderStorage();
   state.profile = await store.getMeta('profile');
   if (!state.profile || !normalizePeerCode(state.profile.id)) {
     state.profile = { id: makePeerId(), name: 'Пользователь LIBO', username: '', bio: '', status: 'online', avatar: '' };
@@ -3462,18 +3505,20 @@ async function main() {
   $('#profile-button').textContent = initials(state.profile.name);
   $('#app-version').textContent = VERSION;
   $('#about-version').textContent = VERSION;
+  $('#sidebar-version').textContent = `v${VERSION}`;
   $('#security-connection-link').classList.add('disabled');
   $('#security-connection-link').addEventListener('click', event => {
     event.preventDefault();
     if (event.currentTarget.dataset.chatId) void gotoSecurity(event.currentTarget.dataset.chatId);
   });
   $('#download-apk').href = APK_URL;
-  const shareText = `LIBO ${VERSION} — местный P2P-мессенджер для Android. 9 новых функций интерфейса, APK ${Math.round(326011 / 1024)} КБ.`;
+  const shareText = `LIBO ${VERSION} — local-first P2P-мессенджер для Android. История хранится на устройстве, собеседники общаются напрямую.`;
   $('#share-telegram').href = `https://t.me/share/url?url=${encodeURIComponent(APK_URL)}&text=${encodeURIComponent(shareText)}`;
   const savedSeen = await store.getMeta('lastSeen');
   if (savedSeen && typeof savedSeen === 'object') for (const [id, at] of Object.entries(savedSeen)) state.lastSeen.set(id, at);
   if (!window.MediaRecorder || !navigator.mediaDevices) $('#voice-button').hidden = true;
-  bindEvents(); applyTheme(); applyWall(); applyAppearance(); initInterface(); renderSidebar(); renderNetwork();
+  bindEvents(); applyTheme(); applyWall(); applyAppearance(); initInterface(); renderSidebar(); renderNetwork(); renderStorage();
+  hideBootLoader();
   if (lockState()) {
     $('#lock-screen').hidden = false;
     setTimeout(() => $('#lock-input').focus(), 50);
@@ -3487,6 +3532,7 @@ async function main() {
 }
 
 main().catch(error => {
+  hideBootLoader();
   const banner = $('#boot-error');
   banner.hidden = false;
   banner.textContent = `LIBO не может открыть хранилище. Проверьте свободное место, разрешите хранение данных в браузере и обновите Android System WebView. Данные не отправлены в сеть. ${error.message || ''}`;
