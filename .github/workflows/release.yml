@@ -55,7 +55,8 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionName\\s+'([^']+)'/)[1]")
-          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD_TOOLS=$(ls -d "$SDK_DIR"/build-tools/* | sort -V | tail -1)
           APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
 
           if [ -n "${LIBO_KEYSTORE_BASE64:-}" ] && [ -n "${LIBO_KEYSTORE_PASSWORD:-}" ]; then
@@ -103,7 +104,8 @@ jobs:
           VERSION=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionName\\s+'([^']+)'/)[1]")
           cp libo-signed.apk "LIBO-$VERSION.apk"
           sha256sum "LIBO-$VERSION.apk" > SHA256SUMS.txt
-          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD_TOOLS=$(ls -d "$SDK_DIR"/build-tools/* | sort -V | tail -1)
           "$BUILD_TOOLS/aapt2" dump badging "LIBO-$VERSION.apk" > APK-INFO.txt
           APPLICATION_ID=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/applicationId\\s+'([^']+)'/)[1]")
           VERSION_CODE=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/versionCode\\s+(\\d+)/)[1]")

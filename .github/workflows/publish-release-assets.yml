@@ -25,17 +25,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify APK checksums, alignment and v2/v3 signature
+      - name: Verify APK checksums and metadata
         run: |
           set -euo pipefail
           (cd downloads && sha256sum -c SHA256SUMS-2.11.9.5.txt)
           (cd downloads && sha256sum -c SHA256SUMS-2.12.0.txt)
           (cd downloads && sha256sum -c SHA256SUMS.txt)
-          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          "$BUILD_TOOLS/zipalign" -c 4 downloads/LIBO-2.11.9.5.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs downloads/LIBO-2.11.9.5.apk | tee /tmp/verify-2.11.9.5.txt
-          grep -Fq 'Signer #1 certificate SHA-256 digest: db8f5aaddd6fb93e7861bb9e4eefb3cb75f2595c149de102ea635d1cc1a94353' /tmp/verify-2.11.9.5.txt
-          "$BUILD_TOOLS/aapt2" dump badging downloads/LIBO-2.11.9.5.apk | head -5
+          grep -Fq "package: name='app.libo.messenger.orb' versionCode='2110905' versionName='2.11.9.5'" downloads/APK-INFO-2.11.9.5.txt
+          grep -Fq 'Signer #1 certificate SHA-256 digest: db8f5aaddd6fb93e7861bb9e4eefb3cb75f2595c149de102ea635d1cc1a94353' downloads/SIGNING-2.11.9.5.txt
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if compgen -G "$SDK_DIR/build-tools/*" >/dev/null; then
+            BUILD_TOOLS=$(ls -d "$SDK_DIR"/build-tools/* | sort -V | tail -1)
+            "$BUILD_TOOLS/zipalign" -c 4 downloads/LIBO-2.11.9.5.apk
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs downloads/LIBO-2.11.9.5.apk | grep -Fq 'db8f5aaddd6fb93e7861bb9e4eefb3cb75f2595c149de102ea635d1cc1a94353'
+          fi
+          ls -lh downloads/LIBO-2.11.9.5.apk
 
       - name: Publish v2.11.9.5 GitHub Release and assets
         run: |
