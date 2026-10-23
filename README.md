@@ -1,33 +1,180 @@
-# LIBO Android · v2.10.9.3
+# LIBO 2.12.0 — «Polished»
 
-LIBO has been rebuilt as a native Android application in Kotlin and Jetpack Compose. The old single-file HTML/WebView prototype has been removed; there is no embedded browser UI or JavaScript runtime.
+![Іконка LIBO](web/public/icon-512.png)
 
-## What works in this build
+**LIBO — local-first особистий месенджер 1:1.** Відкриті одночасно пристрої з’єднуються
+безпосередньо через WebRTC DataChannel; PeerJS використовується лише для сигналізації.
+Історія, чернетки, профілі відомих контактів, нагадування та вкладення зберігаються
+локально у IndexedDB/WebView. У проєкті **немає** сервера історії, облікових записів,
+каталогу користувачів або фонової доставки.
 
-- Native chats, contact list, profile editor, saved messages, local groups and channels.
-- Local message history, reply/edit/delete/pin/save/forward actions, file attachments and voice-note recording.
-- Search across chats and contacts; chat folders and pinning.
-- Ukrainian, English and Russian interface language selection; dark/light theme, motion and energy-saving preferences.
-- Adaptive phone/tablet layout: phone bottom navigation, wide-screen navigation rail and two-pane chat view, scrollable settings/lists, safe system insets and keyboard-aware composer sizing.
-- Password lock with a PBKDF2-SHA-256 verifier; encrypted backup export/import using AES-256-GCM and PBKDF2-SHA-256 (600,000 iterations).
-- Optional OpenAI Chat Completions-compatible AI endpoint over HTTPS. The API key is protected using Android Keystore and is not included in exports/backups.
-- Text contact codes can be copied/shared and imported to add a contact. QR scanning/QR joining has been removed; the text code is not a live account/network connection.
-- Generated LIBO launcher icon plus scalable Android vector assets; Compose transitions and animated layout changes.
+Поточна версія: **2.12.0 Standalone** · Android 8.0+ (API 26+) · пакет
+`app.libo.messenger.standalone` · `versionCode 2120000`.
 
-## Important scope note
+> 2.12 — це оновлення **інтерфейсу**: єдина дизайн-система (`web/ui-next.css`) та дев’ять
+> нових функцій. Протокол, сховище й безпекова модель не змінювалися.
 
-This repository contains no chat server, account service, push-notification service, WebRTC signaling service, or AI API credentials. Chats, contacts and groups therefore work as a local-first prototype on this device; messages are not delivered to other users and online/presence statuses are not faked. AI requests work only after the user configures their own HTTPS-compatible endpoint, model and API key.
+## APK
 
-Encrypted backups contain app data and message metadata. They do not package the binary contents of selected documents or voice recordings; media references may only work on the original device.
+- [LIBO-2.12.0.apk](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/LIBO-2.12.0.apk)
+  · 326 011 B · SHA-256 `b2453f38a6058957dcd49df521a8538de0ff81bf9d5530491cbc65e516ad7742`
+- [SHA256SUMS-2.12.0.txt](https://github.com/vladskod31-alt/my-first-apk/raw/main/downloads/SHA256SUMS-2.12.0.txt)
+- Подробиці підпису та інсталяції — у [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
-## Build
+## Android prerelease 2.11.9.5 — intentionally lower version
 
-Open the project in Android Studio with JDK 17 and Android SDK Platform 35, or run `./gradlew :app:assembleDebug` (Windows: `gradlew.bat :app:assembleDebug`). This sandbox has no JDK or Android SDK, so an APK could not be built or emulator-tested here.
+The requested `2.11.9.5` build is a prerelease based on the current standalone source, not a rollback to the older 2.11.4.5 codebase. Its Android `versionCode` is `2110905`, lower than the published 2.12.0 (`2120000`), so Android will reject an in-place downgrade. Installing it over 2.12.0 requires uninstalling first, which may erase locally stored chats and attachments; export a backup before uninstalling. The release workflow refuses to publish an unsigned APK. See [RELEASE_NOTES-2.11.9.5.md](RELEASE_NOTES-2.11.9.5.md) for details and the [2.11.9.5 prerelease APK](https://github.com/vladskod31-alt/my-first-apk/releases/download/v2.11.9.5/LIBO-2.11.9.5.apk).
 
-The app module is `app/`, application id `app.libo.android`, minimum Android API 26, version name `2.10.9.3`.
+## Дев’ять нових функцій 2.12
 
-## Icon
+| # | Функція | Де |
+| --- | --- | --- |
+| 1 | Командна панель `⌘K`/`Ctrl+K`: чати, повідомлення, дії | будь-де |
+| 2 | Жести: свайп → відповідь, long-press → меню, подвійний тап → ❤️ | повідомлення |
+| 3 | Чернетка видна прямо у списку чатів | сайдбар |
+| 4 | Відносний час присутності («5 хв тому», «вчора») | шапка чату |
+| 5 | Емодзі 2.0: категорії, пошук, недавні | композер |
+| 6 | Шість акцентів, компактна щільність, три розміри тексту | Налаштування → Оформлення |
+| 7 | Контекст чату (близькі, звук, прочитано, папка, експорт, очищення) | long-press/правий клік по чату |
+| 8 | Капсула «вниз» зі счётчиком нових повідомлень | переписка |
+| 9 | Мобільний композер: другорядні дії у шиті «＋» | телефон |
 
-- Generated source artwork: [`assets/libo-app-icon.png`](assets/libo-app-icon.png)
-- Vector mark source: [`assets/libo-mark.svg`](assets/libo-mark.svg)
-- Android launcher resources: `app/src/main/res/mipmap-*` and `app/src/main/res/mipmap-anydpi-v26/`
+Скріншоти: [desktop-chat](art/screens/desktop-chat.png), [desktop-palette](art/screens/desktop-palette.png),
+[desktop-emoji](art/screens/desktop-emoji.png), [desktop-settings](art/screens/desktop-settings.png),
+[mobile-chat](art/screens/mobile-chat.png), [mobile-list](art/screens/mobile-list.png),
+[mobile-sheet](art/screens/mobile-sheet.png).
+
+## Перевірки
+
+```sh
+npm ci
+npm test          # 33 модульних тести
+npm run test:e2e  # 21 браузерний сценарій (9 нових у tests/ui-next.spec.mjs)
+npm run build     # production-бандл Vite
+```
+
+## Що реалізовано (архітектура 2.11.x, без змін у 2.12)
+
+
+### Повідомлення та стан доставки
+
+- Багаторядковий `textarea`: **Enter** додає рядок; відправлення — кнопкою або
+  **Ctrl/Cmd+Enter**. Висота зростає до 180 px, потім з’являється вертикальна прокрутка;
+  довгі URL, `@username` і emoji переносяться, а не стають вертикальним текстом.
+- Локально збережені UUID повідомлень, черга після втрати зв’язку та дедуплікація на
+  отримувачі. Текстове повідомлення не чекає завершення великого file transfer.
+- Чесні стани: **LOCAL** — лише «Збережене»; **QUEUED** — немає відкритого P2P-каналу;
+  **SENT** — envelope передано DataChannel; **DELIVERED** — метадані збережені отримувачем
+  (для streamed-файлу — тільки після складання та SHA-256); **READ** — прийшов read receipt;
+  **FAILED** — локальна/протокольна помилка. В інтерфейсі є debug-розклад останньої доставки
+  (черга, доставка, ACK, read), але це клієнтські часові мітки, не серверна телеметрія.
+- Відповіді, реакції, закріплення, редагування, delete-for-both, пересилання, «Збережене»,
+  локальна історія редагувань до 20 попередніх версій та локальні нагадування.
+
+### Реальні 1:1 WebRTC calls
+
+- Кнопки audio/video call з’являються **лише** коли обидва online контакти оголосили
+  `calls-v1`; виклик використовує PeerJS `MediaConnection` і фактичний `MediaStream`.
+- `Calling`, `Ringing`, `Connecting`, `Connected`, `Reconnecting`, `Failed` і `Ended`
+  виводяться зі стану реального MediaConnection/`RTCPeerConnection`. `Connected` з’являється
+  тільки після отримання remote stream, а не після натискання кнопки.
+- Є прийняття/відхилення, microphone mute, camera on/off, remote audio/video і панель
+  WebRTC diagnostics (connection/ICE state, RTT, jitter і packet loss, якщо браузер надає
+  ці stats). Android запитує `RECORD_AUDIO` та `CAMERA` тільки під час start/accept.
+- Це P2P 1:1. Виклик потребує одночасно відкритих LIBO, сумісного WebView та доступного
+  ICE route; користувацький TURN у Settings є необхідним на strict NAT. Немає background
+  incoming call, server relay guarantee, recording, SFU, channel/live stream або automatic
+  redial після terminal failure.
+
+### Вкладення без monolithic Base64
+
+Нові вкладення передають у повідомленні лише перевірені метадані: `fileId`, MIME, ім’я,
+розмір, кількість чанків та SHA-256. Оригінальний Blob і прийняті шматки зберігаються
+окремо у IndexedDB. Дані проходять послідовними чанками по **24 KiB**, кожен прийнятий
+chunk підтверджується тільки після запису до IndexedDB. Після reconnect отримувач повертає
+наступний contiguous chunk, а передавач продовжує з нього. Остаточний `Delivered` для файлу
+вимагає повного розміру та SHA-256 ACK; є скасування й ручне відновлення.
+
+| Вид | Реальний ліміт | Примітка |
+| --- | ---: | --- |
+| Фото JPG / PNG / WebP | 12 MiB до обробки | Фото з кнопки стискається до JPEG максимум 1600 px; файл зберігається як новий JPEG. |
+| Голосове | 5 MiB, 60 с | Формат визначає `MediaRecorder` браузера/WebView. |
+| Аудіо / музика | 100 MiB | Оригінальний Blob не перекодовується. |
+| Відео | 100 MiB | MP4, WebM, MOV, MKV у file picker; відтворення залежить від codec WebView. |
+| Документ / інший дозволений MIME | 100 MiB | Зберігається й завантажується в оригінальному форматі. |
+
+Для музики читаються ID3v2.3/v2.4 поля title/artist/album і компактна JPEG/PNG/WebP
+обкладинка до 200 KiB; якщо тега немає, назва — ім’я файла. `<audio>`/`<video>` отримують
+Blob URL та metadata duration; коли конкретний codec не декодується, UI показує чесний
+fallback «зберегти оригінал», а не імітацію плеєра.
+
+### Профіль, пошук, посилання
+
+- Профіль 2.0: ім’я, `@username` (`[a-z][a-z0-9_]{2,31}`), bio до 160 символів, статус та
+  компактний JPEG/PNG/WebP avatar. Профіль надсилається лише напряму під час P2P hello.
+  Унікальність username **лише локальна серед відомих контактів**; глобального каталогу
+  або server-side uniqueness немає.
+- `@mentions` мають автодоповнення відомих контактів, зберігають peer id і відкривають
+  профіль. У розмові 1:1 згадка про себе відкриває власну read-only profile card.
+- Локальний пошук у чаті й у списку чатів розуміє `from:@username`, `in:`, `audio:`,
+  `video:`, `file:`, `has:link`, `has:media`, `before:YYYY-MM-DD`, `after:YYYY-MM-DD`.
+  Результати обмежені тим, що вже є на цьому пристрої.
+- QR-запрошення та перевірені `libo://user/<peer-id>`, `chat`, `message`, `file`. Спроба
+  відкрити `libo://channel/...` чесно повідомляє, що для нього потрібна серверна редакція.
+
+### Android shell
+
+WebView використовує локальний origin `appassets.androidplatform.net`, CSP і обмежений
+міст `LiboAndroid`. Він дає системний `ACTION_OPEN_DOCUMENT` для загального file picker,
+`ACTION_CREATE_DOCUMENT` для збереження Blob із bounded Base64 bridge chunks та
+backpressure, обробку `libo://` intent і локальні `AlarmManager` reminders. На Android 13+
+програма запитує `POST_NOTIFICATIONS` тільки коли створюється нагадування.
+
+Ці шляхи **скомпільовані в APK**, але не запускалися на фізичному Android-пристрої в цьому
+середовищі; див. [TESTING.md](TESTING.md).
+
+## Відомі межі
+
+- Немає WebRTC audio/video calls, screen sharing, груп, каналів, live stream, серверних
+  topics, anti-spam, сесій/пристроїв, серверного TTL або delivery while the app is closed.
+- Тимчасові повідомлення видаляються локальними таймерами обох peer’ів; це не
+  серверно-примусове видалення. Офлайн-пристрій не може отримати наказ негайно.
+- Опитування — базові P2P 1:1 до 8 варіантів; немає server-side anonymous/quiz accounting,
+  глобального закриття або channel polls.
+- WebRTC захищає транспорт DTLS. Додатковий експериментальний MT-style envelope
+  (ECDH P-256 + AES-256-GCM) має unit/e2e-перевірки, але не має незалежного аудиту;
+  локальна IndexedDB не зашифрована окремо. Тому не робиться маркетингова заява про
+  «перевірене E2EE».
+
+Повний список — [KNOWN_ISSUES.md](KNOWN_ISSUES.md), модель загроз — [SECURITY.md](SECURITY.md).
+
+## Розробка й перевірка
+
+```sh
+npm ci
+npm test           # 30 node:test перевірок
+npm run test:e2e   # 11 Playwright/WebRTC сценаріїв
+npm run build      # Vite production bundle у dist/
+
+# Linux x64 fallback, коли Android SDK/Gradle недоступні:
+node scripts/bootstrap-toolchain.mjs
+# export JAVA_HOME=...; export LIBO_TOOLCHAIN=...
+./scripts/build-apk-local.sh
+```
+
+`./gradlew` потребує встановленого JDK/SDK Android. Детальні фактичні результати,
+включно з exact APK hash та неперевіреними ділянками, — у [TESTING.md](TESTING.md).
+
+## Структура
+
+| Шлях | Призначення |
+| --- | --- |
+| `web/` | Web UI, P2P протокол, IndexedDB та transfer manager |
+| `app/` | Android WebView shell, native bridge, deep links, reminders |
+| `tests/` | node:test та Playwright сценарії |
+| `scripts/` | локальний signaling server, pinned fallback toolchain, APK build |
+| `downloads/` | невелике дзеркало APK для tagged release |
+
+Документація: [RELEASE_NOTES.md](RELEASE_NOTES.md), [TESTING.md](TESTING.md),
+[KNOWN_ISSUES.md](KNOWN_ISSUES.md), [SECURITY.md](SECURITY.md),
+[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).

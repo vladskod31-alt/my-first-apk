@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Libo" parent="android:style/Theme.Material.NoActionBar">
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#8B5CF6</item>
+        <item name="android:colorAccent">#7850DF</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:statusBarColor">#F7F7FB</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#070718</item>
-        <item name="android:navigationBarColor">#070718</item>
-        <item name="android:windowLightNavigationBar">false</item>
-        <item name="android:windowBackground">#090913</item>
-        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">#F7F7FB</item>
     </style>
 </resources>

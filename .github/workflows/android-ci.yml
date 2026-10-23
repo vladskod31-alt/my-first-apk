@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-tests:
+    name: Модульные тесты и браузерные сценарии
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Модульные тесты (33)
+        run: npm test
+      # Ubuntu-latest now rolls onto a new image; the bundled serverless Chromium
+      # is a fallback, so CI also installs Playwright's own browser and points
+      # CHROMIUM_PATH at it. This keeps the browser independent of the runner image.
+      - name: Chromium для браузерных сценариев
+        run: npx playwright install --with-deps chromium
+      - name: Браузерные сценарии (21)
+        run: |
+          set -uo pipefail
+          # CHROMIUM_PATH must be the browser binary itself, not a file that holds it.
+          CHROMIUM_PATH=$(node -e "const {chromium}=require('@playwright/test');console.log(chromium.executablePath())")
+          export CHROMIUM_PATH
+          echo "Using $CHROMIUM_PATH"
+          test -x "$CHROMIUM_PATH"
+          npm run test:e2e > e2e.log 2>&1
+          status=$?
+          tail -80 e2e.log
+          if [ $status -ne 0 ]; then
+            # Surface the failure in check annotations: workflow logs are not
+            # always reachable from every environment.
+            grep -aE "✘|Error:|expect\(|unexpected value|Timed out|webServer|browserType|Failed to" e2e.log \
+              | head -15 | while IFS= read -r line; do echo "::error title=Playwright::$line"; done
+          fi
+          exit $status
+      - name: Production-бандл веб-части
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-logs
+          path: |
+            test-results/
+            playwright-report/
+            e2e.log
+          if-no-files-found: ignore
+
+  android-build:
+    name: Gradle-сборка и lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: assembleDebug
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Android lint (не блокирует, пока SDK-окружение стабилизируется)
+        continue-on-error: true
+        run: ./gradlew --no-daemon lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LIBO-debug-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  secrets-audit:
+    name: Аудит истории Git на секреты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Audit this branch's history (HEAD). A full repository audit across every
+      # branch and tag (`--all`) is available for manual runs; sibling session
+      # branches are out of scope for per-branch CI.
+      - run: python3 scripts/scan-secrets.py

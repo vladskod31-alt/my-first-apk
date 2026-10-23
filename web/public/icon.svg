@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="LIBO">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#210b3b"/><stop offset=".55" stop-color="#6530a9"/><stop offset="1" stop-color="#b33584"/></linearGradient>
+    <linearGradient id="bubble" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffaff"/><stop offset="1" stop-color="#e7d8ff"/></linearGradient>
+    <radialGradient id="violet" cx="30%" cy="25%"><stop stop-color="#e4bfff"/><stop offset="1" stop-color="#662cc0"/></radialGradient>
+    <radialGradient id="pink" cx="30%" cy="25%"><stop stop-color="#ffcbe7"/><stop offset="1" stop-color="#db318f"/></radialGradient>
+  </defs>
+  <rect width="96" height="96" rx="21" fill="url(#bg)"/>
+  <circle cx="48" cy="48" r="39" fill="none" stroke="#fce7ff" stroke-opacity=".18" stroke-width=".8"/>
+  <path d="M23 19h50a11 11 0 0 1 11 11v28a11 11 0 0 1-11 11H49L34 80l4-11h-15a11 11 0 0 1-11-11V30a11 11 0 0 1 11-11Z" fill="url(#bubble)" stroke="#fff" stroke-opacity=".7" stroke-width="1.2"/>
+  <circle cx="39" cy="45" r="12" fill="url(#violet)"/>
+  <circle cx="57" cy="45" r="12" fill="url(#pink)"/>
+  <ellipse cx="35" cy="41" rx="4.5" ry="3.2" fill="#fff" fill-opacity=".55"/>
+  <ellipse cx="53" cy="41" rx="4.5" ry="3.2" fill="#fff" fill-opacity=".58"/>
+  <path d="m75 13 2.3 5.8 5.7 2.2-5.7 2.3-2.3 5.7-2.2-5.7-5.8-2.3 5.8-2.2L75 13Z" fill="#fff"/>
+</svg>
